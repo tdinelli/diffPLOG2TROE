@@ -2,17 +2,19 @@ import numpy as np
 from multipledispatch import dispatch
 from .ArrheniusBase import Arrhenius
 
+
 class PressureLogarithmic(Arrhenius):
 
     def __init__(self, params: list) -> None:
         self.constants = [Arrhenius(i) for i in params]
-        self.n = len(self.constants) # Number of pressure levels
+        self.n = len(self.constants)  # Number of pressure levels
         self.p = [i["P"] for i in params]
-        self.p.sort() # Im not sure if its needed but anyway better safe than sorry
+        self.p.sort()  # Im not sure if its needed but anyway better safe than sorry
 
         isADuplicate = len(self.p) != len(set(self.p))
         if isADuplicate is True:
-            raise ValueError("The PLOG reaction provided is a duplicate. This is not handled yet!")
+            raise ValueError(
+                "The PLOG reaction provided is a duplicate. This is not handled yet! I don't have so much time at the moment.")
 
         self.lnP = [np.log(i) for i in self.p]
 
@@ -36,3 +38,6 @@ class PressureLogarithmic(Arrhenius):
 
             # 3. Logarithmic Interpolation
             return np.exp(log_k1 + (log_k2 - log_k1) * (np.log(P) - self.lnP[pIndex]) / (self.lnP[pIndex+1] - self.lnP[pIndex]))
+
+    def __print__(self):
+        pass

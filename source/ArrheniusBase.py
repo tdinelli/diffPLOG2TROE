@@ -11,4 +11,4 @@ class Arrhenius:
 
     @dispatch(float)
     def KineticConstant(self, T: float) -> float:
-        return self.A * T**self.b * np.exp(-self.Ea/self.R/T) 
+        return self.A * T**self.b * np.exp(-self.Ea/self.R/T)
