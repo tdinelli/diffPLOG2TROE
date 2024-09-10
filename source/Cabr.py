@@ -3,7 +3,7 @@ from multipledispatch import dispatch
 from .ArrheniusBase import Arrhenius
 
 
-class FallOff(Arrhenius):
+class Cabr(Arrhenius):
 
     def __init__(self, params: dict):
 
@@ -66,11 +66,11 @@ class FallOff(Arrhenius):
             f1 = ((np.log(Pr) + c) / (n - 0.14 * (np.log(Pr) + c)))**2
 
             F = np.exp(logFcent / (1 + f1))
-            return self._kInf * (Pr / (1 + Pr)) * F
+            return self._k0 * (1 / (1 + Pr)) * F
 
         if self.isLindemann is True:
             F = 1
-            return self._kInf * (Pr / (1 + Pr)) * F
+            return self._k0 * (1 / (1 + Pr)) * F
 
     @property
     def k0(self):

@@ -30,15 +30,12 @@ constant_troe = {
     "HPL": {"A": 6.220E+16, "b": -1.174, "Ea": 635.80},
     "Coefficients": {"A": 0.405, "T3": 1120., "T1": 69.6},  # "T2" is optional
     "Type": "TROE",
-    "Lindemann": False
 }
 
 constant_lindemann = {
     "LPL": {"A": 1.135E+36, "b": -5.246, "Ea": 1704.8},
     "HPL": {"A": 6.220E+16, "b": -1.174, "Ea": 635.80},
-    "Coefficients": {"A": 0.405, "T3": 1120., "T1": 69.6},  # "T2" is optional
-    "Type": "TROE",
-    "Lindemann": True
+    "Type": "Lindemann",
 }
 
 troe = FallOff(constant_troe)

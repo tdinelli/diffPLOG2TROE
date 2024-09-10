@@ -15,7 +15,7 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append("/Users/tdinelli/Documents/GitHub/PLOG_Converter")
-from source.FallOff import FallOff
+from source.Cabr import Cabr
 
 """
 CH3 + CH3(+M) = C2H5 + H(+M)
@@ -27,20 +27,17 @@ constant_cabr = {
     "LPL": {"A": 10**12.698, "b": 0.099, "Ea": 10600},
     "HPL": {"A": 10**-6.42, "b": 4.838, "Ea": 7710},
     "Coefficients": {"A": 1.641, "T3": 4334, "T1": 2725},  # "T2" is optional
-    "Type": "CABR",
-    "Lindemann": False
+    "Type": "TROE",
 }
 
 constant_lindemann = {
     "LPL": {"A": 10**12.698, "b": 0.099, "Ea": 10600},
     "HPL": {"A": 10**-6.42, "b": 4.838, "Ea": 7710},
-    "Coefficients": {"A": 1.641, "T3": 4334, "T1": 2725},  # "T2" is optional
-    "Type": "CABR",
-    "Lindemann": True
+    "Type": "Lindemann",
 }
 
-cabr = FallOff(constant_cabr)
-lindemann = FallOff(constant_lindemann)
+cabr = Cabr(constant_cabr)
+lindemann = Cabr(constant_lindemann)
 
 kc = []
 k0 = []
@@ -59,7 +56,7 @@ for i in P:
 
     kcl.append(lindemann.KineticConstant(1000., float(i)))
 
-plt.plot(M, kc, 'b-o', label="CABR form")
+plt.plot(M, kc, 'b-o', label="TROE form")
 plt.plot(M, kcl, 'k-o', label="Lindemann form")
 plt.plot(M, kInf, "g--", label="HPL / [M]")
 plt.plot(M, k0, "r--", label="LPL")
