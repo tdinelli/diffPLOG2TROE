@@ -14,10 +14,10 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append("/Users/tdinelli/Documents/GitHub/PLOG_Converter")
-from source.PressureLogarithmic import PressureLogarithmic
+from source.Refitter import Refitter
 
 """
-Pressure dependent kinetic constant for the reaction NH3=NH2+H as its reported whithin the CRECK chemical kinetic model.
+TODO: Add description
 """
 
 constant = [
@@ -27,17 +27,5 @@ constant = [
     {"P": 1.00E+02, "A": 2.69E+31, "b": -4.92E+00, "Ea": 112778.7},
 ]
 
-plog = PressureLogarithmic(params=constant)
-T = [500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 3250, 3500]
-P = [0.1, 0.4, 0.7, 1, 2, 5, 10, 20, 30, 40, 50, 70, 100]
-
-for j in P:
-    kc = []
-    for i in T:
-        kc.append(plog.KineticConstant(float(i), float(j)))
-    print(kc)
-    print(T)
-    plt.plot(T, kc)
-
-plt.yscale('log')
-plt.show()
+refitter = Refitter(plog=constant, fit_type="FallOff")
+refitter.fit()

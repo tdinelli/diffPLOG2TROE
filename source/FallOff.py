@@ -5,7 +5,7 @@ from .ArrheniusBase import Arrhenius
 
 class FallOff(Arrhenius):
 
-    def __init__(self, params: dict):
+    def __init__(self, params: dict) -> None:
 
         self.isExplicitlyEnhanced = False
 
