@@ -18,30 +18,28 @@ sys.path.append("/Users/tdinelli/Documents/GitHub/PLOG_Converter")
 from source.FallOff import FallOff
 
 """
-CH3 + CH3 (+M) = C2H6 (+M)
+CH3 + CH3(+M) = C2H5 + H(+M)
 
 Example reported within the CHEMKIN manual
-
-
 """
 
-constant_troe = {
-    "LPL": {"A": 1.135E+36, "b": -5.246, "Ea": 1704.8},
-    "HPL": {"A": 6.220E+16, "b": -1.174, "Ea": 635.80},
-    "Coefficients": {"A": 0.405, "T3": 1120., "T1": 69.6},  # "T2" is optional
-    "Type": "TROE",
+constant_cabr = {
+    "LPL": {"A": 10**12.698, "b": 0.099, "Ea": 10600},
+    "HPL": {"A": 10**-6.42, "b": 4.838, "Ea": 7710},
+    "Coefficients": {"A": 1.641, "T3": 4334, "T1": 2725},  # "T2" is optional
+    "Type": "CABR",
     "Lindemann": False
 }
 
 constant_lindemann = {
-    "LPL": {"A": 1.135E+36, "b": -5.246, "Ea": 1704.8},
-    "HPL": {"A": 6.220E+16, "b": -1.174, "Ea": 635.80},
-    "Coefficients": {"A": 0.405, "T3": 1120., "T1": 69.6},  # "T2" is optional
-    "Type": "TROE",
+    "LPL": {"A": 10**12.698, "b": 0.099, "Ea": 10600},
+    "HPL": {"A": 10**-6.42, "b": 4.838, "Ea": 7710},
+    "Coefficients": {"A": 1.641, "T3": 4334, "T1": 2725},  # "T2" is optional
+    "Type": "CABR",
     "Lindemann": True
 }
 
-troe = FallOff(constant_troe)
+cabr = FallOff(constant_cabr)
 lindemann = FallOff(constant_lindemann)
 
 kc = []
@@ -54,19 +52,19 @@ T = np.linspace(1000., 1000., 30000)
 P = np.linspace(0.0001, 100., 30000)
 
 for i in P:
-    kc.append(troe.KineticConstant(1000., float(i)))
-    k0.append(troe.k0 * troe.M)
-    kInf.append(troe.kInf)
-    M.append(troe.M)
+    kc.append(cabr.KineticConstant(1000., float(i)))
+    k0.append(cabr.k0)
+    kInf.append(cabr.kInf / cabr.M)
+    M.append(cabr.M)
 
     kcl.append(lindemann.KineticConstant(1000., float(i)))
 
-plt.plot(M, kc, 'b-o', label="TROE form")
+plt.plot(M, kc, 'b-o', label="CABR form")
 plt.plot(M, kcl, 'k-o', label="Lindemann form")
-plt.plot(M, kInf, "g--", label="HPL")
-plt.plot(M, k0, "r--", label="LPL*[M]")
+plt.plot(M, kInf, "g--", label="HPL / [M]")
+plt.plot(M, k0, "r--", label="LPL")
 plt.yscale("log")
 plt.xscale("log")
-plt.ylim([min(kc), kInf[-1]*1.1])
+plt.ylim([min(kc), k0[-1]*1.1])
 plt.legend()
 plt.show()

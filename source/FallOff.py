@@ -2,20 +2,28 @@ import numpy as np
 from multipledispatch import dispatch
 from .ArrheniusBase import Arrhenius
 
-class Troe(Arrhenius):
+# -------------------------
+# Missing SRI formulation
+# -------------------------
+class FallOff(Arrhenius):
     def __init__(self, params: dict):
 
         self.isExplicitlyEnhanced = False
+
+        self.isLindemann = False
+        self.isTroe = False
+        self.isCabr = False
+
         self.isFourParameters = False
         self.lpl = Arrhenius(params["LPL"])
         self.hpl = Arrhenius(params["HPL"])
 
-        self.A = params["Troe"]["A"]
-        self.T3 = params["Troe"]["T3"]
-        self.T1 = params["Troe"]["T1"]
-        if len(params["Troe"]) == 4:
+        self.A = params["Coefficients"]["A"]
+        self.T3 = params["Coefficients"]["T3"]
+        self.T1 = params["Coefficients"]["T1"]
+        if len(params["Coefficients"]) == 4:
             self.isFourParameters = True
-            self.T2 = params["Troe"]["T2"]
+            self.T2 = params["Coefficients"]["T2"]
 
         if "efficiencies" in params:
             self.isExplicitlyEnhanced = True
@@ -23,12 +31,21 @@ class Troe(Arrhenius):
         if self.isExplicitlyEnhanced is True:
             raise Exception("Troe expression with explicit collider is not handled yet!")
 
+        if params["Type"] == "TROE":
+            self.isTroe = True
+        elif params["Type"] == "CABR":
+            self.isCabr = True
+        elif params["Type"] == "SRI":
+            raise ValueError("SRI formulation not implemented yet!")
+        else:
+            raise ValueError("Unknown type. Allowed  are: TROE | CABR")
+
+        if params["Lindemann"] == True:
+            self.isLindemann = True
+
         self._k0 = 0 # LPL constant
         self._kInf = 0 # HPL constant
 
-        # ==============================
-        # Just for testing TOBE REMOVED
-        # ==============================
         self._M = 0
 
     @dispatch(float, float)
@@ -48,9 +65,16 @@ class Troe(Arrhenius):
 
         f1 = ((np.log(Pr) + c) / (n - 0.14 * (np.log(Pr) + c)))**2
 
-        F = np.exp(np.log(Fcent) / (1 + f1))
+        if self.isLindemann is False:
+            F = np.exp(np.log(Fcent) / (1 + f1))
+        else:
+            F = 1
 
-        return self._kInf * (Pr / (1 + Pr)) * F
+        if self.isTroe is True:
+            return self._kInf * (Pr / (1 + Pr)) * F
+
+        if self.isCabr is True:
+            return self._k0 * (1 / (1 + Pr)) * F
 
     @property
     def k0(self):
