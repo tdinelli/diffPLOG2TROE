@@ -9,6 +9,7 @@
     Please report any bug to: timoteo.dinelli@polimi.it
 """
 
+import numpy as np
 import matplotlib.pyplot as plt
 import os
 import sys
@@ -29,3 +30,15 @@ constant = [
 
 refitter = Refitter(plog=constant, fit_type="FallOff")
 refitter.fit()
+
+n_range_points = 300
+T_range = np.linspace(500, 2500, n_range_points)
+P_range = np.linspace(0.1, 100, n_range_points)
+
+fig, ax = plt.subplots()
+
+c = ax.imshow(refitter.ratio, cmap='hot', interpolation='nearest')
+# ax.axis([x.min(), x.max(), y.min(), y.max()])
+fig.colorbar(c, ax=ax)
+
+plt.show()
