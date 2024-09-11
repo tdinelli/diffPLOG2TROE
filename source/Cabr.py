@@ -54,18 +54,16 @@ class Cabr(Arrhenius):
 
         if self.isTroe is True:
             if self.isFourParameters is True:
-                logFcent = np.log((1 - self.A) * np.exp(-T/self.T3) +
-                                  self.A * np.exp(-T/self.T1) + np.exp(-self.T2/T))
+                logFcent = np.log10((1 - self.A) * np.exp(-T/self.T3) + self.A * np.exp(-T/self.T1) + np.exp(-self.T2/T))
             else:
-                logFcent = np.log(
-                    (1 - self.A) * np.exp(-T/self.T3) + self.A * np.exp(-T/self.T1))
+                logFcent = np.log10((1 - self.A) * np.exp(-T/self.T3) + self.A * np.exp(-T/self.T1))
 
             c = -0.4 - 0.67 * logFcent
             n = 0.75 - 1.27 * logFcent
 
-            f1 = ((np.log(Pr) + c) / (n - 0.14 * (np.log(Pr) + c)))**2
+            f1 = ((np.log10(Pr) + c) / (n - 0.14 * (np.log10(Pr) + c)))**2
 
-            F = np.exp(logFcent / (1 + f1))
+            F = 10**(logFcent / (1 + f1))
             return self._k0 * (1 / (1 + Pr)) * F
 
         if self.isLindemann is True:
