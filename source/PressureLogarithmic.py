@@ -26,10 +26,9 @@ class PressureLogarithmic(Arrhenius):
             return self.constants[-1].KineticConstant(T)
         else:
             # 1. Indentify interval in the pressure levels
-            pIndex = 1
-            for i, j in enumerate(self._P):
-                if P < j:
-                    pIndex = i - 1
+            pIndex = 0
+            for pIndex in range(self.n - 1):
+                if P < self._P[pIndex + 1]:
                     break
 
             # 2. Compute lower and upper pressure level Kinetic Constant

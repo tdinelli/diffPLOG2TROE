@@ -9,8 +9,8 @@ from .FallOff import FallOff
 class Refitter:
     def __init__(self, plog: list, fit_type: str) -> None:
         self.plog = PressureLogarithmic(plog)
-        self.fg = np.array([.0, .0, .0, .0, .0, .0, 1e-2, 1.0e+2, 1.0e+10, 1.0e+10])
-        # self.fg = np.array([1.38e+33, -4, 1.1e+05, 1.18e+37, 1, 1.5e+5, 5.79e-4, 1.23e+2, 1.0e+30, 1.0e+30])
+        # self.fg = np.array([.0, .0, .0, .0, .0, .0, 1, 1.0, 1.0e+10, 1.0e+10])
+        self.fg = np.array([1.380332E+33, -4.32, 1.105952E+05, 1.18231785E+37, 9.63743640E-01, 1.50102675E+05, 5.79496168E-04, 1.22837204E+02, 1.0e+30, 1.0e+30])
         self.refitted_constant = {
             "LPL": {"A": .0, "b": .0, "Ea": .0},
             "HPL": {"A": .0, "b": .0, "Ea": .0},
@@ -25,20 +25,28 @@ class Refitter:
         else:
             raise ValueError("Unknown fit type! Available are: FallOff | CABR")
 
-        n_range_points = 100
-        self.T_range = np.linspace(500, 2500, n_range_points)
-        self.P_range = np.linspace(0.1, 100, n_range_points)
+        # n_range_points = 50
+        # self.T_range = np.linspace(500, 2500, n_range_points)
+        # -1, 2 as extreme values in logspace base 10, means that the first pressure value is equal to 0.1 atm and the
+        # last one to 100 atm before was -> self.P_range = np.linspace(0.1, 100, n_range_points)
+        # self.P_range = np.logspace(-1, 2, n_range_points)
 
         # For debugging
+        self.T_range = [500, 1000, 1500, 2000, 2500, 3000, 3500]
+        self.P_range = [0.1, 0.4, 0.7, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 40.0, 50.0, 70.0, 100.0]
+        self.k_plog = np.empty(shape=(len(self.P_range), len(self.T_range)))
+        self.k_troe = np.empty(shape=(len(self.P_range), len(self.T_range)))
+        self.k0 = np.empty(shape=(len(self.P_range), len(self.T_range)))
+        self.kInf = np.empty(shape=(len(self.P_range), len(self.T_range)))
         # n_range_points = 1
         # self.T_range = np.linspace(500, 2500, n_range_points)
         # self.P_range = np.linspace(0.1, 100, n_range_points)
 
         # Memory allocation
-        self.k_plog = np.empty(shape=(n_range_points, n_range_points))
-        self.k_troe = np.empty(shape=(n_range_points, n_range_points))
-        self.k0 = np.empty(shape=(n_range_points, n_range_points))
-        self.kInf = np.empty(shape=(n_range_points, n_range_points))
+        # self.k_plog = np.empty(shape=(n_range_points, n_range_points))
+        # self.k_troe = np.empty(shape=(n_range_points, n_range_points))
+        # self.k0 = np.empty(shape=(n_range_points, n_range_points))
+        # self.kInf = np.empty(shape=(n_range_points, n_range_points))
 
         start_time = time.time()
         for i, p in enumerate(self.P_range):
@@ -65,11 +73,11 @@ class Refitter:
         AInf_fg, bInf_fg, EaInf_fg, R2adjInf = self.ArrheniusFitter(kInf_fg)
 
         self.fg[0] = A0_fg
-        self.fg[1] = b0_fg - 1  # A.F. told me that, no time to explain now
+        self.fg[1] = b0_fg - 1  # A.F. did that
         self.fg[2] = Ea0_fg
 
         self.fg[3] = AInf_fg
-        self.fg[4] = bInf_fg - 1  # A.F. told me that, no time to explain now
+        self.fg[4] = bInf_fg - 1  # A.F. did that
         self.fg[5] = EaInf_fg
 
         print(" Computing first guesses for the LPL and HPL")
@@ -133,14 +141,16 @@ class Refitter:
                 self.kInf[i, j] = troe.kInf
 
         # The following divide will set the values where self.k_plog == 0 equal to 0 in order to handle by 0 division
-        self.ratio = np.divide(self.k_troe, self.k_plog, out=np.zeros_like(self.k_troe), where=self.k_plog != 0)
+        # self.ratio = np.divide(self.k_troe, self.k_plog, out=np.zeros_like(self.k_troe), where=self.k_plog != 0)
+        self.ratio = self.k_troe / self.k_plog
 
-        # print(self.ratio[0, :])
-        # print(self.k_troe[:, 0])
-        # print(self.k_plog[:, 0])
-        # print(self.k0[:, 0])
-        # print(troe.M)
-        # exit()
+        # print("k0:    ", self.k0[0, 0])
+        # print("kInf:  ", self.kInf[0, 0])
+        # print("T:     ", self.T_range)
+        # print("P:     ", self.P_range)
+        # print("TROE:  ", self.k_troe[:, 0])
+        # print("PLOG:  ", self.k_plog[:, 0])
+        # print("ratio: ", self.ratio[:, 0])
 
         self.squared_errors = (self.ratio - 1)**2
 
@@ -152,9 +162,9 @@ class Refitter:
         return obj
 
     def fit(self):
-        self.ComputePressureLimits()
+        # self.ComputePressureLimits()
         print(" * ObjFunction value\tTime")
         res = minimize(self.ObjectiveFunction, self.fg, method="nelder-mead", tol = 1e-6, options = {"disp": True,
-                                                                                                     "maxiter": 1000,
-                                                                                                     "maxfev": 100000})
+                                                                                                     "maxiter": 10000,
+                                                                                                     "maxfev": 10000})
         print(res.x)

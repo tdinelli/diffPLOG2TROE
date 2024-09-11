@@ -5,10 +5,22 @@ class Arrhenius:
     def __init__(self, params: dict):
         self.R = 1.987;
 
-        self.A = params["A"]
-        self.b = params["b"]
-        self.Ea = params["Ea"]
+        self._A = params["A"]
+        self._b = params["b"]
+        self._Ea = params["Ea"]
 
     @dispatch(float)
     def KineticConstant(self, T: float) -> float:
-        return self.A * T**self.b * np.exp(-self.Ea/self.R/T)
+        return self._A * T**self._b * np.exp(-self._Ea/self.R/T)
+
+    # @property
+    # def A(self):
+    #     return self._A
+    #
+    # @property
+    # def b(self):
+    #     return self._b
+    #
+    # @property
+    # def Ea(self):
+    #     return self._Ea
