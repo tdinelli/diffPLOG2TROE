@@ -1,4 +1,5 @@
-import numpy as np
+import jax.numpy as jnp
+import jaxlib.xla_extension as xla
 from multipledispatch import dispatch
 from .ArrheniusBase import Arrhenius
 
@@ -26,12 +27,12 @@ class FallOff(Arrhenius):
 
         if params["Type"] == "TROE":
             self.isTroe = True
-            self.A = params["Coefficients"]["A"]
-            self.T3 = params["Coefficients"]["T3"]
-            self.T1 = params["Coefficients"]["T1"]
+            self.A = jnp.float64(params["Coefficients"]["A"])
+            self.T3 = jnp.float64(params["Coefficients"]["T3"])
+            self.T1 = jnp.float64(params["Coefficients"]["T1"])
             if len(params["Coefficients"]) == 4:
                 self.isFourParameters = True
-                self.T2 = params["Coefficients"]["T2"]
+                self.T2 = jnp.float64(params["Coefficients"]["T2"])
         elif params["Type"] == "Lindemann":
             self.isLindemann = True
         elif params["Type"] == "SRI":
@@ -45,26 +46,25 @@ class FallOff(Arrhenius):
 
         self._M = 0
 
-    @dispatch(float, float)
-    def KineticConstant(self, T: float, P: float) -> float:
+    @dispatch(xla.ArrayImpl, xla.ArrayImpl)
+    def KineticConstant(self, T: jnp.float64, P: jnp.float64) -> jnp.float64:
         self._k0 = self.lpl.KineticConstant(T)
         self._kInf = self.hpl.KineticConstant(T)
+
         self._M = P / 0.08206 / T * (1/1000)  # P [atm], T [K] -> M [mol/cm3/s]
         Pr = self._k0 * self._M / self._kInf
-        # print(f"A {self.hpl._A}, b {self.hpl._b}, Ea {self.lpl._Ea}")
-        # print(f"T {T}, P {P}")
-        # print(f"M {self._M}, kinf {self._kInf}")
 
         if self.isTroe is True:
             if self.isFourParameters is True:
-                logFcent = np.log10((1 - self.A) * np.exp(-T/self.T3) + self.A * np.exp(-T/self.T1) + np.exp(-self.T2/T))
+                logFcent = jnp.log10((1 - self.A) * jnp.exp(-T/self.T3) + self.A * jnp.exp(-T/self.T1) + jnp.exp(-self.T2/T))
             else:
-                logFcent = np.log10( (1 - self.A) * np.exp(-T/self.T3) + self.A * np.exp(-T/self.T1))
+                logFcent = jnp.log10( (1 - self.A) * jnp.exp(-T/self.T3) + self.A * jnp.exp(-T/self.T1))
 
             c = -0.4 - 0.67 * logFcent
             n = 0.75 - 1.27 * logFcent
 
-            f1 = ((np.log10(Pr) + c) / (n - 0.14 * (np.log10(Pr) + c)))**2
+            f1 = ((jnp.log10(Pr) + c) / (n - 0.14 * (jnp.log10(Pr) + c)))**2
+
 
             F = 10**(logFcent / (1 + f1))
             return self._kInf * (Pr / (1 + Pr)) * F
