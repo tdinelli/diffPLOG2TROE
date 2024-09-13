@@ -1,21 +1,20 @@
-import warnings
 import time  # timeit maybe is better
 import jax as jax
 import jax.numpy as jnp
 from scipy.optimize import curve_fit, minimize
-from .PressureLogarithmic import PressureLogarithmic
-from .FallOff import FallOff
+from .ArrheniusBase import arrhenius_fit
+from .PressureLogarithmic import kinetic_constant_plog
+# from .FallOff import kinetic_constant
 
 
 class Refitter:
-    def __init__(self, plog: list, fit_type: str) -> None:
-        self.plog = PressureLogarithmic(plog)
+    def __init__(self, plog: jnp.ndarray, fit_type: str) -> None:
         self.fg = jnp.array([.0, .0, .0, .0, .0, .0, 1, 1.0, 1.0e+10, 1.0e+10])
         # self.fg = jnp.array([1.380332E+33, -4.32, 1.105952E+05, 1.18231785E+37, 9.63743640E-01, 1.50102675E+05,
         #                      5.79496168E-04, 1.22837204E+02, 1.0e+30, 1.0e+30])
         self.refitted_constant = {
-            "LPL": {"A": .0, "b": .0, "Ea": .0},
-            "HPL": {"A": .0, "b": .0, "Ea": .0},
+            "LPL": [.0, .0, .0],
+            "HPL": [.0, .0, .0],
             "Coefficients": {"A": 1., "T3": 1.0e+3, "T1": 1.0e+3, "T2": 1.0e+3},  # "T2" is optional should I give the option(?)
             "Type": "TROE",
         }
@@ -42,11 +41,10 @@ class Refitter:
         start_time = time.time()
         for i, p in enumerate(self.P_range):
             for j, t in enumerate(self.T_range):
-                print(type(self.plog.KineticConstant(t, p)))
-                exit()
-                self.k_plog = self.k_plog.at[i, j].set(self.plog.KineticConstant(t, p))
+                self.k_plog = self.k_plog.at[i, j].set(kinetic_constant_plog(plog, t, p))
         end_time = time.time()
         execution_time = end_time - start_time
+        self.plog = plog
 
         print("==============================================")
         print(" PLOG to FallOff/CABR refritter          :)   ")
@@ -59,11 +57,11 @@ class Refitter:
         FallOff or a CABR the kinetic constant is computed all along the Temperature interval and at the extreme value
         of the pressure interval
         """
-        k0_fg = [self.plog.KineticConstant(i, self.P_range[0]) for i in self.T_range]
-        kInf_fg = [self.plog.KineticConstant(i, self.P_range[-1]) for i in self.T_range]
+        k0_fg = jnp.array([kinetic_constant_plog(self.plog, i, self.P_range[0]) for i in self.T_range])
+        kInf_fg = jnp.array([kinetic_constant_plog(self.plog, i, self.P_range[-1]) for i in self.T_range])
 
-        A0_fg, b0_fg, Ea0_fg, R2adj0 = self.ArrheniusFitter(k0_fg)
-        AInf_fg, bInf_fg, EaInf_fg, R2adjInf = self.ArrheniusFitter(kInf_fg)
+        A0_fg, b0_fg, Ea0_fg, R2adj0 = arrhenius_fit(k0_fg, self.T_range)
+        AInf_fg, bInf_fg, EaInf_fg, R2adjInf = arrhenius_fit(kInf_fg, self.T_range)
 
         self.fg = self.fg.at[0].set(A0_fg)
         self.fg = self.fg.at[1].set(b0_fg - 1)  # A.F. did that
@@ -78,37 +76,6 @@ class Refitter:
         print("    - A: {:.3e}, b: {:.3}, Ea: {:.3e}".format(A0_fg, b0_fg + 1, Ea0_fg))
         print("  * Adjusted R2 for the HPL: {:.3}".format(R2adjInf))
         print("    - A: {:.3e}, b: {:.3}, Ea: {:.3e}\n".format(AInf_fg, bInf_fg + 1, EaInf_fg))
-
-
-    def ArrheniusFitter(self, k):
-        """ This function provides an Arrhenius fit of the k(T) provided as k = A * T^b * exp(-Ea/R/T) with non
-        linear least squares The function also returns the quality of the fit R2
-        """
-
-        ln_k = lambda T, ln_k0, b, Ea: ln_k0 + b * jnp.log(T) - Ea / 1.987 / T
-
-        jax_k = jnp.array(k)
-        ln_k0 = jnp.log(jax_k)
-
-        popt, _ = curve_fit(ln_k, self.T_range, ln_k0)
-
-        # get the model parameters
-        A = jnp.exp(popt[0])
-        b = popt[1]
-        Ea = popt[2]
-
-        # get the adjusted R2
-        R2 = 1 - jnp.sum((ln_k0 -ln_k(self.T_range, popt[0], b, Ea))**2) / jnp.sum((ln_k0 - jnp.mean(ln_k0))**2)
-
-        # 2 is the number of parameters in the model excluding the constant, and len(self.T_range) is the number of observations
-        R2adj = 1 - (1 - R2) * (len(self.T_range) - 1) / (len(self.T_range) - 1 - 2)
-
-        # check on floating precision for A value
-        if jnp.less_equal(A, jnp.finfo(float).min) or jnp.isclose(A, 0):
-            A = jnp.inf
-            warnings.warn("The fitting of the Arrhenius expression is not satisfactory!")
-
-        return A, b, Ea, R2adj
 
     def ObjectiveFunction(self, x) -> float:
         start_time = time.time()
@@ -160,6 +127,6 @@ class Refitter:
     def fit(self):
         self.ComputePressureLimits()
         print(" * ObjFunction value\tTime")
-        res = minimize(self.ObjectiveFunction, self.fg, method="nelder-mead", tol = 1e-6, options = {"disp": True,
-                                                                                                     "maxiter": 10000,
-                                                                                                     "maxfev": 10000})
+        # res = minimize(self.ObjectiveFunction, self.fg, method="nelder-mead", tol = 1e-6, options = {"disp": True,
+        #                                                                                              "maxiter": 10000,
+        #                                                                                              "maxfev": 10000})

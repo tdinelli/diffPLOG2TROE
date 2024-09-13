@@ -9,8 +9,7 @@
     Please report any bug to: timoteo.dinelli@polimi.it
 """
 
-# import jax.numpy as jnp
-# import matplotlib.pyplot as plt
+import jax.numpy as jnp
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,12 +20,12 @@ from source.Refitter import Refitter
 TODO: Add description
 """
 
-constant = [
-    {"P": 1.00E-01, "A": 7.23E+29, "b": -5.32E+00, "Ea": 110862.4},
-    {"P": 1.00E+00, "A": 3.50E+30, "b": -5.22E+00, "Ea": 111163.3},
-    {"P": 1.00E+01, "A": 1.98E+31, "b": -5.16E+00, "Ea": 111887.8},
-    {"P": 1.00E+02, "A": 2.69E+31, "b": -4.92E+00, "Ea": 112778.7},
-]
+constant = jnp.array([
+    [1.00E-01, 7.23E+29, -5.32E+00, 110862.4],
+    [1.00E+00, 3.50E+30, -5.22E+00, 111163.3],
+    [1.00E+01, 1.98E+31, -5.16E+00, 111887.8],
+    [1.00E+02, 2.69E+31, -4.92E+00, 112778.7],
+], dtype=jnp.float64)
 
 refitter = Refitter(plog=constant, fit_type="FallOff")
 refitter.fit()

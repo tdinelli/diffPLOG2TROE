@@ -1,0 +1,1 @@
+export JAX_ENABLE_X64=TRUE

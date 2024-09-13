@@ -1,86 +1,77 @@
+from jax import jit
 import jax.numpy as jnp
-import jaxlib.xla_extension as xla
-from multipledispatch import dispatch
-from .ArrheniusBase import Arrhenius
+from .ArrheniusBase import kinetic_constant
 
 
-class FallOff(Arrhenius):
+def fall_off(params: dict):
 
-    def __init__(self, params: dict) -> None:
+    is_explicitly_enhanced = False
+    is_lindemann = False
+    is_troe = False
+    is_sri = False
+    is_four_params = False
+    A = 0
+    T3 = 0
+    T1 = 0
+    T2 = 0
 
-        self.isExplicitlyEnhanced = False
+    print(params)
 
-        self.isLindemann = False
-        self.isTroe = False
-        self.isSRI = False
+    if "efficiencies" in params:
+        is_explicitly_enhanced = True
 
-        self.isFourParameters = False
-        self.lpl = Arrhenius(params["LPL"])
-        self.hpl = Arrhenius(params["HPL"])
+    if is_explicitly_enhanced is True:
+        raise Exception(
+            "Troe expression with explicit collider is not handled yet!")
 
-        if "efficiencies" in params:
-            self.isExplicitlyEnhanced = True
+    if params["Type"] == "TROE":
+        is_troe = True
+        A = jnp.float64(params["Coefficients"]["A"])
+        T3 = jnp.float64(params["Coefficients"]["T3"])
+        T1 = jnp.float64(params["Coefficients"]["T1"])
 
-        if self.isExplicitlyEnhanced is True:
-            raise Exception(
-                "Troe expression with explicit collider is not handled yet!")
+        if len(params["Coefficients"]) == 4:
+            is_four_params = True
+            T2 = jnp.float64(params["Coefficients"]["T2"])
 
-        if params["Type"] == "TROE":
-            self.isTroe = True
-            self.A = jnp.float64(params["Coefficients"]["A"])
-            self.T3 = jnp.float64(params["Coefficients"]["T3"])
-            self.T1 = jnp.float64(params["Coefficients"]["T1"])
-            if len(params["Coefficients"]) == 4:
-                self.isFourParameters = True
-                self.T2 = jnp.float64(params["Coefficients"]["T2"])
-        elif params["Type"] == "Lindemann":
-            self.isLindemann = True
-        elif params["Type"] == "SRI":
-            raise ValueError("SRI formulation not implemented yet!")
+    elif params["Type"] == "Lindemann":
+        is_lindemann = True
+    elif params["Type"] == "SRI":
+        raise ValueError("SRI formulation not implemented yet!")
+    else:
+        raise ValueError(
+            "Unknown type. Allowed  are: TROE | Lindemann | SRI")
+
+    return is_lindemann, is_troe, is_four_params, A, T3, T1, T2
+    # N.B. The return should be the following one but most of the things there is not used cause I don't have time to
+    #      implement them at the moment
+    #      return is_explicitly_enhanced, is_lindemann, is_troe, is_sri, is_four_params, A, T3, T1, T2
+
+
+@jit
+def kinetic_constant(params: dict, T: jnp.float64, P: jnp.float64) -> jnp.float64:
+
+    is_lindemann, is_troe, is_four_params, A, T3, T1, T2 = fall_off(params)
+
+    _k0 = kinetic_constant(params["LPL"], T)
+    _kInf = kinetic_constant(params["LPL"], T)
+
+    _M = P / 0.08206 / T * (1/1000)  # P [atm], T [K] -> M [mol/cm3/s]
+    _Pr = _k0 * _M / _kInf
+
+    if is_troe is True:
+        if is_four_params is True:
+            logFcent = jnp.log10((1 - A) * jnp.exp(-T/T3) + A * jnp.exp(-T/T1) + jnp.exp(-T2/T))
         else:
-            raise ValueError(
-                "Unknown type. Allowed  are: TROE | Lindemann | SRI")
+            logFcent = jnp.log10((1 - A) * jnp.exp(-T/T3) + A * jnp.exp(-T/T1))
 
-        self._k0 = 0  # LPL constant
-        self._kInf = 0  # HPL constant
+        c = -0.4 - 0.67 * logFcent
+        n = 0.75 - 1.27 * logFcent
+        f1 = ((jnp.log10(_Pr) + c) / (n - 0.14 * (jnp.log10(_Pr) + c)))**2
+        F = 10**(logFcent / (1 + f1))
 
-        self._M = 0
+        return _kInf * (_Pr / (1 + _Pr)) * F
 
-    @dispatch(xla.ArrayImpl, xla.ArrayImpl)
-    def KineticConstant(self, T: jnp.float64, P: jnp.float64) -> jnp.float64:
-        self._k0 = self.lpl.KineticConstant(T)
-        self._kInf = self.hpl.KineticConstant(T)
-
-        self._M = P / 0.08206 / T * (1/1000)  # P [atm], T [K] -> M [mol/cm3/s]
-        Pr = self._k0 * self._M / self._kInf
-
-        if self.isTroe is True:
-            if self.isFourParameters is True:
-                logFcent = jnp.log10((1 - self.A) * jnp.exp(-T/self.T3) + self.A * jnp.exp(-T/self.T1) + jnp.exp(-self.T2/T))
-            else:
-                logFcent = jnp.log10( (1 - self.A) * jnp.exp(-T/self.T3) + self.A * jnp.exp(-T/self.T1))
-
-            c = -0.4 - 0.67 * logFcent
-            n = 0.75 - 1.27 * logFcent
-
-            f1 = ((jnp.log10(Pr) + c) / (n - 0.14 * (jnp.log10(Pr) + c)))**2
-
-
-            F = 10**(logFcent / (1 + f1))
-            return self._kInf * (Pr / (1 + Pr)) * F
-
-        if self.isLindemann is True:
-            F = 1
-            return self._kInf * (Pr / (1 + Pr)) * F
-
-    @property
-    def k0(self):
-        return self._k0
-
-    @property
-    def kInf(self):
-        return self._kInf
-
-    @property
-    def M(self):
-        return self._M
+    if is_lindemann is True:
+        F = 1
+        return _kInf * (_Pr / (1 + _Pr)) * F
