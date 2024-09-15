@@ -1,4 +1,4 @@
-from jax import jit, lax
+from jax import jit, lax, debug
 import jax.numpy as jnp
 from jax.scipy.optimize import minimize
 
@@ -41,7 +41,7 @@ def arrhenius_fit(k: jnp.ndarray, T_range: jnp.ndarray):
 
     # Control the floating point precision for A (Maybe in this case is not needed (?))
     A = lax.cond(
-        jnp.less_equal(A, jnp.finfo(float).eps) or jnp.isclose(A, 0), 
+        jnp.less_equal(A, jnp.finfo(float).eps) or jnp.isclose(A, 0),
         lambda: jnp.inf,
         lambda: A
     )

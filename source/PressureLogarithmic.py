@@ -16,7 +16,7 @@ def kinetic_constant_plog(params: jnp.ndarray, T: jnp.float64, P: jnp.float64) -
         P (jnp.float64): Pressure value for which the kinetic constant is computed.
 
     Returns:
-        jnp.float64: The interpolated kinetic constant at the given temperature and pressure.
+        jnp.float64: The value of the interpolated kinetic constant at the given temperature and pressure.
     """
 
     n = len(params)  # Number of pressure levels
@@ -63,6 +63,6 @@ def kinetic_constant_plog(params: jnp.ndarray, T: jnp.float64, P: jnp.float64) -
     return lax.cond(
         P <= _P[0],
         low_pressure_case,
-        lambda operand: lax.cond(P >= _P[-1], high_pressure_case, mid_pressure_case, operand),
+        lambda operand: lax.cond( P >= _P[-1], high_pressure_case, mid_pressure_case, operand),
         operand
     )
