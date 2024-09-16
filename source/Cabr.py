@@ -1,4 +1,4 @@
-from jax import jit, lax
+from jax import jit, lax, vmap
 import jax.numpy as jnp
 from .ArrheniusBase import kinetic_constant_base
 
@@ -37,3 +37,12 @@ def kinetic_constant_cabr(params: jnp.ndarray, T: jnp.float64, P: jnp.float64) -
         return (_k0 * (1 / (1 + _Pr)) * F, _k0, _kInf, _M)
 
     return lax.cond(len(params) == 3, troe, lindemann, operand)
+
+@jit
+def compute_cabr(cabr: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.ndarray) -> jnp.ndarray:
+    def compute_single(t, p):
+        _kcabr, _, _, _ = kinetic_constant_cabr(cabr, t, p)
+        return _kcabr
+    compute_single_t_fixed = vmap(lambda p: vmap(lambda t: compute_single(t, p))(T_range))
+    k_troe = compute_single_t_fixed(P_range)
+    return k_troe

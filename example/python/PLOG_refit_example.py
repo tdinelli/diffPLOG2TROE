@@ -14,7 +14,7 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append("/Users/tdinelli/Documents/GitHub/PLOG_Converter")
-from source.Refitter import Refitter
+from source.Refitter import fit
 
 """
 TODO: Add description
@@ -27,8 +27,7 @@ constant = jnp.array([
     [1.00E+02, 2.69E+31, -4.92E+00, 112778.7],
 ], dtype=jnp.float64)
 
-refitter = Refitter(plog=constant, fit_type="FallOff")
-refitter.fit()
+fit(plog=constant)
 
 # n_range_points = 300
 # T_range = np.linspace(500, 2500, n_range_points)

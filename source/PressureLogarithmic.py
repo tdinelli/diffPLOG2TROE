@@ -1,4 +1,4 @@
-from jax import jit, lax
+from jax import jit, lax, vmap
 import jax.numpy as jnp
 from .ArrheniusBase import kinetic_constant_base
 
@@ -66,3 +66,31 @@ def kinetic_constant_plog(params: jnp.ndarray, T: jnp.float64, P: jnp.float64) -
         lambda operand: lax.cond( P >= _P[-1], high_pressure_case, mid_pressure_case, operand),
         operand
     )
+
+
+@jit
+def compute_plog(plog: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.ndarray) -> jnp.ndarray:
+    """
+    Compute the kinetic constant of a given reaction written following the PLOG formalism in a vectorized way over a
+    range of pressures and temperatures. This is done in order to avoid the use of double nested loop.
+    Parameters
+    ----------
+    plog : jnp.ndarray
+        
+    T_range : jnp.ndarray
+        
+    P_range : jnp.ndarray
+        
+
+    Returns
+    -------
+    jnp.ndarray
+        
+
+    """
+    def compute_single(t, p):
+        _kplog = kinetic_constant_plog(plog, t, p)
+        return _kplog
+    compute_single_t_fixed = vmap(lambda p: vmap(lambda t: compute_single(t, p))(T_range))
+    k_plog = compute_single_t_fixed(P_range)
+    return k_plog
