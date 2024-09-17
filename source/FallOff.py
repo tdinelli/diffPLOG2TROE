@@ -17,13 +17,12 @@ def kinetic_constant_fall_off(params: jnp.ndarray, T: jnp.float64, P: jnp.float6
     def troe(operand):
         _k0, _kInf, _Pr, _M, params = operand
         A = params[2][0]
-        T1 = params[2][1]
-        T3 = params[2][2]
-        logFcent = lax.cond(
-            len(params[2]) == 3,
-            lambda: jnp.log10((1 - A) * jnp.exp(-T/T3) + A * jnp.exp(-T/T1)),
-            lambda: jnp.log10((1 - A) * jnp.exp(-T/T3) + A * jnp.exp(-T/T1) + jnp.exp(-params[2][3]/T)) # Here is T2
-        )
+        T3 = params[2][1]
+        T1 = params[2][2]
+        T2 = params[2][3] # T2 is optional in CHEMKIN here we feed 0
+
+        logFcent = jnp.log10((1 - A) * jnp.exp(-T/T3) + A * jnp.exp(-T/T1) + jnp.exp(-T2/T))
+
         c = -0.4 - 0.67 * logFcent
         n = 0.75 - 1.27 * logFcent
         f1 = ((jnp.log10(_Pr) + c) / (n - 0.14 * (jnp.log10(_Pr) + c)))**2
@@ -36,7 +35,7 @@ def kinetic_constant_fall_off(params: jnp.ndarray, T: jnp.float64, P: jnp.float6
         F = 1
         return (_kInf * (_Pr / (1 + _Pr)) * F, _k0, _kInf, _M)
 
-    return lax.cond( len(params) == 3, troe, lindemann, operand)
+    return lax.cond( jnp.shape(params)[0] == 3, troe, lindemann, operand)
 
 @jit
 def compute_fall_off(troe: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.ndarray) -> jnp.ndarray:
