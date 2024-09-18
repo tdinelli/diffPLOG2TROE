@@ -1,17 +1,5 @@
-"""
-@Authors:
-    Timoteo Dinelli [1]
-    [1]: CRECK Modeling Lab, Department of Chemistry, Materials, and Chemical Engineering, Politecnico di Milano
-@Contacts:
-    timoteo.dinelli@polimi.it
-@Additional notes:
-    This code is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
-    Please report any bug to: timoteo.dinelli@polimi.it
-"""
-
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
-import numpy as np
 import sys
 sys.path.append("/Users/tdinelli/Documents/GitHub/PLOG_Converter")
 from source.FallOff import kinetic_constant_fall_off
@@ -20,8 +8,6 @@ from source.FallOff import kinetic_constant_fall_off
 CH3 + CH3 (+M) = C2H6 (+M)
 
 Example reported within the CHEMKIN manual
-
-
 """
 
 constant_troe = jnp.array([
@@ -41,17 +27,17 @@ kInf = []
 M = []
 kcl = []
 
-T = np.linspace(1000., 1000., 30000)
-P = np.logspace(-10, 2, 30000)
+T = jnp.linspace(1000., 1000., 300)
+P = jnp.logspace(-5, 2, 300)
 
 for i in P:
     _kc, _k0, _kInf, _M = kinetic_constant_fall_off(constant_troe, 1000., float(i))
     kc.append(_kc)
-    k0.append(_k0)
+    k0.append(_k0 * _M)
     kInf.append(_kInf)
     M.append(_M)
 
-    _kcl, _k0, _kInf, _ = kinetic_constant_fall_off(constant_lindemann, 1000., float(i))
+    _kcl, _, _, _ = kinetic_constant_fall_off(constant_lindemann, 1000., float(i))
     kcl.append(_kcl)
 
 plt.plot(M, kc, 'b-o', label="TROE form")

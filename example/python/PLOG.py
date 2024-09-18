@@ -1,14 +1,3 @@
-"""
-@Authors:
-    Timoteo Dinelli [1]
-    [1]: CRECK Modeling Lab, Department of Chemistry, Materials, and Chemical Engineering, Politecnico di Milano
-@Contacts:
-    timoteo.dinelli@polimi.it
-@Additional notes:
-    This code is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
-    Please report any bug to: timoteo.dinelli@polimi.it
-"""
-
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import sys
