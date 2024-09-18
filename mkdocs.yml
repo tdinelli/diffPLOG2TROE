@@ -1,0 +1,6 @@
+site_name: My Project
+nav:
+  - Home: index.md
+plugins:
+  - search
+  - mkdocstrings

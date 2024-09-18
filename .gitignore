@@ -70,6 +70,8 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+source/_static
+source/_templates
 
 # PyBuilder
 .pybuilder/
@@ -153,6 +155,8 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+tests/jax_try/
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
