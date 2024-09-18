@@ -27,7 +27,7 @@ def arrhenius_fit(k: jnp.ndarray, T_range: jnp.ndarray):
 
     popt = result.x
 
-    # Estrai i parametri
+    # Extract parameters
     A = jnp.exp(popt[0])
     b = popt[1]
     Ea = popt[2]
