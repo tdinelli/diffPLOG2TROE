@@ -4,7 +4,7 @@ from .ArrheniusBase import kinetic_constant_base
 
 
 @jit
-def kinetic_constant_fall_off(params: jnp.ndarray, T: jnp.float64, P: jnp.float64) -> jnp.float64:
+def kinetic_constant_falloff(params: jnp.ndarray, T: jnp.float64, P: jnp.float64) -> jnp.float64:
     """
     Function that compute the value of the kientic constant of a FallOff reaction. At the moment only two of the
     available formalisms are implemented the Lindemann and the TROE, SRI is still missing. This function is optimized
@@ -85,7 +85,7 @@ def kinetic_constant_fall_off(params: jnp.ndarray, T: jnp.float64, P: jnp.float6
     return lax.cond( jnp.shape(params)[0] == 3, troe, lindemann, operand)
 
 @jit
-def compute_fall_off(falloff: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.ndarray) -> jnp.ndarray:
+def compute_falloff(falloff: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.ndarray) -> jnp.ndarray:
     """
     Compute the kinetic constant of a given reaction written following the FallOff formalism in a vectorized way over a
     range of pressures and temperatures. This is done in order to avoid the use of double nested loop.
@@ -100,14 +100,14 @@ def compute_fall_off(falloff: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.nd
         >>> troe = jnp.array([[1.135E+36, -5.246, 1704.8], [6.220E+16, -1.174, 635.80], [0.405, 1120., 69.6]])
         >>> for i, t in enumerate(T_range):
         ...     for j, p in enumerate(P_range):
-        ...         k_troe[i, j] = kinetic_constant_fall_off(troe, t, p)
+        ...         k_troe[i, j] = kinetic_constant_falloff(troe, t, p)
 
         This function address this and perform the operation in a vectorized way thus the code will be:
         >>> import jax.numpy as jnp
         >>> T_range = jnp.linspace(500, 2500, 30)
         >>> P_range = jnp.logspace(-1, 2, 30)
         >>> troe = jnp.array([[1.135E+36, -5.246, 1704.8], [6.220E+16, -1.174, 635.80], [0.405, 1120., 69.6]])
-        >>> k_troe = compute_fall_off(troe, T_range, P_range)
+        >>> k_troe = compute_falloff(troe, T_range, P_range)
 
     Args:
         falloff (jnp.ndarray): Internal representation of the FallOff formalism.
@@ -121,8 +121,8 @@ def compute_fall_off(falloff: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.nd
                      same value of pressure.
     """
     def compute_single(t, p):
-        _kfalloff, _, _, _ = kinetic_constant_fall_off(falloff, t, p)
+        _kfalloff, _, _, _ = kinetic_constant_falloff(falloff, t, p)
         return _kfalloff
     compute_single_t_fixed = vmap(lambda p: vmap(lambda t: compute_single(t, p))(T_range))
-    k_fall_off = compute_single_t_fixed(P_range)
-    return k_fall_off
+    k_falloff = compute_single_t_fixed(P_range)
+    return k_falloff

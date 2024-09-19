@@ -1,4 +1,4 @@
-from jax import jit, lax, vmap
+from jax import jit, lax, vmap, debug
 import jax.numpy as jnp
 from .ArrheniusBase import kinetic_constant_base
 
