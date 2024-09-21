@@ -2,11 +2,17 @@ site_name: diffPLOG2TROE
 nav:
   - Home: index.md
   - API:
+      - Arrhenius: arrhenius.md
       - PressureLogarithmic: plog.md
       - FallOff: falloff.md
       - CABR: cabr.md
 plugins:
   - search
   - mkdocstrings
+markdown_extensions:
+  - pymdownx.arithmatex:
+      generic: true
+extra_javascript:
+  - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML
 theme:
   name: "material"

@@ -1,6 +1,6 @@
 from jax import jit, lax, vmap
 import jax.numpy as jnp
-from .ArrheniusBase import kinetic_constant_base
+from .arrhenius_base import kinetic_constant_base
 
 
 @jit

@@ -1,9 +1,9 @@
 from jax import jit
 import jax.numpy as jnp
 # Internal modules
-from .ArrheniusBase import arrhenius_fit
-from .PressureLogarithmic import kinetic_constant_plog
-from .FallOff import compute_fall_off
+from .arrhenius_base import arrhenius_fit
+from .pressure_logarithmic import kinetic_constant_plog
+from .fall_off import compute_falloff
 
 
 def compute_pressure_limits(plog: jnp.ndarray, fg: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.ndarray) -> jnp.ndarray:

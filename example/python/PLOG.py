@@ -1,8 +1,9 @@
+import time
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import sys
-sys.path.append("/Users/tdinelli/Documents/GitHub/PLOG_Converter")
-from source.PressureLogarithmic import kinetic_constant_plog
+sys.path.append("/Users/tdinelli/Documents/GitHub/diffPLOG2TROE/")
+from diffPLOG2TROE.PressureLogarithmic import kinetic_constant_plog
 
 """
 Pressure dependent kinetic constant for the reaction NH3=NH2+H as its reported whithin the CRECK chemical kinetic model.
@@ -25,6 +26,16 @@ constant = jnp.array([[1.00E-01, 7.23E+29, -5.32E+00, 110862.4],
 T = jnp.array([500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 3250, 3500])
 P = jnp.array([0.1, 0.4, 0.7, 1, 2, 5, 10, 20, 30, 40, 50, 70, 100])
 
+st = time.time()
+kinetic_constant_plog(constant, T[0], P[0])
+et = time.time()
+print(et -st)
+
+st = time.time()
+kinetic_constant_plog(constant, T[0], P[0])
+et = time.time()
+print(et -st)
+exit()
 for j in P:
     kc = []
     for i in T:

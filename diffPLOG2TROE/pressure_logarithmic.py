@@ -1,6 +1,6 @@
 from jax import jit, lax, vmap, debug
 import jax.numpy as jnp
-from .ArrheniusBase import kinetic_constant_base
+from .arrhenius_base import kinetic_constant_base
 
 
 @jit
@@ -9,24 +9,36 @@ def kinetic_constant_plog(params: jnp.ndarray, T: jnp.float64, P: jnp.float64) -
     Computes the kinetic constant for a PLOG model using logarithmic interpolation between pressure levels. This
     function is optimized with JAX's Just-In-Time (JIT) compilation.
 
+    $$
+    k_{1}\\left(T\\right) = A_{1} \\: T^{b_{1}} \\: e^{-\\frac{Ea_{1}}{RT}}\\\\
+    k_{2}\\left(T\\right) = A_{2} \\: T^{b_{2}} \\: e^{-\\frac{Ea_{2}}{RT}}
+    $$
+
+    The rate at an intermediate pressure $P_1 < P < P_2$ is computed as:
+
+    $$
+    logk\\:\\left(T,P\\right) = log\\:k_1(T) + (log\\:k_2(T) - log\\:k_1(T)) \\frac{logP - logP_1}{logP_2-logP_1}
+    $$
+
+
     Args:
         params (jnp.ndarray): An array of arrays where each entry contains the pressure level and its associated
                               parameters (A, b, Ea). As reported in the following example:
 
-                              CHEMKIN:
-                              NH3=H+NH2  3.4970e+30   -5.224    111163.30
-                                  PLOG / 1.000000e-01 7.230000e+29 -5.316000e+00 1.108624e+05 /
-                                  PLOG / 1.000000e+00 3.497000e+30 -5.224000e+00 1.111633e+05 /
-                                  PLOG / 1.000000e+01 1.975000e+31 -5.155000e+00 1.118878e+05 /
-                                  PLOG / 1.000000e+02 2.689000e+31 -4.920000e+00 1.127787e+05 /
+                CHEMKIN:
+                NH3=H+NH2               3.4970e+30   -5.224        111163.30
+                    PLOG / 1.000000e-01 7.230000e+29 -5.316000e+00 1.108624e+05 /
+                    PLOG / 1.000000e+00 3.497000e+30 -5.224000e+00 1.111633e+05 /
+                    PLOG / 1.000000e+01 1.975000e+31 -5.155000e+00 1.118878e+05 /
+                    PLOG / 1.000000e+02 2.689000e+31 -4.920000e+00 1.127787e+05 /
 
-                              Internal PLOG representation:
-                              plog = jnp.array([
-                                  [1.000000e-01, 7.230000e+29, -5.316000e+00, 1.108624e+05],
-                                  [1.000000e+00, 3.497000e+30, -5.224000e+00, 1.111633e+05],
-                                  [1.000000e+01, 1.975000e+31, -5.155000e+00, 1.118878e+05],
-                                  [1.000000e+02, 2.689000e+31, -4.920000e+00, 1.127787e+05],
-                              ], dtype=jnp.float64)
+                Internal PLOG representation:
+                plog = jnp.array([
+                    [1.000000e-01, 7.230000e+29, -5.316000e+00, 1.108624e+05],
+                    [1.000000e+00, 3.497000e+30, -5.224000e+00, 1.111633e+05],
+                    [1.000000e+01, 1.975000e+31, -5.155000e+00, 1.118878e+05],
+                    [1.000000e+02, 2.689000e+31, -4.920000e+00, 1.127787e+05],
+                ], dtype=jnp.float64)
 
         T (jnp.float64): Temperature value for which the kinetic constant is computed.
         P (jnp.float64): Pressure value for which the kinetic constant is computed.

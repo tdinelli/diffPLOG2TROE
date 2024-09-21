@@ -1,6 +1,6 @@
 from jax import jit, lax, vmap, debug
 import jax.numpy as jnp
-from .ArrheniusBase import kinetic_constant_base
+from .arrhenius_base import kinetic_constant_base
 
 
 @jit
@@ -19,29 +19,29 @@ def kinetic_constant_falloff(params: jnp.ndarray, T: jnp.float64, P: jnp.float64
                              only the HPL and LPL we fall back in the case of the Lindemann expression. As reported in
                              the following example:
 
-                             TROE
-                                 CHEMKIN:
-                                 H2O2(+M)=2OH(+M) 2.0000e+12 0.900 48749.00  ! HPL
-                                    LOW/  2.49e+24 -2.300    48749.0       / ! LPL
-                                    TROE/ 0.4300   1.000e-30 1.000e+30 0.0 / ! TROE Coefficients
+                TROE
+                    CHEMKIN:
+                    H2O2(+M)=2OH(+M) 2.0000e+12 0.900 48749.00  ! HPL
+                       LOW/  2.49e+24 -2.300    48749.0       / ! LPL
+                       TROE/ 0.4300   1.000e-30 1.000e+30 0.0 / ! TROE Coefficients
 
-                                 Internal TROE representation:
-                                 troe = jnp.array([
-                                    [2.0000e+12, 0.9000, 48749.0, .0],  # Here the last .0 is a dummy parameter
-                                    [2.4900e+24, -2.300, 48749.0, .0],  # Here the last .0 is a dummy parameter
-                                    [0.4300, 1.000e-30, 1.000e+30, 0.0]
-                                 ], dtype=jnp.float64)
+                    Internal TROE representation:
+                    troe = jnp.array([
+                       [2.0000e+12, 0.9000, 48749.0, .0],  # Here the last .0 is a dummy parameter
+                       [2.4900e+24, -2.300, 48749.0, .0],  # Here the last .0 is a dummy parameter
+                       [0.4300, 1.000e-30, 1.000e+30, 0.0]
+                    ], dtype=jnp.float64)
 
-                             LINDEMANN (I know this is not represented by a lindemann formalism its just an example)
-                                 CHEMKIN:
-                                 H2O2(+M)=2OH(+M) 2.0000e+12 0.900 48749.00  ! HPL
-                                    LOW/  2.49e+24 -2.300    48749.0       / ! LPL
+                LINDEMANN (I know this is not represented by a lindemann formalism its just an example)
+                    CHEMKIN:
+                    H2O2(+M)=2OH(+M) 2.0000e+12 0.900 48749.00  ! HPL
+                       LOW/  2.49e+24 -2.300    48749.0       / ! LPL
 
-                                 Internal LINDEMANN representation:
-                                 lindemann = jnp.array([
-                                    [2.0000e+12, 0.9000, 48749.0, .0],  # Here the last .0 is a dummy parameter
-                                    [2.4900e+24, -2.300, 48749.0, .0],  # Here the last .0 is a dummy parameter
-                                 ], dtype=jnp.float64)
+                    Internal LINDEMANN representation:
+                    lindemann = jnp.array([
+                       [2.0000e+12, 0.9000, 48749.0, .0],  # Here the last .0 is a dummy parameter
+                       [2.4900e+24, -2.300, 48749.0, .0],  # Here the last .0 is a dummy parameter
+                    ], dtype=jnp.float64)
         T (jnp.float64): Temperature value for which the kinetic constant is computed.
         P (jnp.float64): Pressure value for which the kinetic constant is computed.
 
