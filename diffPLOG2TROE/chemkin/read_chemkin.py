@@ -127,7 +127,7 @@ def analyze_plog_reaction(plog: list) -> List[Dict[str, any]]:
         - If the reaction has more than two duplicate entries for the same pressure level, the function raises an
           exception, as this case is not handled at the moment.
     """
-    is_number = re.compile(r'^[-+]?\d*\.?\d+(e[-+]?\d+)?$', re.IGNORECASE).match
+    is_number = re.compile(r'^[-+]?(?:\d*\.\d+|\d+\.?)(e[-+]?\d+)?$', re.IGNORECASE).match
     is_duplicate = lambda s: "DUP" in s or "DUPLICATE" in s
     is_implicitly_duplicate = lambda pressure_levels: len(pressure_levels) != len(set(pressure_levels))
 

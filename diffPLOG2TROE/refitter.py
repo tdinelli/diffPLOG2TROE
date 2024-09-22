@@ -2,7 +2,7 @@ from jax import jit
 import jax.numpy as jnp
 # Internal modules
 from .arrhenius_base import arrhenius_fit
-from .pressure_logarithmic import kinetic_constant_plog
+from .pressure_logarithmic import compute_plog, kinetic_constant_plog
 from .fall_off import compute_falloff
 
 
@@ -48,7 +48,7 @@ def rmse_loss_function(x: jnp.ndarray, data: tuple) -> jnp.float64:
         [A, T3, T1, T2]
     ], dtype = jnp.float64)
 
-    k_troe = compute_fall_off(refitted_constant, T_range, P_range)
+    k_troe = compute_falloff(refitted_constant, T_range, P_range)
 
     squared_errors = (k_troe - k_plog)**2
     mse_loss = jnp.mean(squared_errors)
@@ -69,10 +69,26 @@ def ratio_loss_function(x: jnp.ndarray, data: tuple) -> jnp.float64:
         [A, T3, T1, T2]
     ], dtype=jnp.float64)
 
-    k_troe = compute_fall_off(refitted_constant, T_range, P_range)
+    k_troe = compute_falloff(refitted_constant, T_range, P_range)
 
     ratio = jnp.divide(k_troe , k_plog)
     squared_errors = (ratio - 1)**2
     mse_loss = jnp.mean(squared_errors)
 
     return mse_loss
+
+
+def refit_plog(plog: jnp.ndarray, P: jnp.float64):
+    def find_closest_index(array, value):
+        differences = jnp.abs(array - value)
+        return jnp.argmin(differences)
+
+    T_range = jnp.linspace(500, 2500, 100)
+    P_range = jnp.array([P])
+    k_plog = compute_plog(plog, T_range, P_range)[0]
+    _pressure_levels = plog[:, 0]
+
+    idx_fg = find_closest_index(_pressure_levels, P)
+    first_guess = jnp.array([jnp.log(plog[idx_fg][1]), plog[idx_fg][2], plog[idx_fg][3]])
+    A, b, Ea, R2adj = arrhenius_fit(k_plog, T_range, first_guess)
+    return A, b, Ea, R2adj
