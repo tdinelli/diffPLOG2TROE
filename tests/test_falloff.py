@@ -8,16 +8,19 @@ TODO: Do the same stuff for the Lindemann Formulation.
 import os
 import jax.numpy as jnp
 from .test_utils import load_data_matrix
-from diffPLOG2TROE.fall_off import kinetic_constant_falloff, compute_falloff
+from diffPLOG2TROE.falloff import kinetic_constant_falloff, compute_falloff
 
 current_file_path = os.path.dirname(os.path.abspath(__file__))
 data_path = os.path.join(current_file_path, "data", "FallOff.csv")
 
-troe = jnp.array([
-    [1.782E+60, -1.228E+01, 8.398E+04, .0],
-    [3.790E+24, -2.230E+00, 8.807E+04, .0],
-    [2.352000E-01, 7.240000E+02, 5.000000E+09, 5.000000E+09]
-], dtype=jnp.float64)
+troe = (
+    jnp.array([
+        [1.782E+60, -1.228E+01, 8.398E+04, .0],
+        [3.790E+24, -2.230E+00, 8.807E+04, .0],
+        [2.352000E-01, 7.240000E+02, 5.000000E+09, 5.000000E+09]
+    ], dtype=jnp.float64),
+    1
+)
 
 
 def test_falloff_troe_computation():

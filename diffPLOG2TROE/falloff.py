@@ -1,11 +1,13 @@
-from jax import jit, lax, vmap, debug
+from jax import jit, lax, vmap
 import jax.numpy as jnp
 from .arrhenius_base import kinetic_constant_base
+from .constant_fit_type import lindemann, troe, sri
 
 
 @jit
-def kinetic_constant_falloff(params: jnp.ndarray, T: jnp.float64, P: jnp.float64) -> jnp.float64:
+def kinetic_constant_falloff(falloff_constant: tuple, T: jnp.float64, P: jnp.float64) -> jnp.float64:
     """
+    TODO This is outdated NOW
     Function that compute the value of the kientic constant of a FallOff reaction. At the moment only two of the
     available formalisms are implemented the Lindemann and the TROE, SRI is still missing. This function is optimized
     with JAX's Just-In-Time (JIT) compilation. Refer to the official CHEMKIN manual or to this
@@ -30,6 +32,7 @@ def kinetic_constant_falloff(params: jnp.ndarray, T: jnp.float64, P: jnp.float64
                        [2.0000e+12, 0.9000, 48749.0, .0],  # Here the last .0 is a dummy parameter
                        [2.4900e+24, -2.300, 48749.0, .0],  # Here the last .0 is a dummy parameter
                        [0.4300, 1.000e-30, 1.000e+30, 0.0]
+                       "fitting_type": "troe"
                     ], dtype=jnp.float64)
 
                 LINDEMANN (I know this is not represented by a lindemann formalism its just an example)
@@ -38,9 +41,10 @@ def kinetic_constant_falloff(params: jnp.ndarray, T: jnp.float64, P: jnp.float64
                        LOW/  2.49e+24 -2.300    48749.0       / ! LPL
 
                     Internal LINDEMANN representation:
-                    lindemann = jnp.array([
+                    falloff = jnp.array([
                        [2.0000e+12, 0.9000, 48749.0, .0],  # Here the last .0 is a dummy parameter
                        [2.4900e+24, -2.300, 48749.0, .0],  # Here the last .0 is a dummy parameter
+                       "fitting_type": "lindemann"
                     ], dtype=jnp.float64)
         T (jnp.float64): Temperature value for which the kinetic constant is computed.
         P (jnp.float64): Pressure value for which the kinetic constant is computed.
@@ -49,43 +53,36 @@ def kinetic_constant_falloff(params: jnp.ndarray, T: jnp.float64, P: jnp.float64
         (Union): The value of the computed kinetic constant at the given temperature and pressure, the value of the
                  LPL, the value of the HPL and the value of the total concentration.
     """
+
+    params, fitting_type = falloff_constant
+
+    # is_lindemann = (fitting_type == 0)
+    is_troe = (fitting_type == 1)
+    is_sri = (fitting_type == 2)
+
     _k0 = kinetic_constant_base(params[0, 0:3], T)
     _kInf = kinetic_constant_base(params[1, 0:3], T)
-
     _M = P / 0.08206 / T * (1/1000)  # P [atm], T [K] -> M [mol/cm3/s]
     _Pr = _k0 * _M / _kInf
+    operand = (T, _Pr, params)
 
-    operand = (_k0, _kInf, _Pr, _M, params)
+    F = lax.cond(
+        is_troe,
+        lambda x: troe(*x),
+        lambda x: lax.cond(
+            is_sri,
+            lambda y: sri(*y),
+            lambda y: lindemann(*y),
+            x
+        ),
+        operand
+    )
 
-    def troe(operand):
-        _k0, _kInf, _Pr, _M, params = operand
-        A = params[2][0]
-        T3 = params[2][1]
-        T1 = params[2][2]
-        T2 = params[2][3] # T2 is optional in CHEMKIN here we feed 0, when not needed
-
-        logFcent = jnp.log10((1 - A) * jnp.exp(-T/T3) + A * jnp.exp(-T/T1) + jnp.exp(-T2/T))
-
-        c = -0.4 - 0.67 * logFcent
-        n = 0.75 - 1.27 * logFcent
-        f1 = ((jnp.log10(_Pr) + c) / (n - 0.14 * (jnp.log10(_Pr) + c)))**2
-        F = 10**(logFcent / (1 + f1))
-
-        _k_troe = (_kInf * (_Pr / (1 + _Pr))) * F
-
-        return (_k_troe, _k0, _kInf, _M)
-
-    def lindemann(operand):
-        _k0, _kInf, _Pr, _M, _ = operand
-        F = 1
-        _k_lindemann = (_kInf * (_Pr / (1 + _Pr))) * F
-
-        return (_k_lindemann, _k0, _kInf, _M)
-
-    return lax.cond( jnp.shape(params)[0] == 3, troe, lindemann, operand)
+    k_falloff = (_kInf * (_Pr / (1 + _Pr))) * F
+    return (k_falloff, _k0, _kInf, _M)
 
 @jit
-def compute_falloff(falloff: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.ndarray) -> jnp.ndarray:
+def compute_falloff(falloff_constant: tuple, T_range: jnp.ndarray, P_range: jnp.ndarray) -> jnp.ndarray:
     """
     Compute the kinetic constant of a given reaction written following the FallOff formalism in a vectorized way over a
     range of pressures and temperatures. This is done in order to avoid the use of double nested loop.
@@ -121,7 +118,7 @@ def compute_falloff(falloff: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.nda
                      same value of pressure.
     """
     def compute_single(t, p):
-        _kfalloff, _, _, _ = kinetic_constant_falloff(falloff, t, p)
+        _kfalloff, _, _, _ = kinetic_constant_falloff(falloff_constant, t, p)
         return _kfalloff
     compute_single_t_fixed = vmap(lambda p: vmap(lambda t: compute_single(t, p))(T_range))
     k_falloff = compute_single_t_fixed(P_range)
