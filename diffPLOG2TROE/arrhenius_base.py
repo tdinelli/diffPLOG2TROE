@@ -62,10 +62,11 @@ def arrhenius_fit(k: jnp.ndarray, T_range: jnp.ndarray, first_guess: jnp.ndarray
     ln_k0 = jnp.log(k)
 
     # First guess for the parameters to be used for optimization
-    if first_guess is None:
-        initial_guess = jnp.array([ln_k0[0], 0.0, 10000.0])
-    else:
-        initial_guess = first_guess
+    initial_guess = lax.cond(
+        first_guess is None,
+        lambda: jnp.array([ln_k0[0], 0.0, 10000.0]),
+        lambda: first_guess
+    )
 
     # Minimze the objective function
     result = minimize(arrhenius_loss, initial_guess, args=(T_range, ln_k0), method='BFGS')
@@ -83,12 +84,5 @@ def arrhenius_fit(k: jnp.ndarray, T_range: jnp.ndarray, first_guess: jnp.ndarray
 
     # Compute the adjusted R2
     R2adj = 1 - (1 - R2) * (len(T_range) - 1) / (len(T_range) - 1 - 2)
-
-    # Control the floating point precision for A (Maybe in this case is not needed (?))
-    A = lax.cond(
-        jnp.less_equal(A, jnp.finfo(float).eps) or jnp.isclose(A, 0),
-        lambda: jnp.inf,
-        lambda: A
-    )
 
     return A, b, Ea, R2adj
