@@ -89,6 +89,11 @@ def refit_plog(plog: jnp.ndarray, P: jnp.float64):
     _pressure_levels = plog[:, 0]
 
     idx_fg = find_closest_index(_pressure_levels, P)
-    first_guess = jnp.array([jnp.log(plog[idx_fg][1]), plog[idx_fg][2], plog[idx_fg][3]])
-    A, b, Ea, R2adj = arrhenius_fit(k_plog, T_range, first_guess)
-    return A, b, Ea, R2adj
+    if P in _pressure_levels:
+        A, b, Ea, R2adj = plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3], 1.0
+        first_guess = jnp.array([plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3], 1.0])
+    else:
+        first_guess = jnp.array([jnp.log(plog[idx_fg][1]), plog[idx_fg][2], plog[idx_fg][3]])
+        A, b, Ea, R2adj = arrhenius_fit(k_plog, T_range, first_guess)
+        first_guess = jnp.array([plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3]])
+    return A, b, Ea, R2adj, first_guess
