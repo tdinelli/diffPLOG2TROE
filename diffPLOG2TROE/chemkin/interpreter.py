@@ -29,7 +29,6 @@ def read_chemkin_extract_plog(kinetics: str):
     for i in raw_plog_reactions:
         plog_reactions.extend(analyze_plog_reaction(i))
 
-    print(" DONE")
     print("================================================================")
     return plog_reactions, indices_of_plog_reactions, indices_of_reactions
 

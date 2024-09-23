@@ -96,4 +96,5 @@ def refit_plog(plog: jnp.ndarray, P: jnp.float64):
         first_guess = jnp.array([jnp.log(plog[idx_fg][1]), plog[idx_fg][2], plog[idx_fg][3]])
         A, b, Ea, R2adj = arrhenius_fit(k_plog, T_range, first_guess)
         first_guess = jnp.array([plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3]])
+
     return A, b, Ea, R2adj, first_guess
