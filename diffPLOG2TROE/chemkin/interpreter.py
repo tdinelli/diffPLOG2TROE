@@ -6,6 +6,8 @@ import numpy as np
 def read_chemkin_extract_plog(kinetics: str):
     """
     """
+    print("================================================================")
+    print(" Reading the CHEMKIN kinetic file located in {}".format(kinetics))
     # Reading the file content
     with open(kinetics, "r") as file:
         raw_content = [line.rstrip('\n') for line in file]
@@ -19,12 +21,16 @@ def read_chemkin_extract_plog(kinetics: str):
     reactions_content = remove_empty_lines(reactions_content)  # Removed empty lines
     reactions_content = remove_commented_lines(reactions_content)  # Removing commented lines
 
-    raw_plog_reactions, indices_of_plog_reactions, indices_of_reactions = identify_plog_reactions(reactions_content)
+    raw_plog_reactions, indices_of_plog_reactions, indices_of_reactions, nr = identify_plog_reactions(reactions_content)
+    print(" * Number of Reactions: {}".format(nr))
+    print("    - Number of PLOG Reactions: {}".format(len(indices_of_plog_reactions)))
 
     plog_reactions = []
     for i in raw_plog_reactions:
         plog_reactions.extend(analyze_plog_reaction(i))
 
+    print(" DONE")
+    print("================================================================")
     return plog_reactions, indices_of_plog_reactions, indices_of_reactions
 
 
@@ -82,12 +88,13 @@ def identify_plog_reactions(content: list) -> tuple:
 
     # Once I have the index of the PLOG reactions and the index of all the reactions available inside the mechanism i
     # extract the blocks
+    n_reactions = len(indices_of_reactions)
     for i, idx in enumerate(indices_of_plog_reactions):
-        idx_current_plog_in_all = indices_of_reactions.index(idx)
-        idx_next_reaction_in_all = idx_current_plog_in_all + 1
-        plog_reactions.append(content[idx:indices_of_reactions[idx_next_reaction_in_all]])
+        idx_current = indices_of_reactions.index(idx)
+        idx_next = indices_of_reactions[idx_current + 1] if idx_current + 1 < n_reactions else len(content)
+        plog_reactions.append(content[idx:idx_next])
 
-    return (plog_reactions, indices_of_plog_reactions, indices_of_reactions)
+    return (plog_reactions, indices_of_plog_reactions, indices_of_reactions, n_reactions)
 
 
 def analyze_plog_reaction(plog: list) -> List[Dict[str, any]]:
@@ -146,7 +153,7 @@ def analyze_plog_reaction(plog: list) -> List[Dict[str, any]]:
             plog_reaction["is_duplicate"] = True
             break
 
-        parameters = [float(part) for part in line.replace("/", "").split() if is_number(part)]
+        parameters = [float(part) for part in line.replace("/", " ").split() if is_number(part)]
         plog_reaction["parameters"].append(parameters)
         pressure_levels.append(parameters[0])
 
@@ -154,7 +161,7 @@ def analyze_plog_reaction(plog: list) -> List[Dict[str, any]]:
     if is_implicitly_duplicate(pressure_levels):
         counter = pressure_levels.count(pressure_levels[0])
         if counter > 2:
-            raise Exception("PLOG duplicate with more than two duplicates not handled!")
+            raise Exception("PLOG duplicate with more than two duplicates not handled yet!")
 
         plog_reaction["is_duplicate"] = True
         plog_reaction_1 = plog_reaction.copy()
