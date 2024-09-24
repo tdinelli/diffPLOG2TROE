@@ -47,7 +47,7 @@ def arrhenius_loss(params: jnp.ndarray, T_range: jnp.ndarray, ln_k0: jnp.ndarray
     return jnp.sum((ln_k0 - ln_k0_fit) ** 2)  # Sum of the squared errors
 
 
-def arrhenius_fit(k: jnp.ndarray, T_range: jnp.ndarray, first_guess: jnp.ndarray = None):
+def arrhenius_fit(k: jnp.ndarray, T_range: jnp.ndarray, first_guess = None):
     """
     Fitting Arrhenius law using JAX, this not jitted since optimize apparently is not compatible (TO BE verified).
 
@@ -62,11 +62,10 @@ def arrhenius_fit(k: jnp.ndarray, T_range: jnp.ndarray, first_guess: jnp.ndarray
     ln_k0 = jnp.log(k)
 
     # First guess for the parameters to be used for optimization
-    initial_guess = lax.cond(
-        first_guess is None,
-        lambda: jnp.array([ln_k0[0], 0.0, 10000.0]),
-        lambda: first_guess
-    )
+    if first_guess is None:
+        initial_guess = jnp.array([ln_k0[0], 0.0, 10000.0])
+    else:
+        initial_guess = first_guess
 
     # Minimze the objective function
     result = minimize(arrhenius_loss, initial_guess, args=(T_range, ln_k0), method='BFGS')
