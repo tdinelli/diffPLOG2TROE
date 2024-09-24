@@ -4,7 +4,7 @@ from .arrhenius_base import kinetic_constant_base
 from .constant_fit_type import lindemann, troe, sri
 
 
-@jit
+# @jit
 def kinetic_constant_falloff(falloff_constant: tuple, T: jnp.float64, P: jnp.float64) -> jnp.float64:
     """
     Function that compute the value of the kientic constant of a FallOff reaction. This function is optimized with JAX's
@@ -45,8 +45,8 @@ def kinetic_constant_falloff(falloff_constant: tuple, T: jnp.float64, P: jnp.flo
     is_troe = (fitting_type == 1)
     is_sri = (fitting_type == 2)
 
-    _k0 = kinetic_constant_base(params[0, 0:3], T)
-    _kInf = kinetic_constant_base(params[1, 0:3], T)
+    _kInf = kinetic_constant_base(params[0, 0:3], T)
+    _k0 = kinetic_constant_base(params[1, 0:3], T)
     _M = P / 0.08206 / T * (1/1000)  # P [atm], T [K] -> M [mol/cm3/s]
     _Pr = _k0 * _M / _kInf
     operand = (T, _Pr, params)
@@ -63,8 +63,10 @@ def kinetic_constant_falloff(falloff_constant: tuple, T: jnp.float64, P: jnp.flo
         operand
     )
 
-    k_falloff = (_kInf * (_Pr / (1 + _Pr))) * F
+    k_falloff = _kInf * (_Pr / (1 + _Pr)) * F
+
     return (k_falloff, _k0, _kInf, _M)
+
 
 @jit
 def compute_falloff(falloff_constant: tuple, T_range: jnp.ndarray, P_range: jnp.ndarray) -> jnp.ndarray:

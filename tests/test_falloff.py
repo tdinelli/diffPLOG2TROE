@@ -15,8 +15,8 @@ data_path = os.path.join(current_file_path, "data", "FallOff.csv")
 
 troe = (
     jnp.array([
-        [1.782E+60, -1.228E+01, 8.398E+04, .0],
         [3.790E+24, -2.230E+00, 8.807E+04, .0],
+        [1.782E+60, -1.228E+01, 8.398E+04, .0],
         [2.352000E-01, 7.240000E+02, 5.000000E+09, 5.000000E+09]
     ], dtype=jnp.float64),
     1

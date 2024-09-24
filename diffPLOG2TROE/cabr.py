@@ -31,6 +31,7 @@ def kinetic_constant_cabr(falloff_constant: tuple, T: jnp.float64, P: jnp.float6
         operand
     )
     _k_cabr = (_k0 * (1 / (1 + _Pr))) * F
+
     return (_k_cabr, _k0, _kInf, _M)
 
 

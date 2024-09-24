@@ -32,6 +32,7 @@ def sri(T: jnp.float64, Pr: jnp.float64, params: jnp.ndarray) -> jnp.float64:
     c = params[2][2]
     d = params[2][3]
     e = params[2][4]
-    X = 1 / (1 + jnp.log10(Pr)**2)
-    F = d * (a*jnp.exp(-b/T)+jnp.exp(-T/c))**X * T**e
+
+    X = 1 / (1 + (jnp.log10(Pr)**2))
+    F = d * ((a*jnp.exp(-b/T) + jnp.exp(-T/c))**X) * T**e
     return F

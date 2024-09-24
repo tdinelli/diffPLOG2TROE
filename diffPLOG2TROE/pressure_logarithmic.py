@@ -91,7 +91,12 @@ def kinetic_constant_plog(params: jnp.ndarray, T: jnp.float64, P: jnp.float64) -
     return lax.cond(
         P <= _P[0],
         low_pressure_case,
-        lambda operand: lax.cond( P >= _P[-1], high_pressure_case, mid_pressure_case, operand),
+        lambda operand: lax.cond(
+            P >= _P[-1],
+            high_pressure_case,
+            mid_pressure_case,
+            operand
+        ),
         operand
     )
 
