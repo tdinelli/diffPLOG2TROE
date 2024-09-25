@@ -1,9 +1,18 @@
+#################################################### Modules ###########################################################
+from functools import partial
+from typing import NamedTuple
+# JAX
 from jax import jit, lax, debug
+import chex
 import jax.numpy as jnp
+# OPTAX
+import optax
+import optax.tree_utils as otu
 # Internal modules
 from .arrhenius_base import arrhenius_fit
 from .pressure_logarithmic import compute_plog, kinetic_constant_plog
 from .falloff import compute_falloff
+########################################################################################################################
 
 
 def compute_pressure_limits(plog: jnp.ndarray, fg: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.ndarray) -> jnp.ndarray:
@@ -110,30 +119,6 @@ def rmse_loss_function(x: jnp.ndarray, data: tuple) -> jnp.float64:
     return mse_loss
 
 
-@jit
-def ratio_loss_function(x: jnp.ndarray, data: tuple) -> jnp.float64:
-    # Unpacking data
-    T_range, P_range, k_plog = data
-    # Unpacking optimization parameters
-    A0, b0, Ea0, AInf, bInf, EaInf, A, T3, T1, T2 = x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9]
-    refitted_constant = (
-        jnp.array([
-            [AInf, bInf, EaInf, 0.0],
-            [A0, b0, Ea0, 0.0],
-            [A, T3, T1, T2]], dtype = jnp.float64
-        ),
-        1
-    )
-
-    k_troe = compute_falloff(refitted_constant, T_range, P_range)
-
-    ratio = jnp.divide(k_troe , k_plog)
-    squared_errors = (ratio - 1)**2
-    mse_loss = jnp.mean(squared_errors)
-
-    return mse_loss
-
-
 def refit_plog(plog: jnp.ndarray, P: jnp.float64):
     def find_closest_index(array, value):
         differences = jnp.abs(array - value)
@@ -154,3 +139,59 @@ def refit_plog(plog: jnp.ndarray, P: jnp.float64):
         first_guess = jnp.array([plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3]])
 
     return A, b, Ea, R2adj, first_guess
+
+
+# Definition of the L-BFGS solver adapted from: https://optax.readthedocs.io/en/latest/_collections/examples/lbfgs.html
+def run_lbfgs(init_params, fun, opt, max_iter, tol, *args):
+    value_and_grad_fun = optax.value_and_grad_from_state(partial(fun, *args))
+    def step(carry):
+        params, state = carry
+        value, grad = value_and_grad_fun(params, state=state)
+        updates, state = opt.update(
+            grad, state, params, value=value, grad=grad, value_fn=partial(fun, *args)
+        )
+        params = optax.apply_updates(params, updates)
+        return params, state
+
+    def continuing_criterion(carry):
+        _, state = carry
+        iter_num = otu.tree_get(state, 'count')
+        grad = otu.tree_get(state, 'grad')
+        err = otu.tree_l2_norm(grad)
+        return (iter_num == 0) | ((iter_num < max_iter) & (err >= tol))
+
+    init_carry = (init_params, opt.init(init_params))
+    final_params, final_state = lax.while_loop(
+        continuing_criterion, step, init_carry
+    )
+    return final_params, final_state
+
+
+class InfoState(NamedTuple):
+    iter_num: chex.Numeric
+
+
+def print_info(frequency=1):
+    def init_fn(params):
+        del params
+        return InfoState(iter_num=0)
+
+    def update_fn(updates, state, params, *, value, grad, **extra_args):
+        del params, extra_args
+
+        def print_fn(_):
+            debug.print(
+                'Iteration: {i}, Value: {v}, Gradient norm: {e}',
+                i=state.iter_num,
+                v=value,
+                e=otu.tree_l2_norm(grad)
+            )
+            return updates, InfoState(iter_num=state.iter_num + 1)
+
+        def no_print_fn(_):
+            return updates, InfoState(iter_num=state.iter_num + 1)
+
+        should_print = (state.iter_num % frequency) == 0
+        return lax.cond(should_print, print_fn, no_print_fn, operand=None)
+
+    return optax.GradientTransformationExtraArgs(init_fn, update_fn)

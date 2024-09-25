@@ -25,8 +25,8 @@ as a generalized polynomial fitting for temperature and pressure dependent kinet
 defining the following expression for the kinetic constant:
 
 $$
-k \left(T, P_{i}\right) = \sum_{k=1}^{M} \: A_{i, k} \: T^{\:b_{i, k}} exp\left(-E_{act}^{i,
-k}/(RT)\right), \; i=1, ..., Np, \; M \geq 1
+k \left(T, P_{i}\right) = \sum_{k=1}^{M} A_{i, k} T^{b_{i, k}} exp\left(-E_{act}^{i,
+k}/(RT)\right), i=1, ..., Np, M \geq 1
 $$
 
 at a set of pressures, $P = P_{1}, P_{2}, ..., P_{Np}$. $M$ and $Np$ are user specified numbers. The
