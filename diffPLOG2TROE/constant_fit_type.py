@@ -1,4 +1,4 @@
-from jax import jit
+from jax import jit, debug
 import jax.numpy as jnp
 
 

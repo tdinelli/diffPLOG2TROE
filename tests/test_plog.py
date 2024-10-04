@@ -10,6 +10,8 @@ NH3=H+NH2               3.4970e+30   -5.224        111163.30
 
 
 import os
+import jax
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 from .test_utils import load_data_matrix
 from diffPLOG2TROE.pressure_logarithmic import kinetic_constant_plog, compute_plog

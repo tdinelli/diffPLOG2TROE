@@ -6,6 +6,8 @@ TODO: Do the same stuff for the Lindemann Formulation.
 
 
 import os
+import jax
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 from .test_utils import load_data_matrix
 from diffPLOG2TROE.falloff import kinetic_constant_falloff, compute_falloff

@@ -1,8 +1,9 @@
-#################################################### Modules ###########################################################
+# -----------------------------------------------------------
+# Modules
 from functools import partial
 from typing import NamedTuple
 # JAX
-from jax import jit, lax, debug
+from jax import jit, lax, debug, value_and_grad
 import chex
 import jax.numpy as jnp
 # OPTAX
@@ -12,16 +13,18 @@ import optax.tree_utils as otu
 from .arrhenius_base import arrhenius_fit
 from .pressure_logarithmic import compute_plog, kinetic_constant_plog
 from .falloff import compute_falloff
-########################################################################################################################
 
 
-def compute_pressure_limits(plog: jnp.ndarray, fg: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.ndarray) -> jnp.ndarray:
+# -----------------------------------------------------------
+# Fist guess computation
+def compute_pressure_limits(plog: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.ndarray) -> jnp.ndarray:
     """
     This function compute the First guess Arrhenius parameters for the HPL and LPL. The computation is done in such a
     way that given the pressure and temperature range where we want to refit the PLOG expression into a FallOff or a
     CABR the kinetic constant is computed all along the Temperature interval and at the extreme value of the pressure
     interval
     """
+    fg = jnp.empty(shape=(6,), dtype=jnp.float64)
     k0_fg = jnp.array([kinetic_constant_plog(plog, i, P_range[0]) for i in T_range])
     kInf_fg = jnp.array([kinetic_constant_plog(plog, i, P_range[-1]) for i in T_range])
 
@@ -29,26 +32,30 @@ def compute_pressure_limits(plog: jnp.ndarray, fg: jnp.ndarray, T_range: jnp.nda
     AInf_fg, bInf_fg, EaInf_fg, R2adjInf = arrhenius_fit(kInf_fg, T_range, None)
 
     fg = fg.at[0].set(A0_fg)
-    fg = fg.at[1].set(b0_fg)
+    fg = fg.at[1].set(b0_fg - 1)
     fg = fg.at[2].set(Ea0_fg)
 
     fg = fg.at[3].set(AInf_fg)
-    fg = fg.at[4].set(bInf_fg)
+    fg = fg.at[4].set(bInf_fg - 1)
     fg = fg.at[5].set(EaInf_fg)
 
-    print(" Computing first guesses for the LPL and HPL")
-    print("  * Adjusted R2 for the LPL: {:.7}".format(R2adj0))
-    print("    - A: {:.7e}, b: {:.7}, Ea: {:.7e}".format(A0_fg, b0_fg, Ea0_fg))
-    print("  * Adjusted R2 for the HPL: {:.7}".format(R2adjInf))
-    print("    - A: {:.7e}, b: {:.7}, Ea: {:.7e}\n".format(AInf_fg, bInf_fg, EaInf_fg))
+    # print(" Computing first guesses for the LPL and HPL")
+    # print("  * Adjusted R2 for the LPL: {:.7}".format(R2adj0))
+    # print("    - A: {:.7e}, b: {:.7}, Ea: {:.7e}".format(A0_fg, b0_fg, Ea0_fg))
+    # print("  * Adjusted R2 for the HPL: {:.7}".format(R2adjInf))
+    # print("    - A: {:.7e}, b: {:.7}, Ea: {:.7e}\n".format(AInf_fg, bInf_fg, EaInf_fg))
 
     return fg
 
 
+# -----------------------------------------------------------
+# Loss function
 @jit
 def rmse_loss_function(x: jnp.ndarray, data: tuple) -> jnp.float64:
     def full_troe() -> tuple:
-        A0, b0, Ea0, AInf, bInf, EaInf, A, T3, T1, T2 = x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9]
+        A0, b0, Ea0 = jnp.exp(x[3]), x[4], x[5]*1.987
+        AInf, bInf, EaInf = jnp.exp(x[0]), x[1], x[2]*1.987
+        A, T3, T1, T2 = x[6], x[7], x[8], x[9]
         refitted_constant = (
             jnp.array([
                 [AInf, bInf, EaInf, 0.0],
@@ -61,12 +68,8 @@ def rmse_loss_function(x: jnp.ndarray, data: tuple) -> jnp.float64:
         return refitted_constant
 
     def troe_params_only() -> tuple:
-        A0 = additional[0]
-        b0 = additional[1]
-        Ea0 = additional[2]
-        AInf = additional[3]
-        bInf = additional[4]
-        EaInf = additional[5]
+        A0, b0, Ea0 = jnp.exp(additional[3]), additional[4], additional[5]*1.987
+        AInf, bInf, EaInf = jnp.exp(additional[0]), additional[1], additional[2]*1.987
         A, T3, T1, T2 = x[0], x[1], x[2], x[3]
 
         refitted_constant = (
@@ -81,7 +84,8 @@ def rmse_loss_function(x: jnp.ndarray, data: tuple) -> jnp.float64:
         return refitted_constant
 
     def kinetic_params_only() -> tuple:
-        A0, b0, Ea0, AInf, bInf, EaInf = x[0], x[1], x[2], x[3], x[4], x[5]
+        A0, b0, Ea0 = jnp.exp(x[3]), x[4], x[5]*1.987
+        AInf, bInf, EaInf = jnp.exp(x[0]), x[1], x[2]*1.987
         A, T3, T1, T2 = additional[0], additional[1], additional[2], additional[3]
 
         refitted_constant = (
@@ -110,13 +114,49 @@ def rmse_loss_function(x: jnp.ndarray, data: tuple) -> jnp.float64:
 
     k_troe = compute_falloff(refitted_constant, T_range, P_range)
 
-    lnk_plog = jnp.log(k_plog)
-    lnk_troe = jnp.log(k_troe)
+    expected_value = k_plog
+    prediction = k_troe
 
-    squared_errors = (lnk_troe - lnk_plog) ** 2
-    mse_loss = jnp.mean(squared_errors)
+    # ----------------------------------------------------------------
+    # Classic L2 loss
+    # squared_errors = jnp.sum((expected_value - prediction)**2)
+    # l2_loss = jnp.sqrt(squared_errors)
+    # ----------------------------------------------------------------
+    # Ratio loss
+    squared_errors = jnp.sum((1 - (prediction / expected_value))**2)
+    l2_loss = jnp.sqrt(squared_errors)
 
-    return mse_loss
+
+    # Regularization terms, L1 and L2 norms
+    l2_regularization = 0.0 * jnp.sum(x ** 2)
+    l1_regularization = 0.0 * jnp.sum(jnp.abs(x))
+
+    # Total loss is RMSE + regularization term
+    total_loss = l2_loss + l2_regularization + l1_regularization
+    return total_loss
+
+
+# -----------------------------------------------------------
+# Wrap loss function to accomodate NLOPT interface
+def nlopt_loss(x, loss_gradient, data, iteration_count):
+    if loss_gradient.size > 0:
+        loss, gradient = value_and_grad(rmse_loss_function)(x, data)
+        loss_gradient = gradient
+    else:
+        loss = rmse_loss_function(x, data)
+
+    iteration_count[0] += 1
+    if iteration_count[0] % 10 == 0:
+        print(f"Loss = {loss:.10E}")
+        # print(f"Iteration {iteration_count[0]}: Loss = {loss:.10E}")
+        # A0, b0, Ea0 = jnp.exp(x[3]), x[4], x[5]*1.987
+        # AInf, bInf, EaInf = jnp.exp(x[0]), x[1], x[2]*1.987
+        # A, T3, T1, T2 = x[6], x[7], x[8], x[9]
+        # A, T3, T1, T2 = x[0], x[1], x[2], x[3]
+        # print(f" LPL:  {A0:.5E},   {b0:.5E},   {Ea0:.5E}")
+        # print(f" HPL:  {AInf:.5E}, {bInf:.5E}, {EaInf:.5E}")
+        # print(f" TROE: {A:.5E},    {T3:.5E},   {T1:.5E}, {T2:.5E}")
+    return float(loss)
 
 
 def refit_plog(plog: jnp.ndarray, P: jnp.float64):
