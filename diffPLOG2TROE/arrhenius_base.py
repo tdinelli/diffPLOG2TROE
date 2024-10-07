@@ -27,7 +27,7 @@ def kinetic_constant_base(params: jnp.ndarray, T: jnp.float64) -> jnp.float64:
     """
     R = jnp.float64(1.987)
     A, b, Ea = params
-    return A * T**b * jnp.exp(-Ea/R/T)
+    return A * T**b * jnp.exp(-Ea / R / T)
 
 
 def arrhenius_loss(params: jnp.ndarray, T_range: jnp.ndarray, ln_k0: jnp.ndarray) -> jnp.float64:
@@ -47,7 +47,7 @@ def arrhenius_loss(params: jnp.ndarray, T_range: jnp.ndarray, ln_k0: jnp.ndarray
     return jnp.sum((ln_k0 - ln_k0_fit) ** 2)  # Sum of the squared errors
 
 
-def arrhenius_fit(k: jnp.ndarray, T_range: jnp.ndarray, first_guess = None):
+def arrhenius_fit(k: jnp.ndarray, T_range: jnp.ndarray, first_guess=None):
     """
     Fitting Arrhenius law using JAX, this not jitted since optimize apparently is not compatible (TO BE verified).
 
@@ -68,7 +68,7 @@ def arrhenius_fit(k: jnp.ndarray, T_range: jnp.ndarray, first_guess = None):
         initial_guess = first_guess
 
     # Minimze the objective function
-    result = minimize(arrhenius_loss, initial_guess, args=(T_range, ln_k0), method='BFGS')
+    result = minimize(arrhenius_loss, initial_guess, args=(T_range, ln_k0), method="BFGS")
 
     popt = result.x
 

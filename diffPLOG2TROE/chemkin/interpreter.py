@@ -4,20 +4,18 @@ import numpy as np
 
 
 def read_chemkin_extract_plog(kinetics: str):
-    """
-    """
+    """ """
     print("================================================================")
     print(" Reading the CHEMKIN kinetic file located in {}".format(kinetics))
     # Reading the file content
     with open(kinetics, "r") as file:
-        raw_content = [line.rstrip('\n') for line in file]
+        raw_content = [line.rstrip("\n") for line in file]
     file.close()
-
 
     # Extractig only the reaction part and removing commented and empty or white lines
     reaction_start = raw_content.index("REACTIONS")
     reaction_end = np.where(np.asarray(raw_content) == "END")[0][-1]
-    reactions_content = raw_content[reaction_start+1:reaction_end]  # Extracting reaction part
+    reactions_content = raw_content[reaction_start + 1 : reaction_end]  # Extracting reaction part
     reactions_content = remove_empty_lines(reactions_content)  # Removed empty lines
     reactions_content = remove_commented_lines(reactions_content)  # Removing commented lines
 
@@ -79,9 +77,9 @@ def identify_plog_reactions(content: list) -> tuple:
     indices_of_reactions = []
     indices_of_plog_reactions = []
     for i, line in enumerate(content):
-        if ("=" in line or "<=>" in line or "=>" in line):
+        if "=" in line or "<=>" in line or "=>" in line:
             indices_of_reactions.append(i)
-            is_a_plog = i != len(content) - 1 and "PLOG" in content[i+1]
+            is_a_plog = i != len(content) - 1 and "PLOG" in content[i + 1]
             if is_a_plog:
                 indices_of_plog_reactions.append(i)
 
@@ -111,7 +109,7 @@ def analyze_plog_reaction(plog: list) -> List[Dict[str, any]]:
                      pressure levels and Arrhenius parameters.
 
     Returns:
-        dict or tuple: 
+        dict or tuple:
             - If no implicit or explicit duplicate is found, the function returns a dictionary with the following
               structure:
                 {
@@ -133,16 +131,12 @@ def analyze_plog_reaction(plog: list) -> List[Dict[str, any]]:
         - If the reaction has more than two duplicate entries for the same pressure level, the function raises an
           exception, as this case is not handled at the moment.
     """
-    is_number = re.compile(r'^[-+]?(?:\d*\.\d+|\d+\.?)(e[-+]?\d+)?$', re.IGNORECASE).match
+    is_number = re.compile(r"^[-+]?(?:\d*\.\d+|\d+\.?)(e[-+]?\d+)?$", re.IGNORECASE).match
     is_duplicate = lambda s: "DUP" in s or "DUPLICATE" in s
     is_implicitly_duplicate = lambda pressure_levels: len(pressure_levels) != len(set(pressure_levels))
 
-    plog_reaction = {
-        "name": "",
-        "parameters": [],
-        "is_duplicate": False
-    }
-    reaction_name_pattern = re.compile(r'^[A-Za-z0-9+\-()\s<=>]+(?=\s+[+-]?\d*\.?\d)')
+    plog_reaction = {"name": "", "parameters": [], "is_duplicate": False}
+    reaction_name_pattern = re.compile(r"^[A-Za-z0-9+\-()\s<=>]+(?=\s+[+-]?\d*\.?\d)")
     reaction_name = reaction_name_pattern.match(plog[0].strip()).group().strip()
     plog_reaction["name"] = reaction_name
 

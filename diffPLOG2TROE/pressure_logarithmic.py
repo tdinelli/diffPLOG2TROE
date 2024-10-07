@@ -56,7 +56,8 @@ def kinetic_constant_plog(params: jnp.ndarray, T: jnp.float64, P: jnp.float64) -
     # Function to find the index of the pressure interval inside the PLOG definition
     def find_index(pIndex, i):
         """Function needed to identify the pressure index of the current pressure level"""
-        return lax.cond(P <= _P[i], lambda _: i, lambda _: pIndex,  None)
+        return lax.cond(P <= _P[i], lambda _: i, lambda _: pIndex, None)
+
     pIndex = lax.fori_loop(0, n, find_index, 0)
 
     # Definition of the common input structure for the subfunctions
@@ -64,7 +65,7 @@ def kinetic_constant_plog(params: jnp.ndarray, T: jnp.float64, P: jnp.float64) -
 
     def low_pressure_case(operand):
         """Function that handles the case where the pressure is lower or equal to the lowest pressure level."""
-        params, T, _, _,  _ = operand
+        params, T, _, _, _ = operand
         params_array = jnp.array([params[0][1], params[0][2], params[0][3]])
         return kinetic_constant_base(params_array, T)
 
@@ -97,7 +98,7 @@ def kinetic_constant_plog(params: jnp.ndarray, T: jnp.float64, P: jnp.float64) -
             mid_pressure_case,
             operand
         ),
-        operand
+        operand,
     )
 
 
@@ -137,9 +138,11 @@ def compute_plog(plog: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.ndarray) 
                      and temperature. Keep in mind that columns are for the same value of tempreature and rows for the
                      same value of pressure.
     """
+
     def compute_single(t, p):
         _kplog = kinetic_constant_plog(plog, t, p)
         return _kplog
+
     compute_single_t_fixed = vmap(lambda p: vmap(lambda t: compute_single(t, p))(T_range))
     k_plog = compute_single_t_fixed(P_range)
     return k_plog

@@ -4,7 +4,7 @@ from .arrhenius_base import kinetic_constant_base
 from .constant_fit_type import lindemann, troe, sri
 
 
-# @jit
+@jit
 def kinetic_constant_falloff(falloff_constant: tuple, T: jnp.float64, P: jnp.float64) -> jnp.float64:
     """
     Function that compute the value of the kientic constant of a FallOff reaction. This function is optimized with JAX's
@@ -42,12 +42,12 @@ def kinetic_constant_falloff(falloff_constant: tuple, T: jnp.float64, P: jnp.flo
     params, fitting_type = falloff_constant
 
     # is_lindemann = (fitting_type == 0)
-    is_troe = (fitting_type == 1)
-    is_sri = (fitting_type == 2)
+    is_troe = fitting_type == 1
+    is_sri = fitting_type == 2
 
     _kInf = kinetic_constant_base(params[0, 0:3], T)
     _k0 = kinetic_constant_base(params[1, 0:3], T)
-    _M = P / 0.08206 / T * (1/1000)  # P [atm], T [K] -> M [mol/cm3/s]
+    _M = P / 0.08206 / T * (1 / 1000)  # P [atm], T [K] -> M [mol/cm3/s]
     _Pr = _k0 * _M / _kInf
     operand = (T, _Pr, params)
 
@@ -104,9 +104,11 @@ def compute_falloff(falloff_constant: tuple, T_range: jnp.ndarray, P_range: jnp.
                      and temperature. Keep in mind that columns are for the same value of tempreature and rows for the
                      same value of pressure.
     """
+
     def compute_single(t, p):
         _kfalloff, _, _, _ = kinetic_constant_falloff(falloff_constant, t, p)
         return _kfalloff
+
     compute_single_t_fixed = vmap(lambda p: vmap(lambda t: compute_single(t, p))(T_range))
     k_falloff = compute_single_t_fixed(P_range)
     return k_falloff

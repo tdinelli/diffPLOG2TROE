@@ -1,16 +1,41 @@
 from functools import partial
 from typing import NamedTuple
+
 # JAX
 from jax import jit, lax, debug, value_and_grad
-import chex
 import jax.numpy as jnp
+import chex
+
 # OPTAX
 import optax
 import optax.tree_utils as otu
+
 # Internal modules
 from .arrhenius_base import arrhenius_fit
 from .pressure_logarithmic import compute_plog, kinetic_constant_plog
 from .falloff import compute_falloff
+
+
+def refit_plog(plog: jnp.ndarray, P: jnp.float64):
+    def find_closest_index(array, value):
+        differences = jnp.abs(array - value)
+        return jnp.argmin(differences)
+
+    T_range = jnp.linspace(500, 2500, 100)
+    P_range = jnp.array([P])
+    k_plog = compute_plog(plog, T_range, P_range)[0]
+    _pressure_levels = plog[:, 0]
+
+    idx_fg = find_closest_index(_pressure_levels, P)
+    if P in _pressure_levels:
+        A, b, Ea, R2adj = plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3], 1.0
+        first_guess = jnp.array([plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3], 1.0])
+    else:
+        first_guess = jnp.array([jnp.log(plog[idx_fg][1]), plog[idx_fg][2], plog[idx_fg][3]])
+        A, b, Ea, R2adj = arrhenius_fit(k_plog, T_range, first_guess)
+        first_guess = jnp.array([plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3]])
+
+    return A, b, Ea, R2adj, first_guess
 
 
 def compute_pressure_limits(plog: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.ndarray) -> jnp.ndarray:
@@ -47,54 +72,51 @@ def compute_pressure_limits(plog: jnp.ndarray, T_range: jnp.ndarray, P_range: jn
 @jit
 def rmse_loss_function(x: jnp.ndarray, data: tuple) -> jnp.float64:
     def full_troe() -> tuple:
-        A0, b0, Ea0 = jnp.exp(x[3]), x[4], x[5]*1.987
-        AInf, bInf, EaInf = jnp.exp(x[0]), x[1], x[2]*1.987
+        A0, b0, Ea0 = jnp.exp(x[3]), x[4], x[5] * 1.987
+        AInf, bInf, EaInf = jnp.exp(x[0]), x[1], x[2] * 1.987
         A, T3, T1, T2 = x[6], x[7], x[8], x[9]
         refitted_constant = (
-            jnp.array([
-                [AInf, bInf, EaInf, 0.0],
-                [A0, b0, Ea0, 0.0],
-                [A, T3, T1, T2]], dtype=jnp.float64
+            jnp.array(
+                [[AInf, bInf, EaInf, 0.0], [A0, b0, Ea0, 0.0], [A, T3, T1, T2]],
+                dtype=jnp.float64,
             ),
-            1
+            1,
         )
 
         return refitted_constant
 
     def troe_params_only() -> tuple:
-        A0, b0, Ea0 = jnp.exp(additional[3]), additional[4], additional[5]*1.987
-        AInf, bInf, EaInf = jnp.exp(additional[0]), additional[1], additional[2]*1.987
+        A0, b0, Ea0 = jnp.exp(additional[3]), additional[4], additional[5] * 1.987
+        AInf, bInf, EaInf = jnp.exp(additional[0]), additional[1], additional[2] * 1.987
         A, T3, T1, T2 = x[0], x[1], x[2], x[3]
 
         refitted_constant = (
-            jnp.array([
-                [AInf, bInf, EaInf, 0.0],
-                [A0, b0, Ea0, 0.0],
-                [A, T3, T1, T2]], dtype=jnp.float64
+            jnp.array(
+                [[AInf, bInf, EaInf, 0.0], [A0, b0, Ea0, 0.0], [A, T3, T1, T2]],
+                dtype=jnp.float64,
             ),
-            1
+            1,
         )
 
         return refitted_constant
 
     def kinetic_params_only() -> tuple:
-        A0, b0, Ea0 = jnp.exp(x[3]), x[4], x[5]*1.987
-        AInf, bInf, EaInf = jnp.exp(x[0]), x[1], x[2]*1.987
+        A0, b0, Ea0 = jnp.exp(x[3]), x[4], x[5] * 1.987
+        AInf, bInf, EaInf = jnp.exp(x[0]), x[1], x[2] * 1.987
         A, T3, T1, T2 = additional[0], additional[1], additional[2], additional[3]
 
         refitted_constant = (
-            jnp.array([
-                [AInf, bInf, EaInf, 0.0],
-                [A0, b0, Ea0, 0.0],
-                [A, T3, T1, T2]], dtype=jnp.float64
+            jnp.array(
+                [[AInf, bInf, EaInf, 0.0], [A0, b0, Ea0, 0.0], [A, T3, T1, T2]],
+                dtype=jnp.float64,
             ),
-            1
+            1,
         )
 
         return refitted_constant
 
     # Normalize the data to always have 4 elements
-    T_range, P_range, k_plog, additional = data if len(data) == 4 else (*data, [1]*6)
+    T_range, P_range, k_plog, additional = data if len(data) == 4 else (*data, [1] * 6)
 
     refitted_constant = lax.cond(
         len(data) == 3,
@@ -103,7 +125,7 @@ def rmse_loss_function(x: jnp.ndarray, data: tuple) -> jnp.float64:
             len(additional) == 4,
             lambda: kinetic_params_only(),
             lambda: troe_params_only(),
-        )
+        ),
     )
 
     k_troe = compute_falloff(refitted_constant, T_range, P_range)
@@ -117,21 +139,18 @@ def rmse_loss_function(x: jnp.ndarray, data: tuple) -> jnp.float64:
     # l2_loss = jnp.sqrt(squared_errors)
     # ----------------------------------------------------------------
     # Ratio loss
-    squared_errors = jnp.sum((1 - (prediction / expected_value))**2)
+    squared_errors = jnp.sum((1 - (prediction / expected_value)) ** 2)
     l2_loss = jnp.sqrt(squared_errors)
 
-
     # Regularization terms, L1 and L2 norms
-    l2_regularization = .0 * jnp.sum(x ** 2)
-    l1_regularization = .0 * jnp.sum(jnp.abs(x))
+    l2_regularization = 0.0 * jnp.sum(x**2)
+    l1_regularization = 0.0 * jnp.sum(jnp.abs(x))
 
     # Total loss is RMSE + regularization term
     total_loss = l2_loss + l2_regularization + l1_regularization
     return total_loss
 
 
-# -----------------------------------------------------------
-# Wrap loss function to accomodate NLOPT interface
 def nlopt_loss(x, loss_gradient, data, iteration_count):
     if loss_gradient.size > 0:
         loss, gradient = value_and_grad(rmse_loss_function)(x, data)
@@ -145,37 +164,14 @@ def nlopt_loss(x, loss_gradient, data, iteration_count):
     return float(loss)
 
 
-def refit_plog(plog: jnp.ndarray, P: jnp.float64):
-    def find_closest_index(array, value):
-        differences = jnp.abs(array - value)
-        return jnp.argmin(differences)
-
-    T_range = jnp.linspace(500, 2500, 100)
-    P_range = jnp.array([P])
-    k_plog = compute_plog(plog, T_range, P_range)[0]
-    _pressure_levels = plog[:, 0]
-
-    idx_fg = find_closest_index(_pressure_levels, P)
-    if P in _pressure_levels:
-        A, b, Ea, R2adj = plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3], 1.0
-        first_guess = jnp.array([plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3], 1.0])
-    else:
-        first_guess = jnp.array([jnp.log(plog[idx_fg][1]), plog[idx_fg][2], plog[idx_fg][3]])
-        A, b, Ea, R2adj = arrhenius_fit(k_plog, T_range, first_guess)
-        first_guess = jnp.array([plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3]])
-
-    return A, b, Ea, R2adj, first_guess
-
-
 # Definition of the L-BFGS solver adapted from: https://optax.readthedocs.io/en/latest/_collections/examples/lbfgs.html
 def run_lbfgs(init_params, fun, opt, max_iter, tol, *args):
     value_and_grad_fun = optax.value_and_grad_from_state(partial(fun, *args))
+
     def step(carry):
         params, state = carry
         value, grad = value_and_grad_fun(params, state=state)
-        updates, state = opt.update(
-            grad, state, params, value=value, grad=grad, value_fn=partial(fun, *args)
-        )
+        updates, state = opt.update(grad, state, params, value=value, grad=grad, value_fn=partial(fun, *args))
         params = optax.apply_updates(params, updates)
         return params, state
 
@@ -187,9 +183,7 @@ def run_lbfgs(init_params, fun, opt, max_iter, tol, *args):
         return (iter_num == 0) | ((iter_num < max_iter) & (err >= tol))
 
     init_carry = (init_params, opt.init(init_params))
-    final_params, final_state = lax.while_loop(
-        continuing_criterion, step, init_carry
-    )
+    final_params, final_state = lax.while_loop(continuing_criterion, step, init_carry)
     return final_params, final_state
 
 
@@ -210,7 +204,7 @@ def print_info(frequency=1):
                 "Iteration: {i}, Value: {v}, Gradient norm: {e}",
                 i=state.iter_num,
                 v=value,
-                e=otu.tree_l2_norm(grad)
+                e=otu.tree_l2_norm(grad),
             )
             return updates, InfoState(iter_num=state.iter_num + 1)
 

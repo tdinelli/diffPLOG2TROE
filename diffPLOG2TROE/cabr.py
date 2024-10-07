@@ -9,13 +9,13 @@ def kinetic_constant_cabr(falloff_constant: tuple, T: jnp.float64, P: jnp.float6
 
     params, fitting_type = falloff_constant
     # is_lindemann = (fitting_type == 0)
-    is_troe = (fitting_type == 1)
-    is_sri = (fitting_type == 2)
+    is_troe = fitting_type == 1
+    is_sri = fitting_type == 2
 
     _k0 = kinetic_constant_base(params[0, 0:3], T)
     _kInf = kinetic_constant_base(params[1, 0:3], T)
 
-    _M = P / 0.08206 / T * (1/1000)  # P [atm], T [K] -> M [mol/cm3/s]
+    _M = P / 0.08206 / T * (1 / 1000)  # P [atm], T [K] -> M [mol/cm3/s]
     _Pr = _k0 * _M / _kInf
 
     operand = (T, _Pr, params)
@@ -40,6 +40,7 @@ def compute_cabr(cabr_constant: tuple, T_range: jnp.ndarray, P_range: jnp.ndarra
     def compute_single(t, p):
         _kcabr, _, _, _ = kinetic_constant_cabr(cabr_constant, t, p)
         return _kcabr
+
     compute_single_t_fixed = vmap(lambda p: vmap(lambda t: compute_single(t, p))(T_range))
     _k_cabr, _, _, _ = compute_single_t_fixed(P_range)
     return _k_cabr

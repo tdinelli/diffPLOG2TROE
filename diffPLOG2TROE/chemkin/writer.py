@@ -1,14 +1,17 @@
 import os
 import numpy as np
 from .chemkin_interpreter import (
-    remove_empty_lines, remove_commented_lines, identify_plog_reactions, analyze_plog_reaction
+    remove_empty_lines,
+    remove_commented_lines,
+    identify_plog_reactions,
+    analyze_plog_reaction,
 )
 from .chemkin_utilities import plog_to_chemkin, comment_chemkin_string, arrheniusbase_to_chemkin
 
 
 def write_chemkin(kinetics: str, output_folder: str, plog_converted: list, fitting_parameters: list = None):
     with open(kinetics, "r") as file:
-        raw_content = [line.rstrip('\n') for line in file]
+        raw_content = [line.rstrip("\n") for line in file]
     file.close()
 
     # Extractig only the reaction part and removing commented and empty or white lines
@@ -20,7 +23,7 @@ def write_chemkin(kinetics: str, output_folder: str, plog_converted: list, fitti
     elements_species_content = [j for i in elements_species_content if i.strip() for j in i.split()]
     elements_species_content = format_elements_species_block(elements_species_content)
 
-    reactions_content = raw_content[reaction_start+1:reaction_end]  # Extracting reaction part
+    reactions_content = raw_content[reaction_start + 1 : reaction_end]  # Extracting reaction part
     reactions_content = remove_empty_lines(reactions_content)  # Removed empty lines
     reactions_content = remove_commented_lines(reactions_content)  # Removing commented lines
 
@@ -41,8 +44,9 @@ def write_chemkin(kinetics: str, output_folder: str, plog_converted: list, fitti
                 tmp += comment_chemkin_string(plog_to_chemkin(reaction))
                 if fitting_parameters is not None:
                     tmp += "! * First guessed values for the fitting:\n"
-                    tmp += "!    - A: {:.5E}, b: {:.5E}, Ea: {:.5E}\n".format(fitting_parameters[j][0], fitting_parameters[j][1],
-                                                                              fitting_parameters[j][2])
+                    tmp += "!    - A: {:.5E}, b: {:.5E}, Ea: {:.5E}\n".format(
+                        fitting_parameters[j][0], fitting_parameters[j][1], fitting_parameters[j][2]
+                    )
                     tmp += "! * Adjusted R2 value:\n"
                     tmp += "!    - R2adj: {:.5E}\n".format(fitting_parameters[j][3])
                 tmp += arrheniusbase_to_chemkin(plog_converted[counter])
@@ -53,8 +57,9 @@ def write_chemkin(kinetics: str, output_folder: str, plog_converted: list, fitti
             tmp += comment_chemkin_string(plog_to_chemkin(plog_reactions[i][0]))
             if fitting_parameters is not None:
                 tmp += "! * First guessed values for the fitting:\n"
-                tmp += "!    - A: {:.5E}, b: {:.5E}, Ea: {:.5E}\n".format(fitting_parameters[i][0],
-                                                                          fitting_parameters[i][1], fitting_parameters[i][2])
+                tmp += "!    - A: {:.5E}, b: {:.5E}, Ea: {:.5E}\n".format(
+                    fitting_parameters[i][0], fitting_parameters[i][1], fitting_parameters[i][2]
+                )
                 tmp += "! * Adjusted R2 value:\n"
                 tmp += "!    - R2adj: {:.5E}\n".format(fitting_parameters[i][3])
             tmp += arrheniusbase_to_chemkin(plog_converted[counter])
@@ -73,7 +78,11 @@ def write_chemkin(kinetics: str, output_folder: str, plog_converted: list, fitti
         if i in indices_plog_reactions:
             reactions_to_file += converted_plog_string[plog_idx]
             idx_current = indices_of_reactions.index(indices_plog_reactions[plog_idx])
-            idx_next = indices_of_reactions[idx_current + 1] if idx_current + 1 < len(indices_of_reactions) else len(reactions_content)
+            idx_next = (
+                indices_of_reactions[idx_current + 1]
+                if idx_current + 1 < len(indices_of_reactions)
+                else len(reactions_content)
+            )
             skip_until = idx_next
             plog_idx += 1
         else:
@@ -99,7 +108,7 @@ def format_elements_species_block(content: list) -> str:
     n_col = 7
     col_width = 15
 
-    for i, j in enumerate(content[elements_end + 2:-1]):
+    for i, j in enumerate(content[elements_end + 2 : -1]):
         if i % n_col == 0:
             block += "\n"
         block += j.ljust(col_width)
