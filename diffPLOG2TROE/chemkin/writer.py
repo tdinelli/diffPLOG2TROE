@@ -1,12 +1,12 @@
 import os
 import numpy as np
-from .chemkin_interpreter import (
+from .interpreter import (
     remove_empty_lines,
     remove_commented_lines,
     identify_plog_reactions,
     analyze_plog_reaction,
 )
-from .chemkin_utilities import plog_to_chemkin, comment_chemkin_string, arrheniusbase_to_chemkin
+from .utilities import plog_to_chemkin, comment_chemkin_string, arrheniusbase_to_chemkin
 
 
 def write_chemkin(kinetics: str, output_folder: str, plog_converted: list, fitting_parameters: list = None):

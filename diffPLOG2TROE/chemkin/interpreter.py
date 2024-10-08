@@ -6,13 +6,12 @@ import numpy as np
 def read_chemkin_extract_plog(kinetics: str):
     """ """
     print("================================================================")
-    print(" Reading the CHEMKIN kinetic file located in {}".format(kinetics))
-    # Reading the file content
+    print(" Reading the CHEMKIN kinetic file: {}".format(kinetics))
+    # Reading file content
     with open(kinetics, "r") as file:
         raw_content = [line.rstrip("\n") for line in file]
     file.close()
 
-    # Extractig only the reaction part and removing commented and empty or white lines
     reaction_start = raw_content.index("REACTIONS")
     reaction_end = np.where(np.asarray(raw_content) == "END")[0][-1]
     reactions_content = raw_content[reaction_start + 1 : reaction_end]  # Extracting reaction part
@@ -20,8 +19,8 @@ def read_chemkin_extract_plog(kinetics: str):
     reactions_content = remove_commented_lines(reactions_content)  # Removing commented lines
 
     raw_plog_reactions, indices_of_plog_reactions, indices_of_reactions, nr = identify_plog_reactions(reactions_content)
-    print(" * Number of Reactions: {}".format(nr))
-    print("    - Number of PLOG Reactions: {}".format(len(indices_of_plog_reactions)))
+    print(" * Total number of reactions: {}".format(nr))
+    print("    - Number of PLOG reactions: {}".format(len(indices_of_plog_reactions)))
 
     plog_reactions = []
     for i in raw_plog_reactions:
@@ -66,20 +65,27 @@ def remove_empty_lines(content: list) -> list:
 def identify_plog_reactions(content: list) -> tuple:
     """
     Function needed to parse the entire reaction sets and extract only the PLOG reactions.
-
     Args:
         content (list): list of strings containing all the reactions whithin the mechanism.
-
     Returns:
         (tuple): a list of all the PLOG reactions, the indices of the plog reactions, the indices of all the reactions.
     """
+    is_plog = lambda content, position: i != len(content) - 1 and "PLOG" in content[i + position]
+
     plog_reactions = []
     indices_of_reactions = []
     indices_of_plog_reactions = []
     for i, line in enumerate(content):
         if "=" in line or "<=>" in line or "=>" in line:
             indices_of_reactions.append(i)
-            is_a_plog = i != len(content) - 1 and "PLOG" in content[i + 1]
+
+            dup_after_name = i != len(content) - 1 and ("DUPLICATE" in content[i+1] or "DUP" in content[i+1])
+            # This to handle duplicate PLOG where the DUP keyword is just after the name
+            if dup_after_name:
+                is_a_plog = is_plog(content, 2)
+            else:
+                is_a_plog = is_plog(content, 1)
+
             if is_a_plog:
                 indices_of_plog_reactions.append(i)
 
@@ -144,7 +150,7 @@ def analyze_plog_reaction(plog: list) -> List[Dict[str, any]]:
     for line in plog[1:]:
         if is_duplicate(line):
             plog_reaction["is_duplicate"] = True
-            break
+            continue
 
         parameters = [float(part) for part in line.replace("/", " ").split() if is_number(part)]
         plog_reaction["parameters"].append(parameters)
