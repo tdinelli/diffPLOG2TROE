@@ -79,18 +79,15 @@ $$
 CH_3+CH_3(+M) \leftrightarrow C_2H_5+H(+M)
 $$
 
-This reaction, which is endothermic, occurs via the same chemically activated
-$$
-C_2H_6^*
-$$
-adduct as the recombination reaction $ CH_{3} + CH_{3} (+M) \leftrightarrow C_{2}H_{6} (+M)$ . As
-the pressure rises, deactivating collisions of $C_{2}H_{6}^{*}$ with other molecules result in an
-increase in the rate coefficient for $C_{2}H_{6}$ formation. Concurrently, these deactivating
-collisions preclude the dissociation of $ C_{2}H_{6}^{*} $ into $C_{2}H_{5} + H$, thereby causing
-this rate coefficient to decrease with increasing pressure. Similarly, chemically-activated
-reactions are described by a blending between a low-pressure and a high-pressure rate expression, as
-is the case with falloff reactions. The distinction lies in the manner of expression, whereby the
-forward rate constant is written as being proportional to the low-pressure rate constant.
+This reaction, which is endothermic, occurs via the same chemically activated $C_2H_6^*$ adduct as
+the recombination reaction $CH_{3} + CH_{3} (+M) \leftrightarrow C_{2}H_{6} (+M)$ . As the pressure
+rises, deactivating collisions of $C_{2}H_{6}^{*}$ with other molecules result in an increase in the
+rate coefficient for $C_{2}H_{6}$ formation. Concurrently, these deactivating collisions preclude
+the dissociation of $C_{2}H_{6}^{*}$ into $C_{2}H_{5} + H$, thereby causing this rate coefficient to
+decrease with increasing pressure. Similarly, chemically-activated reactions are described by a
+blending between a low-pressure and a high-pressure rate expression, as is the case with falloff
+reactions. The distinction lies in the manner of expression, whereby the forward rate constant is
+written as being proportional to the low-pressure rate constant.
 
 $$
 k = k_{0} \left(\frac{1}{1+Pr}\right)F
