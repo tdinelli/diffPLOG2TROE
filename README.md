@@ -79,7 +79,7 @@ $$
 CH_3+CH_3(+M) \leftrightarrow C_2H_5+H(+M)
 $$
 
-This reaction, which is endothermic, occurs via the same chemically activated \(C_{2}H_{6}^{*}\)
+This reaction, which is endothermic, occurs via the same chemically activated \( C_{2}H_{6}^{*} \)
 adduct as the recombination reaction $ CH_{3} + CH_{3} (+M) \leftrightarrow C_{2}H_{6} (+M)$ . As
 the pressure rises, deactivating collisions of $C_{2}H_{6}^{*}$ with other molecules result in an
 increase in the rate coefficient for $C_{2}H_{6}$ formation. Concurrently, these deactivating
