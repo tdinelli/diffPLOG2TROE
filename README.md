@@ -49,28 +49,48 @@ expression, it is necessary to employ the Lindemann form for the rate coefficien
 Arrhenius rate parameters required for both the high- and low-pressure limiting cases. In the
 Arrhenius form, the parameters are provided for the high-pressure limit ($k_{\infty}$) and the
 low-pressure limit ($k_0$) as follows:
-$$k_{\infty} = A_{\infty}T^{\beta_{\infty}}e^{-\frac{Ea_{\infty}}{RT}}$$
-$$k_{0} = A_{0}T^{\beta_{0}}e^{-\frac{Ea_{0}}{RT}}$$
+
+$$
+k_{\infty} = A_{\infty}T^{\beta_{\infty}}e^{-\frac{Ea_{\infty}}{RT}}
+$$
+$$
+k_{0} = A_{0}T^{\beta_{0}}e^{-\frac{Ea_{0}}{RT}}
+$$
+
 The rate constant at any given pressure is then calculated according to the following formula:
-$$k = k_{\infty} \left(\frac{P_{r}}{1+Pr}\right)F$$
+
+$$
+k = k_{\infty} \left(\frac{P_{r}}{1+Pr}\right)F
+$$
+
 Where the reduced pressure $Pr$ is given by:
-$$Pr = \frac{k_{0}[M]}{k_{\infty}}$$
+
+$$
+Pr = \frac{k_{0}[M]}{k_{\infty}}
+$$
 Where $[M]$ is the concentration of the mixture, possibly including enhanced third-body
 efficiencies.
 
 ### Chemically activated bimolecular reactions (CABR)
 To illustrate a chemically activated bimolecular reaction, one might consider the reaction:
-$$CH_3+CH_3(+M) \leftrightarrow C_2H_5+H(+M)$$
-This reaction, which is endothermic, occurs via the
-same chemically activated $C_2H_6^*$ adduct as the recombination reaction $CH_3+CH_3(+M)
-\leftrightarrow C_2H_6(+M)$. As the pressure rises, deactivating collisions of $C_2H_6^*$ with other
-molecules result in an increase in the rate coefficient for C2H6 formation. Concurrently, these
-deactivating collisions preclude the dissociation of $C_2H_6^*$ into $C_2H_5 + H$, thereby causing
-this rate coefficient to decrease with increasing pressure. Similarly, chemically-activated
-reactions are described by a blending between a low-pressure and a high-pressure rate expression, as
-is the case with falloff reactions. The distinction lies in the manner of expression, whereby the
-forward rate constant is written as being proportional to the low-pressure rate constant.
-$$k = k_{0} \left(\frac{1}{1+Pr}\right)F$$
+
+$$
+CH_3+CH_3(+M) \leftrightarrow C_2H_5+H(+M)
+$$
+
+This reaction, which is endothermic, occurs via the same chemically activated $C_2H_6^*$ adduct as
+the recombination reaction $CH_3+CH_3(+M) \leftrightarrow C_2H_6(+M)$. As the pressure rises,
+deactivating collisions of $C_2H_6^*$ with other molecules result in an increase in the rate
+coefficient for C2H6 formation. Concurrently, these deactivating collisions preclude the
+dissociation of $C_2H_6^*$ into $C_2H_5 + H$, thereby causing this rate coefficient to decrease with
+increasing pressure. Similarly, chemically-activated reactions are described by a blending between a
+low-pressure and a high-pressure rate expression, as is the case with falloff reactions. The
+distinction lies in the manner of expression, whereby the forward rate constant is written as being
+proportional to the low-pressure rate constant.
+
+$$
+k = k_{0} \left(\frac{1}{1+Pr}\right)F
+$$
 
 ### Available formalisms to compute $F$
 |               | Formula for F                                                                                                                                                                                                                                                                                                                          | Notes                                                                                                                                                             |
