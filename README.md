@@ -39,7 +39,9 @@ increases, the reaction order with respect to $[M]$ approaches zero. This behavi
 a three-body reaction. Dissociation and association reactions of polyatomic molecules frequently
 manifest this characteristic. The most straightforward expression for the rate coefficient of a
 falloff reaction is the Lindemann form. Let's consider as example the following reaction.
-$$CH_3 + CH_3 (+M) \leftrightarrow C_2H_6 (+M)$$
+```math
+CH_3 + CH_3 (+M) \leftrightarrow C_2H_6 (+M)
+```
 There are multiple approaches to representing the rate expressions in this fall-off region. The most
 straightforward approach is that proposed by Lindemann. Additionally, two other methodologies have
 been developed that offer a more precise characterization of the fall-off region than the Lindemann
@@ -49,27 +51,25 @@ expression, it is necessary to employ the Lindemann form for the rate coefficien
 Arrhenius rate parameters required for both the high- and low-pressure limiting cases. In the
 Arrhenius form, the parameters are provided for the high-pressure limit ($k_{\infty}$) and the
 low-pressure limit ($k_0$) as follows:
-
-$$
+```math
 k_{\infty} = A_{\infty}T^{\beta_{\infty}}e^{-\frac{Ea_{\infty}}{RT}}
-$$
-$$
+```
+```math
 k_{0} = A_{0}T^{\beta_{0}}e^{-\frac{Ea_{0}}{RT}}
-$$
-
+```
 The rate constant at any given pressure is then calculated according to the following formula:
 
-$$
+```math
 k = k_{\infty} \left(\frac{P_{r}}{1+Pr}\right)F
-$$
+```
 
-Where the reduced pressure $Pr$ is given by:
+Where the reduced pressure $`Pr`$ is given by:
 
-$$
+```math
 Pr = \frac{k_{0}[M]}{k_{\infty}}
-$$
+```
 
-Where $[M]$ is the concentration of the mixture, possibly including enhanced third-body
+Where $`[M]`$ is the concentration of the mixture, possibly including enhanced third-body
 efficiencies.
 
 ### Chemically activated bimolecular reactions (CABR)
@@ -79,7 +79,15 @@ $$
 CH_3+CH_3(+M) \leftrightarrow C_2H_5+H(+M)
 $$
 
-This reaction, which is endothermic, occurs via the same chemically activated $C_{2}H_{6}^{*}$ adduct as the recombination reaction $CH_3 + CH_3 (+M) \leftrightarrow C_2H_6 (+M)$ . As the pressure rises, deactivating collisions of $C_{2}H_{6}^{*}$ with other molecules result in an increase in the rate coefficient for $C_{2}H_{6}$ formation. Concurrently, these deactivating collisions preclude the dissociation of $C_{2}H_{6}^{*}$ into $C_{2}H_{5} + H$, thereby causing this rate coefficient to decrease with increasing pressure. Similarly, chemically-activated reactions are described by a blending between a low-pressure and a high-pressure rate expression, as is the case with falloff reactions. The distinction lies in the manner of expression, whereby the forward rate constant is written as being proportional to the low-pressure rate constant.
+This reaction, which is endothermic, occurs via the same chemically activated $`C_{2}H_{6}^{*}`$ 
+adduct as the recombination reaction $`CH_3 + CH_3 (+M) \leftrightarrow C_2H_6 (+M)`$ . As the
+pressure rises, deactivating collisions of $C_{2}H_{6}^{*}$ with other molecules result in an
+increase in the rate coefficient for $`C_{2}H_{6}`$ formation. Concurrently, these deactivating
+collisions preclude the dissociation of $`C_{2}H_{6}^{*}`$ into $`C_{2}H_{5} + H`$, thereby causing this
+rate coefficient to decrease with increasing pressure. Similarly, chemically-activated reactions are
+described by a blending between a low-pressure and a high-pressure rate expression, as is the case
+with falloff reactions. The distinction lies in the manner of expression, whereby the forward rate
+constant is written as being proportional to the low-pressure rate constant.
 
 $$
 k = k_{0} \left(\frac{1}{1+Pr}\right)F
