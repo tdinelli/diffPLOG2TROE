@@ -23,7 +23,7 @@ def write_chemkin(kinetics: str, output_folder: str, plog_converted: list, fitti
     elements_species_content = [j for i in elements_species_content if i.strip() for j in i.split()]
     elements_species_content = format_elements_species_block(elements_species_content)
 
-    reactions_content = raw_content[reaction_start + 1 : reaction_end]  # Extracting reaction part
+    reactions_content = raw_content[reaction_start + 1:reaction_end]  # Extracting reaction part
     reactions_content = remove_empty_lines(reactions_content)  # Removed empty lines
     reactions_content = remove_commented_lines(reactions_content)  # Removing commented lines
 
@@ -108,7 +108,7 @@ def format_elements_species_block(content: list) -> str:
     n_col = 7
     col_width = 15
 
-    for i, j in enumerate(content[elements_end + 2 : -1]):
+    for i, j in enumerate(content[elements_end + 2:-1]):
         if i % n_col == 0:
             block += "\n"
         block += j.ljust(col_width)

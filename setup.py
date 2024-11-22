@@ -39,5 +39,6 @@ setup(
         "jax",
         "chex",
         "optax",
+        "nlopt",
     ],
 )

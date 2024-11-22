@@ -14,7 +14,7 @@ def read_chemkin_extract_plog(kinetics: str):
 
     reaction_start = raw_content.index("REACTIONS")
     reaction_end = np.where(np.asarray(raw_content) == "END")[0][-1]
-    reactions_content = raw_content[reaction_start + 1 : reaction_end]  # Extracting reaction part
+    reactions_content = raw_content[reaction_start + 1:reaction_end]  # Extracting reaction part
     reactions_content = remove_empty_lines(reactions_content)  # Removed empty lines
     reactions_content = remove_commented_lines(reactions_content)  # Removing commented lines
 
@@ -79,7 +79,7 @@ def identify_plog_reactions(content: list) -> tuple:
         if "=" in line or "<=>" in line or "=>" in line:
             indices_of_reactions.append(i)
 
-            dup_after_name = i != len(content) - 1 and ("DUPLICATE" in content[i+1] or "DUP" in content[i+1])
+            dup_after_name = i != len(content) - 1 and ("DUPLICATE" in content[i + 1] or "DUP" in content[i + 1])
             # This to handle duplicate PLOG where the DUP keyword is just after the name
             if dup_after_name:
                 is_a_plog = is_plog(content, 2)

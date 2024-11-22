@@ -14,11 +14,6 @@ def kinetic_constant_base(params: jnp.ndarray, T: jnp.float64) -> jnp.float64:
 
     Args:
         params (jnp.ndarray): Array containing the parameters needed by the modified Arrhenius equation.
-
-                CHEMKIN:
-                  H2+O=H+OH 5.0800e+04 2.670 6292.00
-                Internal Arrhenius representation:
-                  constant = jnp.array([5.0800e+04, 2.670, 6292.00], dtype=jnp.float64)
         T (jnp.float64): Temperature value for which the kinetic constant is computed.
 
     Returns:
