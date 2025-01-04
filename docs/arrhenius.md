@@ -1,1 +1,0 @@
-::: diffPLOG2TROE.ArrheniusBase
