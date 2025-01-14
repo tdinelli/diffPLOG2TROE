@@ -37,6 +37,7 @@ setup(
         "matplotlib",
         "mkdocs",
         "jax",
+        "jaxtyping",
         "chex",
         "optax",
         "nlopt",

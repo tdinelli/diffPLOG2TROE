@@ -1,21 +1,24 @@
-from jax import jit
 import jax.numpy as jnp
+from jax import jit
+from jaxtyping import Array, Float64
 
 
 @jit
-def lindemann(T: jnp.float64, Pr: jnp.float64, params: jnp.ndarray) -> jnp.float64:
+def lindemann(T: Float64, Pr: Float64, params: Array) -> Float64:
     F = jnp.float64(1)
     return F
 
 
 @jit
-def troe(T: jnp.float64, Pr: jnp.float64, params: jnp.ndarray) -> jnp.float64:
+def troe(T: Float64, Pr: Float64, params: Array) -> Float64:
     A = params[2][0]
     T3 = params[2][1]
     T1 = params[2][2]
     T2 = params[2][3]  # T2 is optional here we feed 0, when not needed.
 
-    logFcent = jnp.log10((1 - A) * jnp.exp(-T / T3) + A * jnp.exp(-T / T1) + jnp.exp(-T2 / T))
+    logFcent = jnp.log10(
+        (1 - A) * jnp.exp(-T / T3) + A * jnp.exp(-T / T1) + jnp.exp(-T2 / T)
+    )
 
     c = -0.4 - 0.67 * logFcent
     n = 0.75 - 1.27 * logFcent
@@ -26,7 +29,7 @@ def troe(T: jnp.float64, Pr: jnp.float64, params: jnp.ndarray) -> jnp.float64:
 
 
 @jit
-def sri(T: jnp.float64, Pr: jnp.float64, params: jnp.ndarray) -> jnp.float64:
+def sri(T: Float64, Pr: Float64, params: Array) -> Float64:
     a = params[2][0]
     b = params[2][1]
     c = params[2][2]

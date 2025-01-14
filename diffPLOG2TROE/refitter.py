@@ -1,22 +1,24 @@
 from functools import partial
 from typing import NamedTuple
 
-# JAX
-from jax import jit, lax, debug, value_and_grad
-import jax.numpy as jnp
 import chex
+import jax.numpy as jnp
 
 # OPTAX
 import optax
 import optax.tree_utils as otu
 
+# JAX
+from jax import debug, jit, lax, value_and_grad
+from jaxtyping import Float64
+
 # Internal modules
 from .arrhenius_base import arrhenius_fit
-from .pressure_logarithmic import compute_plog, kinetic_constant_plog
 from .falloff import compute_falloff
+from .pressure_logarithmic import compute_plog, kinetic_constant_plog
 
 
-def refit_plog(plog: jnp.ndarray, P: jnp.float64):
+def refit_plog(plog: jnp.ndarray, P: Float64):
     def find_closest_index(array, value):
         differences = jnp.abs(array - value)
         return jnp.argmin(differences)
@@ -31,14 +33,18 @@ def refit_plog(plog: jnp.ndarray, P: jnp.float64):
         A, b, Ea, R2adj = plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3], 1.0
         first_guess = jnp.array([plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3], 1.0])
     else:
-        first_guess = jnp.array([jnp.log(plog[idx_fg][1]), plog[idx_fg][2], plog[idx_fg][3]])
+        first_guess = jnp.array(
+            [jnp.log(plog[idx_fg][1]), plog[idx_fg][2], plog[idx_fg][3]]
+        )
         A, b, Ea, R2adj = arrhenius_fit(k_plog, T_range, first_guess)
         first_guess = jnp.array([plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3]])
 
     return A, b, Ea, R2adj, first_guess
 
 
-def compute_pressure_limits(plog: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.ndarray) -> jnp.ndarray:
+def compute_pressure_limits(
+    plog: jnp.ndarray, T_range: jnp.ndarray, P_range: jnp.ndarray
+) -> jnp.ndarray:
     """
     This function compute the First guess Arrhenius parameters for the HPL and LPL. The computation is done in such a
     way that given the pressure and temperature range where we want to refit the PLOG expression into a FallOff or a
@@ -70,7 +76,7 @@ def compute_pressure_limits(plog: jnp.ndarray, T_range: jnp.ndarray, P_range: jn
 
 
 @jit
-def rmse_loss_function(x: jnp.ndarray, data: tuple) -> jnp.float64:
+def rmse_loss_function(x: jnp.ndarray, data: tuple) -> Float64:
     def full_troe() -> tuple:
         A0, b0, Ea0 = jnp.exp(x[3]), x[4], x[5] * 1.987
         AInf, bInf, EaInf = jnp.exp(x[0]), x[1], x[2] * 1.987
@@ -171,7 +177,9 @@ def run_lbfgs(init_params, fun, opt, max_iter, tol, *args):
     def step(carry):
         params, state = carry
         value, grad = value_and_grad_fun(params, state=state)
-        updates, state = opt.update(grad, state, params, value=value, grad=grad, value_fn=partial(fun, *args))
+        updates, state = opt.update(
+            grad, state, params, value=value, grad=grad, value_fn=partial(fun, *args)
+        )
         params = optax.apply_updates(params, updates)
         return params, state
 

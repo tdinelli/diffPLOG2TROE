@@ -1,12 +1,14 @@
+from typing import Tuple
+
 from jax import jit, lax, vmap
-import jax.numpy as jnp
+from jaxtyping import Array, Float64
+
 from .arrhenius_base import kinetic_constant_base
-from .constant_fit_type import lindemann, troe, sri
+from .constant_fit_type import lindemann, sri, troe
 
 
 @jit
-def kinetic_constant_cabr(falloff_constant: tuple, T: jnp.float64, P: jnp.float64) -> jnp.float64:
-
+def kinetic_constant_cabr(falloff_constant: Tuple, T: Float64, P: Float64) -> Float64:
     params, fitting_type = falloff_constant
     # is_lindemann = (fitting_type == 0)
     is_troe = fitting_type == 1
@@ -22,13 +24,8 @@ def kinetic_constant_cabr(falloff_constant: tuple, T: jnp.float64, P: jnp.float6
     F = lax.cond(
         is_troe,
         lambda x: troe(*x),
-        lambda x: lax.cond(
-            is_sri,
-            lambda y: sri(*y),
-            lambda y: lindemann(*y),
-            x
-        ),
-        operand
+        lambda x: lax.cond(is_sri, lambda y: sri(*y), lambda y: lindemann(*y), x),
+        operand,
     )
     _k_cabr = (_k0 * (1 / (1 + _Pr))) * F
 
@@ -36,11 +33,13 @@ def kinetic_constant_cabr(falloff_constant: tuple, T: jnp.float64, P: jnp.float6
 
 
 @jit
-def compute_cabr(cabr_constant: tuple, T_range: jnp.ndarray, P_range: jnp.ndarray) -> jnp.ndarray:
+def compute_cabr(cabr_constant: Tuple, T_range: Array, P_range: Array) -> Array:
     def compute_single(t, p):
         _kcabr, _, _, _ = kinetic_constant_cabr(cabr_constant, t, p)
         return _kcabr
 
-    compute_single_t_fixed = vmap(lambda p: vmap(lambda t: compute_single(t, p))(T_range))
+    compute_single_t_fixed = vmap(
+        lambda p: vmap(lambda t: compute_single(t, p))(T_range)
+    )
     _k_cabr, _, _, _ = compute_single_t_fixed(P_range)
     return _k_cabr
