@@ -1,19 +1,20 @@
 from functools import partial
 from typing import NamedTuple
 
-# JAX
-from jax import jit, lax, debug, value_and_grad
-import jax.numpy as jnp
 import chex
+import jax.numpy as jnp
 
 # OPTAX
 import optax
 import optax.tree_utils as otu
 
+# JAX
+from jax import debug, jit, lax, value_and_grad
+
 # Internal modules
 from .arrhenius_base import arrhenius_fit
-from .pressure_logarithmic import compute_plog, kinetic_constant_plog
 from .falloff import compute_falloff
+from .pressure_logarithmic import compute_plog, kinetic_constant_plog
 
 
 def refit_plog(plog: jnp.ndarray, P: jnp.float64):
@@ -32,7 +33,8 @@ def refit_plog(plog: jnp.ndarray, P: jnp.float64):
         first_guess = jnp.array([plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3], 1.0])
     else:
         first_guess = jnp.array([jnp.log(plog[idx_fg][1]), plog[idx_fg][2], plog[idx_fg][3]])
-        A, b, Ea, R2adj = arrhenius_fit(k_plog, T_range, first_guess)
+        negative_activation = True if plog[idx_fg][3] < 0 else False
+        A, b, Ea, R2adj = arrhenius_fit(k_plog, T_range, negative_activation, first_guess)
         first_guess = jnp.array([plog[idx_fg][1], plog[idx_fg][2], plog[idx_fg][3]])
 
     return A, b, Ea, R2adj, first_guess
@@ -49,8 +51,10 @@ def compute_pressure_limits(plog: jnp.ndarray, T_range: jnp.ndarray, P_range: jn
     k0_fg = jnp.array([kinetic_constant_plog(plog, i, P_range[0]) for i in T_range])
     kInf_fg = jnp.array([kinetic_constant_plog(plog, i, P_range[-1]) for i in T_range])
 
-    A0_fg, b0_fg, Ea0_fg, R2adj0 = arrhenius_fit(k0_fg, T_range, None)
-    AInf_fg, bInf_fg, EaInf_fg, R2adjInf = arrhenius_fit(kInf_fg, T_range, None)
+    negative_activation = True if plog[0, 3] < 0 else False
+    A0_fg, b0_fg, Ea0_fg, R2adj0 = arrhenius_fit(k0_fg, T_range, negative_activation, None)
+    negative_activation = True if plog[-1, 3] < 0 else False
+    AInf_fg, bInf_fg, EaInf_fg, R2adjInf = arrhenius_fit(kInf_fg, T_range, negative_activation, None)
 
     fg = fg.at[0].set(A0_fg)
     fg = fg.at[1].set(b0_fg - 1)

@@ -1,5 +1,5 @@
-from jax import jit, lax, debug
 import jax.numpy as jnp
+from jax import jit
 from jax.scipy.optimize import minimize
 
 
@@ -47,7 +47,7 @@ def arrhenius_loss(params: jnp.ndarray, T_range: jnp.ndarray, ln_k0: jnp.ndarray
     return jnp.sum((ln_k0 - ln_k0_fit) ** 2)  # Sum of the squared errors
 
 
-def arrhenius_fit(k: jnp.ndarray, T_range: jnp.ndarray, first_guess=None):
+def arrhenius_fit(k: jnp.ndarray, T_range: jnp.ndarray, negative_activation: bool, first_guess=None):
     """
     Fitting Arrhenius law using JAX, this not jitted since optimize apparently is not compatible (TO BE verified).
 
@@ -63,7 +63,10 @@ def arrhenius_fit(k: jnp.ndarray, T_range: jnp.ndarray, first_guess=None):
 
     # First guess for the parameters to be used for optimization
     if first_guess is None:
-        initial_guess = jnp.array([ln_k0[0], 0.0, 10000.0])
+        if negative_activation is True:
+            initial_guess = jnp.array([ln_k0[0], 0.0, -10000.0])
+        else:
+            initial_guess = jnp.array([ln_k0[0], 0.0, 10000.0])
     else:
         initial_guess = first_guess
 
