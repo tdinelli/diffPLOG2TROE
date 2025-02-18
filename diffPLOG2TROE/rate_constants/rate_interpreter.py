@@ -16,13 +16,13 @@ def parse_rate_constant(rate_constant: Dict):
 
     parsers = {
         "arrhenius": lambda x: parse_arrhenius_parameters(x["rate-constant"]["coefficients"]),
+        "plog": lambda x: parse_plog(x["rate-constant"]["coefficients"]),
         "falloff": parse_falloff,
     }
 
     unsupported_types = {
         "cabr": "CABR",
         "3body": "3BODY",
-        "plog": "PLOG",
         "RPBR": "Reduced Pressure Based",
         "Extended-PLOG": "Extended PLOG",
         "Extended-FallOff": "Extended FallOff",
@@ -44,8 +44,17 @@ def parse_arrhenius_parameters(parameters: List[Float64]) -> Array:
     return jnp.array(parameters, dtype=jnp.float64)
 
 
-def parse_plog_parameters(parameters: List[List[Float64]]) -> Array:
-    return jnp.array(parameters, dtype=jnp.float64)
+def parse_plog(parameters: List[List[Float64]]) -> Tuple[Array, Array]:
+    pressure_levels = jnp.empty(len(parameters), dtype=jnp.float64)
+    rate_constants = jnp.empty((len(parameters), 3), dtype=jnp.float64)
+    for i, p_level in enumerate(parameters):
+        if len(p_level) != 4:
+            raise ValueError(
+                "Plog definition require four parameters [P, A, n, E], got {len(parameters)} parameters at level {i+1}"
+            )
+        pressure_levels.at[i].set(jnp.array(p_level[0], dtype=jnp.float64))
+        rate_constants.at[i].set(jnp.array(p_level[1:], dtype=jnp.float64))
+    return (pressure_levels, rate_constants)
 
 
 def parse_falloff(rate_constant: Dict) -> Union[Tuple[Array, Array, int], Tuple[Array, Array, Array, int]]:

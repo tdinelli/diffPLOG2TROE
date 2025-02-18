@@ -4,7 +4,7 @@ import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, Float64
 
-from ..rate_utils.rate_interpreter import parse_rate_constant
+from .rate_interpreter import parse_rate_constant
 
 
 class Arrhenius(eqx.Module):

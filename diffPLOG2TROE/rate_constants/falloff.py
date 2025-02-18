@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jax import lax
 from jaxtyping import Array, Float64
 
-from ..rate_utils.rate_interpreter import parse_rate_constant
+from .rate_interpreter import parse_rate_constant
 from .arrhenius import Arrhenius
 from .falloff_functions import sri, troe
 
