@@ -1,16 +1,16 @@
 # diffPLOG2TROE
 
-This repository provides a set of routines for managing Pressure Logarithmic (PLOG) reactions in
-chemical kinetic models using the CHEMKIN format. Many standard solvers, including OpenFOAM and
-older versions of CHEMKIN, do not natively support the PLOG formalism. To address this limitation,
-the code offers several methods for replacing and handling PLOG reactions, ensuring compatibility
-with these solvers and the CHEMKIN format. The implementation is written in Python, with most of the
-computations performed using JAX.
-
-Alternatives:
-- [PLOG_replace](https://universityofgalway.ie/combustionchemistrycentre/softwaredownloads/),
-developed at Galway university (never tested personally). Limited to the substitution of a plog with
-a single modified Arrhenius expression.
+<!-- This repository provides a set of routines for managing Pressure Logarithmic (PLOG) reactions in -->
+<!-- chemical kinetic models using the CHEMKIN format. Many standard solvers, including OpenFOAM and -->
+<!-- older versions of CHEMKIN, do not natively support the PLOG formalism. To address this limitation, -->
+<!-- the code offers several methods for replacing and handling PLOG reactions, ensuring compatibility -->
+<!-- with these solvers and the CHEMKIN format. The implementation is written in Python, with most of the -->
+<!-- computations performed using JAX. -->
+<!---->
+<!-- Alternatives: -->
+<!-- - [PLOG_replace](https://universityofgalway.ie/combustionchemistrycentre/softwaredownloads/), -->
+<!-- developed at Galway university (never tested personally). Limited to the substitution of a plog with -->
+<!-- a single modified Arrhenius expression. -->
 
 ## Install
 1. Clone this repository using `git`.
