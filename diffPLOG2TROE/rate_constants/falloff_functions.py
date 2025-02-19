@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 
 
-def lindemann(T: Union[Float64, Array], Pr: Union[Float64, Array], params: Array) -> Union[Float64, Array]:
+def lindemann(T: Union[Float64, Array]) -> Union[Float64, Array]:
     return jnp.ones_like(T, dtype=jnp.float64)
 
 

@@ -2,7 +2,7 @@ from typing import Dict, List, Union
 
 import equinox as eqx
 import jax.numpy as jnp
-from jax import debug, lax, vmap
+from jax import lax, vmap
 from jaxtyping import Array, Float64
 
 from .arrhenius import Arrhenius
@@ -14,8 +14,10 @@ class Plog(eqx.Module):
     p_levels: Array
     lnp_levels: Array
     number_of_pressure_levels: int
+    name: str
 
     def __init__(self, rate_constant: Dict) -> None:
+        self.name = rate_constant["name"]
         self.p_levels, k_levels = parse_rate_constant(rate_constant)
         self.lnp_levels = jnp.log(self.p_levels)
         self.k_levels = [
@@ -27,7 +29,7 @@ class Plog(eqx.Module):
     def _find_index(self, p_index: int, i: int, P: Float64) -> int:
         return lax.cond(P <= self.p_levels[i], lambda _: i, lambda _: p_index, None)
 
-    def _compute_k(self, T: Union[Float64, Array], idx: int) -> Array:
+    def _compute_k(self, T: Union[Float64, Array], idx: int) -> Union[Float64, Array]:
         """
         Helper function to compute kinetic constant for a specific index.
         Keep in mind the branch concept when reading this one in the future.
@@ -35,7 +37,7 @@ class Plog(eqx.Module):
         branches = [lambda i=i: self.k_levels[i].kinetic_constant(T) for i in range(self.number_of_pressure_levels)]
         return lax.switch(idx, branches)
 
-    def _intermediate_pressure_case(self, p_index: int, T: Union[Float64, Array], P: Float64):
+    def _intermediate_pressure_case(self, p_index: int, T: Union[Float64, Array], P: Float64) -> Union[Float64, Array]:
         k1 = self._compute_k(T, p_index - 1)
         k2 = self._compute_k(T, p_index)
         log_k1 = jnp.log(k1)
@@ -47,10 +49,10 @@ class Plog(eqx.Module):
             / (self.lnp_levels[p_index] - self.lnp_levels[p_index - 1])
         )
 
-    def _low_pressure_case(self, T: Union[Float64, Array]):
+    def _low_pressure_case(self, T: Union[Float64, Array]) -> Union[Float64, Array]:
         return self._compute_k(T, 0)
 
-    def _high_pressure_case(self, T: Union[Float64, Array]):
+    def _high_pressure_case(self, T: Union[Float64, Array]) -> Union[Float64, Array]:
         return self._compute_k(T, self.number_of_pressure_levels - 1)
 
     @eqx.filter_jit
@@ -76,5 +78,8 @@ class Plog(eqx.Module):
             vectorized_k = vmap(lambda p: self._single_P_kinetic_constant(T, p))
             return vectorized_k(P)
 
-    def __repr__(self) -> str:
-        return f"<PLOG:>"
+    def __str__(self) -> str:
+        str_obj = "{}          {}\t{}\t{}\n".format(self.name, 1, 0, 0)
+        for i in range(self.number_of_pressure_levels):
+            str_obj += " PLOG / {}\t{}\t{}\t{} /\n".format(self.p_levels[i], 1, 0, 0)
+        return str_obj

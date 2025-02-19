@@ -2,12 +2,12 @@ from typing import Dict, Union
 
 import equinox as eqx
 import jax.numpy as jnp
-from jax import lax
+from jax import lax, vmap
 from jaxtyping import Array, Float64
 
-from .rate_interpreter import parse_rate_constant
 from .arrhenius import Arrhenius
-from .falloff_functions import sri, troe
+from .falloff_functions import lindemann, sri, troe
+from .rate_interpreter import parse_rate_constant
 
 
 class FallOff(eqx.Module):
@@ -15,42 +15,48 @@ class FallOff(eqx.Module):
     lpl: Arrhenius
     falloff_type: int
     falloff_coefficients: Array
-    R_IDEAL_GAS = jnp.float64(0.08206)  # L⋅atm/(mol⋅K)
+    R_IDEAL_GAS = jnp.float64(0.08206)
 
     def __init__(self, rate_constant: Dict) -> None:
-        hpl, lpl, self.falloff_coefficients, self.falloff_type = parse_rate_constant(rate_constant)
+        hpl_coeff, lpl_coeff, self.falloff_coefficients, self.falloff_type = parse_rate_constant(rate_constant)
         self.hpl = Arrhenius(
-            {"name": rate_constant["name"], "type": "arrhenius", "rate-constant": {"coefficients": hpl}}
+            {"name": rate_constant["name"], "type": "arrhenius", "rate-constant": {"coefficients": hpl_coeff}}
         )
         self.lpl = Arrhenius(
-            {"name": rate_constant["name"], "type": "arrhenius", "rate-constant": {"coefficients": lpl}}
+            {"name": rate_constant["name"], "type": "arrhenius", "rate-constant": {"coefficients": lpl_coeff}}
         )
 
-    @staticmethod
-    def _calculate_concentration(
-        P: Union[Float64, Array], T: Union[Float64, Array], R: Float64 = jnp.float64(0.08206)
-    ) -> Union[Float64, Array]:
-        """Calculate concentration in mol/cm³ from pressure (atm) and temperature (K)."""
-        return (P / (R * T)) * jnp.float64(0.001)  # Convert L -> cm³
+    def _calculate_concentration(self, P: Float64, T: Union[Float64, Array]) -> Union[Float64, Array]:
+        return (P / (self.R_IDEAL_GAS * T)) * jnp.float64(0.001)
 
-    def kinetic_constant(self, T: Union[Float64, Array], P: Union[Float64, Array]) -> Union[Float64, Array]:
-        k_hpl = self.hpl.kinetic_constant(T)
-        k_lpl = self.lpl.kinetic_constant(T)
-        M = self._calculate_concentration(P, T, self.R_IDEAL_GAS)
-        Pr = k_lpl * M / k_hpl
+    def _compute_falloff_factor(self, T: Union[Float64, Array], Pr: Union[Float64, Array]) -> Union[Float64, Array]:
         operand = (T, Pr, self.falloff_coefficients)
-        F = lax.cond(
-            self.falloff_type == 1,
-            lambda x: troe(*x),
-            lambda x: lax.cond(
-                self.falloff_type == 2,
-                lambda y: sri(*y),
-                lambda _: jnp.ones_like(Pr, dtype=jnp.float64),
-                x,
-            ),
+        return lax.switch(
+            self.falloff_type,
+            [
+                lambda _: lindemann(T),
+                lambda x: troe(*x),
+                lambda x: sri(*x),
+            ],
             operand,
         )
+
+    @eqx.filter_jit
+    def _single_P_kinetic_constant(self, T: Union[Float64, Array], P: Float64) -> Union[Float64, Array]:
+        k_hpl = self.hpl.kinetic_constant(T)
+        k_lpl = self.lpl.kinetic_constant(T)
+        M = self._calculate_concentration(P, T)
+        Pr = k_lpl * M / k_hpl
+        F = self._compute_falloff_factor(T, Pr)
         return k_hpl * (Pr / (1 + Pr)) * F
 
-    def __repr__(self) -> str:
-        return f"<FallOff: type={self.falloff_type}, coeffs={self.falloff_coefficients}>"
+    @eqx.filter_jit
+    def kinetic_constant(self, T: Union[Float64, Array], P: Union[Float64, Array]) -> Union[Float64, Array]:
+        if jnp.isscalar(P) or P.ndim == 0:
+            return self._single_P_kinetic_constant(T, P)
+        else:
+            vectorized_k = vmap(lambda p: self._single_P_kinetic_constant(T, p))
+            return vectorized_k(P)
+
+    def __str__(self) -> str:
+        return f"<FallOff>"
