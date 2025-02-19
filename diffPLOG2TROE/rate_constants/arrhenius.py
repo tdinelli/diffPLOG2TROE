@@ -19,6 +19,7 @@ class Arrhenius(eqx.Module):
         self.beta = parameters[1]
         self.EaR = parameters[2] / self.R
 
+    @eqx.filter_jit
     def kinetic_constant(self, T: Union[Float64, Array]) -> Union[Float64, Array]:
         return jnp.exp(self.lnA + self.beta * jnp.log(T) - self.EaR / T)
 

@@ -34,21 +34,18 @@ class FallOff(eqx.Module):
         return (P / (R * T)) * jnp.float64(0.001)  # Convert L -> cm³
 
     def kinetic_constant(self, T: Union[Float64, Array], P: Union[Float64, Array]) -> Union[Float64, Array]:
-        is_troe = self.falloff_type == 1
-        is_sri = self.falloff_type == 2
         k_hpl = self.hpl.kinetic_constant(T)
         k_lpl = self.lpl.kinetic_constant(T)
         M = self._calculate_concentration(P, T, self.R_IDEAL_GAS)
         Pr = k_lpl * M / k_hpl
         operand = (T, Pr, self.falloff_coefficients)
         F = lax.cond(
-            is_troe,
+            self.falloff_type == 1,
             lambda x: troe(*x),
             lambda x: lax.cond(
-                is_sri,
+                self.falloff_type == 2,
                 lambda y: sri(*y),
-                # lambda y: lindemann(*y),
-                lambda _: jnp.ones_like(T, dtype=jnp.float64),
+                lambda _: jnp.ones_like(Pr, dtype=jnp.float64),
                 x,
             ),
             operand,
