@@ -45,16 +45,16 @@ def parse_arrhenius_parameters(parameters: List[Float64]) -> Array:
 
 
 def parse_plog(parameters: List[List[Float64]]) -> Tuple[Array, Array]:
-    pressure_levels = jnp.empty(len(parameters), dtype=jnp.float64)
-    rate_constants = jnp.empty((len(parameters), 3), dtype=jnp.float64)
-    for i, p_level in enumerate(parameters):
+    pressure_levels = []
+    rate_constants = []
+    for p_level in parameters:
         if len(p_level) != 4:
             raise ValueError(
                 "Plog definition require four parameters [P, A, n, E], got {len(parameters)} parameters at level {i+1}"
             )
-        pressure_levels.at[i].set(jnp.array(p_level[0], dtype=jnp.float64))
-        rate_constants.at[i].set(jnp.array(p_level[1:], dtype=jnp.float64))
-    return (pressure_levels, rate_constants)
+        pressure_levels.append(p_level[0])
+        rate_constants.append(p_level[1:])
+    return (jnp.array(pressure_levels, dtype=jnp.float64), jnp.array(rate_constants, dtype=jnp.float64))
 
 
 def parse_falloff(rate_constant: Dict) -> Union[Tuple[Array, Array, int], Tuple[Array, Array, Array, int]]:
