@@ -16,8 +16,10 @@ class FallOff(eqx.Module):
     falloff_type: int
     falloff_coefficients: Array
     R_IDEAL_GAS = jnp.float64(0.08206)
+    name: str
 
     def __init__(self, rate_constant: Dict) -> None:
+        self.name = rate_constant["name"]
         hpl_coeff, lpl_coeff, self.falloff_coefficients, self.falloff_type = parse_rate_constant(rate_constant)
         self.hpl = Arrhenius(
             {"name": rate_constant["name"], "type": "arrhenius", "rate-constant": {"coefficients": hpl_coeff}}
@@ -32,7 +34,7 @@ class FallOff(eqx.Module):
     def _compute_falloff_factor(self, T: Union[Float64, Array], Pr: Union[Float64, Array]) -> Union[Float64, Array]:
         operand = (T, Pr, self.falloff_coefficients)
         return lax.switch(
-            self.falloff_type,
+            self.falloff_type, # 0: Lindemann, 1: Troe, 2: Sri
             [
                 lambda _: lindemann(T),
                 lambda x: troe(*x),

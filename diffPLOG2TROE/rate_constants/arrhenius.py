@@ -8,10 +8,10 @@ from .rate_interpreter import parse_rate_constant
 
 
 class Arrhenius(eqx.Module):
-    R = jnp.float64(1.987)
     lnA: Float64
     beta: Float64
     EaR: Float64
+    R = jnp.float64(1.987)
     name: str
 
     def __init__(self, rate_constant: Dict) -> None:
