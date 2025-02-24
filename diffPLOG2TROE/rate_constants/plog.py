@@ -2,7 +2,7 @@ from typing import Dict, List, Union
 
 import equinox as eqx
 import jax.numpy as jnp
-from jax import lax, vmap, debug
+from jax import lax, vmap
 from jaxtyping import Array, Float64
 
 from .arrhenius import Arrhenius
