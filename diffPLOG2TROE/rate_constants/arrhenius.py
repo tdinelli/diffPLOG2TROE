@@ -26,4 +26,4 @@ class Arrhenius(eqx.Module):
         return jnp.exp(self.lnA + self.beta * jnp.log(T) - self.EaR / T)
 
     def __str__(self) -> str:
-        return "{}    {:.3E}\t{}\t{:.3E}".format(self.name, jnp.exp(self.lnA), self.beta, self.EaR * self.R)
+        return "{}\t\t{:.5e} {:.5e} {:.5e}".format(self.name, jnp.exp(self.lnA), self.beta, self.EaR * self.R)

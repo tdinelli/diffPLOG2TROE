@@ -34,7 +34,7 @@ class FallOff(eqx.Module):
     def _compute_falloff_factor(self, T: Union[Float64, Array], Pr: Union[Float64, Array]) -> Union[Float64, Array]:
         operand = (T, Pr, self.falloff_coefficients)
         return lax.switch(
-            self.falloff_type, # 0: Lindemann, 1: Troe, 2: Sri
+            self.falloff_type,  # 0: Lindemann, 1: Troe, 2: Sri
             [
                 lambda _: lindemann(T),
                 lambda x: troe(*x),
@@ -61,4 +61,16 @@ class FallOff(eqx.Module):
             return vectorized_k(P)
 
     def __str__(self) -> str:
-        return f"<FallOff>"
+        representation = "{}\t\t{:.5e} {:.5f} {:.5e}\n".format(
+            self.name, jnp.exp(self.hpl.lnA), self.hpl.beta, self.hpl.EaR * 1.982
+        )
+        representation += " LOW  / \t\t{:.5e} {:.5f} {:.5e} /\n".format(
+            jnp.exp(self.lpl.lnA), self.lpl.beta, self.lpl.EaR * 1.982
+        )
+        representation += " TROE / {:.5e} {:.5e} {:.5e} {:.5e} /".format(
+            self.falloff_coefficients[0],
+            self.falloff_coefficients[1],
+            self.falloff_coefficients[2],
+            self.falloff_coefficients[3],
+        )
+        return representation
