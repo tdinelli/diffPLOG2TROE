@@ -6,7 +6,7 @@ import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, Float64
 
-from .optimizers import NLOptWrapper, OptaxWrapper
+from .optimization import NLOptWrapper, OptaxWrapper
 from .physical_constants import PhysicalConstants as constants
 from .rate_constants import FallOff, Plog
 
@@ -20,6 +20,7 @@ class PlogRefitter(eqx.Module):
     k_plog: Array
     logger: logging.Logger
     initial_values: Any
+    loss_name: str
 
     def __init__(
         self,
@@ -29,13 +30,18 @@ class PlogRefitter(eqx.Module):
         n_T: int = 100,
         n_P: int = 100,
         param_config: Optional[Dict[str, Union[bool, float, Dict[str, Any]]]] = None,
-        log_dir: Optional[str] = None,
+        loss_name: str = "log",
+        log_name: str = "refitter.log",
     ) -> None:
-        self.logger = self._setup_logging(log_dir)
+        self.logger = self._setup_logging(log_name)
         self.logger.info("=" * 89)
         self.logger.info("Plog 2 TROE refitter")
         self.logger.info(f" Temperature range [K]: {T_range}")
         self.logger.info(f" Pressure range [atm]: {P_range}")
+
+        # Set up loss function
+        self.loss_name = loss_name
+        self.logger.info(f" Loss function: {self.loss_name}")
 
         # Generate training data
         self.plog = Plog(plog_dict)
@@ -161,23 +167,23 @@ class PlogRefitter(eqx.Module):
         return params
 
     @eqx.filter_jit
-    def loss(self, params: Array, loss_type: str = "log") -> Float64:
+    def loss(self, params: Array) -> Float64:
         """Compute the loss between PLOG and fitted Troe rates."""
         falloff_dict = self._create_falloff_dict(self.plog.name, params)
         falloff = FallOff(falloff_dict)
         k_troe = falloff.kinetic_constant(self.T_range, self.P_range)
 
-        if loss_type == "relative-ratio":
+        if self.loss_name == "relative-ratio":
             squared_errors = jnp.sum((1 - (k_troe / self.k_plog)) ** 2)
             loss = jnp.sqrt(squared_errors)
-        elif loss_type == "log":
+        elif self.loss_name == "log":
             log_k_troe = jnp.log(k_troe + 1)
             log_k_plog = jnp.log(self.k_plog + 1)
             loss = jnp.sqrt(jnp.mean((log_k_troe - log_k_plog) ** 2))
-        elif loss_type == "max":
+        elif self.loss_name == "max":
             squared_errors = (1 - (k_troe / self.k_plog)) ** 2
             loss = jnp.max(squared_errors)
-        elif loss_type == "rel-abs":
+        elif self.loss_name == "rel-abs":
             rel_error = jnp.abs(1 - (k_troe / self.k_plog))
             loss = jnp.mean(rel_error**2)
 
@@ -187,11 +193,9 @@ class PlogRefitter(eqx.Module):
         self,
         nlopt_options: Optional[Dict[str, Any]] = None,
         optax_options: Optional[Dict[str, Any]] = None,
-        loss_type: str = "log",
     ) -> Dict[str, Any]:
-        self.logger.info("\n")
         self.logger.info("=" * 89)
-        self.logger.info("Starting hybrid optimization")
+        self.logger.info("Starting optimization")
 
         active_indices = jnp.where(self.param_mask)[0]
         base_params = self.estimate_initial_params()
@@ -248,7 +252,7 @@ class PlogRefitter(eqx.Module):
         }
 
     @staticmethod
-    def _setup_logging(log_dir: Optional[str] = None) -> logging.Logger:
+    def _setup_logging(log_name: str) -> logging.Logger:
         logger = logging.getLogger("PlogRefitter")
         logger.setLevel(logging.INFO)
         logger.handlers.clear()
@@ -259,9 +263,9 @@ class PlogRefitter(eqx.Module):
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
 
-        log_path = Path(log_dir) if log_dir else Path.cwd()
+        log_path = Path.cwd()
         log_path.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(log_path / "plog_refitter.log", mode="w")
+        file_handler = logging.FileHandler(log_path / log_name, mode="w")
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 

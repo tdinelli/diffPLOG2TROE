@@ -90,17 +90,6 @@ class OptaxWrapper:
             )
         elif self.algorithm == "trust_region":
             raise ValueError("Trust region not implemented yet!")
-            # self.optimizer_config.update(
-            #     {
-            #         "initial_radius": opt_options.get("initial_radius", 1.0),
-            #         "max_radius": opt_options.get("max_radius", 100.0),
-            #         "eta1": opt_options.get("eta1", 0.25),
-            #         "eta2": opt_options.get("eta2", 0.75),
-            #         "gamma1": opt_options.get("gamma1", 0.5),
-            #         "gamma2": opt_options.get("gamma2", 2.0),
-            #     }
-            # )
-            # self._log("Warning: Trust region method is not yet implemented")
         else:
             raise ValueError(f"Unknown algorithm {self.algorithm}")
 
@@ -156,20 +145,16 @@ class OptaxWrapper:
         Returns:
             Dictionary with optimization results
         """
-        # Reset state for this optimization run
         self.step = 0
         self.best_loss = jnp.float64("inf")
         self.best_params = base_params.copy()
         self.steps_without_improvement = 0
 
-        # Extract active parameters to optimize
         active_params = base_params[active_indices]
 
-        # Create optimizer
         optimizer = self._create_optax_optimizer()
         opt_state = optimizer.init(active_params)
 
-        # Create a loss wrapper function that works with active parameters
         def loss_wrapper(active_params):
             """Compute loss for active parameters by updating the full parameter array"""
             full_params = base_params.at[active_indices].set(active_params)
@@ -214,9 +199,7 @@ class OptaxWrapper:
 
             # Check early stopping conditions
             if self.steps_without_improvement >= self.early_stop_patience:
-                self._log(
-                    f"Early stopping triggered after {step} steps, {self.steps_without_improvement} without improvement."
-                )
+                self._log(f"Early stopping triggered after {step} steps")
                 break
 
             if grad_norm < self.early_stop_delta:
