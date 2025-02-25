@@ -8,7 +8,7 @@ from jaxtyping import Array, Float64
 from .arrhenius import Arrhenius
 from .falloff_functions import lindemann, sri, troe
 from .rate_interpreter import parse_rate_constant
-from ..physical_constants import PhysicalConstants
+from ..physical_constants import PhysicalConstants as constants
 
 
 class FallOff(eqx.Module):
@@ -29,7 +29,7 @@ class FallOff(eqx.Module):
         )
 
     def _calculate_concentration(self, P: Float64, T: Union[Float64, Array]) -> Union[Float64, Array]:
-        return (P / (PhysicalConstants.R_L_atm_K_mol * T)) * jnp.float64(0.001)
+        return (P / (constants.R_L_atm_K_mol * T)) * jnp.float64(0.001)
 
     def _compute_falloff_factor(self, T: Union[Float64, Array], Pr: Union[Float64, Array]) -> Union[Float64, Array]:
         operand = (T, Pr, self.falloff_coefficients)
@@ -62,15 +62,26 @@ class FallOff(eqx.Module):
 
     def __str__(self) -> str:
         representation = "{}\t\t{:.5e} {:.5f} {:.5e}\n".format(
-            self.name, jnp.exp(self.hpl.lnA), self.hpl.n, self.hpl.EaR * PhysicalConstants.R_cal_mol
+            self.name, jnp.exp(self.hpl.lnA), self.hpl.n, self.hpl.EaR * constants.R_cal_mol
         )
-        representation += " LOW  / \t\t{:.5e} {:.5f} {:.5e} /\n".format(
-            jnp.exp(self.lpl.lnA), self.lpl.n, self.lpl.EaR * PhysicalConstants.R_cal_mol
+        representation += " LOW / \t\t{:.5e} {:.5f} {:.5e} /\n".format(
+            jnp.exp(self.lpl.lnA), self.lpl.n, self.lpl.EaR * constants.R_cal_mol
         )
-        representation += " TROE / {:.5e} {:.5e} {:.5e} {:.5e} /".format(
-            self.falloff_coefficients[0],
-            self.falloff_coefficients[1],
-            self.falloff_coefficients[2],
-            self.falloff_coefficients[3],
-        )
+        if self.falloff_type == 1:
+            representation += " TROE / {:.5e} {:.5e} {:.5e} {:.5e} /".format(
+                self.falloff_coefficients[0],
+                self.falloff_coefficients[1],
+                self.falloff_coefficients[2],
+                self.falloff_coefficients[3],
+            )
+        elif self.falloff_type == 2:
+            representation += " SRI / {:.5e} {:.5e} {:.5e} {:.5e} {:.5e} /".format(
+                self.falloff_coefficients[0],
+                self.falloff_coefficients[1],
+                self.falloff_coefficients[2],
+                self.falloff_coefficients[3],
+                self.falloff_coefficients[4],
+            )
+        else:
+            representation += ""
         return representation

@@ -7,7 +7,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 
 from .optimizers import NLOptWrapper, OptaxWrapper
-from .physical_constants import PhysicalConstants
+from .physical_constants import PhysicalConstants as constants
 from .rate_constants import FallOff, Plog
 
 
@@ -36,9 +36,9 @@ class PlogRefitter(eqx.Module):
         self.logger.info("Plog 2 TROE refitter")
         self.logger.info(f" Temperature range [K]: {T_range}")
         self.logger.info(f" Pressure range [atm]: {P_range}")
-        self.plog = Plog(plog_dict)
 
         # Generate training data
+        self.plog = Plog(plog_dict)
         self.T_range = jnp.linspace(T_range[0], T_range[1], n_T)
         self.P_range = jnp.logspace(jnp.log10(P_range[0]), jnp.log10(P_range[1]), n_P)
         self.k_plog = self.plog.kinetic_constant(self.T_range, self.P_range)
@@ -74,7 +74,7 @@ class PlogRefitter(eqx.Module):
             else:
                 self.logger.info(f"  {name}: fixed at {self.initial_values[i]:.5e}")
 
-    def fit_arrhenius(self, k_values: Array) -> Tuple[Float64, Float64, Float64]:
+    def _fit_arrhenius(self, k_values: Array) -> Tuple[Float64, Float64, Float64]:
         log_k = jnp.log(k_values)
         log_T = jnp.log(self.T_range)
         inv_T = 1.0 / self.T_range
@@ -89,12 +89,12 @@ class PlogRefitter(eqx.Module):
 
         # Low pressure limit estimation
         if any(not self.initial_values[i] for i in range(3)):  # If any low-pressure params need estimation
-            lnA_low, n_low, EaR_low = self.fit_arrhenius(self.k_plog[0])
+            lnA_low, n_low, EaR_low = self._fit_arrhenius(self.k_plog[0])
             params_dict.update(
                 {
                     "lnA_low": lnA_low if self.param_mask[0] else jnp.log(self.initial_values[0]),
                     "n_low": n_low if self.param_mask[1] else self.initial_values[1],
-                    "EaR_low": EaR_low if self.param_mask[2] else self.initial_values[2] / PhysicalConstants.R_cal_mol,
+                    "EaR_low": EaR_low if self.param_mask[2] else self.initial_values[2] / constants.R_cal_mol,
                 }
             )
         else:  # All low-pressure params are fixed
@@ -102,20 +102,18 @@ class PlogRefitter(eqx.Module):
                 {
                     "lnA_low": jnp.log(self.initial_values[0]),
                     "n_low": self.initial_values[1],
-                    "EaR_low": self.initial_values[2] / PhysicalConstants.R_cal_mol,
+                    "EaR_low": self.initial_values[2] / constants.R_cal_mol,
                 }
             )
 
         # High pressure limit estimation
         if any(not self.initial_values[i] for i in range(3, 6)):  # If any high-pressure params need estimation
-            lnA_high, n_high, EaR_high = self.fit_arrhenius(self.k_plog[-1])
+            lnA_high, n_high, EaR_high = self._fit_arrhenius(self.k_plog[-1])
             params_dict.update(
                 {
                     "lnA_high": lnA_high if self.param_mask[3] else jnp.log(self.initial_values[3]),
                     "n_high": n_high if self.param_mask[4] else self.initial_values[4],
-                    "EaR_high": (
-                        EaR_high if self.param_mask[5] else self.initial_values[5] / PhysicalConstants.R_cal_mol
-                    ),
+                    "EaR_high": EaR_high if self.param_mask[5] else self.initial_values[5] / constants.R_cal_mol,
                 }
             )
         else:  # All high-pressure params are fixed
@@ -123,7 +121,7 @@ class PlogRefitter(eqx.Module):
                 {
                     "lnA_high": jnp.log(self.initial_values[3]),
                     "n_high": self.initial_values[4],
-                    "EaR_high": self.initial_values[5] / PhysicalConstants.R_cal_mol,
+                    "EaR_high": self.initial_values[5] / constants.R_cal_mol,
                 }
             )
 
@@ -142,14 +140,14 @@ class PlogRefitter(eqx.Module):
             "  High pressure limit (A, n, Ea): {:.3e}, {:.3f}, {:.3e}".format(
                 jnp.exp(params_dict["lnA_high"]),
                 params_dict["n_high"],
-                params_dict["EaR_high"] * PhysicalConstants.R_cal_mol,
+                params_dict["EaR_high"] * constants.R_cal_mol,
             )
         )
         self.logger.info(
             "  Low pressure limit (A, n, Ea): {:.3e}, {:.3f}, {:.3e}".format(
                 jnp.exp(params_dict["lnA_low"]),
                 params_dict["n_low"],
-                params_dict["EaR_low"] * PhysicalConstants.R_cal_mol,
+                params_dict["EaR_low"] * constants.R_cal_mol,
             )
         )
         self.logger.info(
@@ -201,10 +199,10 @@ class PlogRefitter(eqx.Module):
             [
                 base_params[0] - 10,
                 base_params[1] - 5,
-                base_params[2] / PhysicalConstants.R_cal_mol - 30000,
+                base_params[2] / constants.R_cal_mol - 30000,
                 base_params[3] - 10,
                 base_params[4] - 5,
-                base_params[5] / PhysicalConstants.R_cal_mol - 30000,
+                base_params[5] / constants.R_cal_mol - 30000,
                 0.0,
                 0.0,
                 0.0,
@@ -215,10 +213,10 @@ class PlogRefitter(eqx.Module):
             [
                 base_params[0] + 10,
                 base_params[1] + 5,
-                base_params[2] / PhysicalConstants.R_cal_mol + 30000,
+                base_params[2] / constants.R_cal_mol + 30000,
                 base_params[3] + 10,
                 base_params[4] + 5,
-                base_params[5] / PhysicalConstants.R_cal_mol + 30000,
+                base_params[5] / constants.R_cal_mol + 30000,
                 1.0,
                 1e5,
                 1e30,
@@ -243,8 +241,8 @@ class PlogRefitter(eqx.Module):
             "type": "falloff",
             "falloff-type": "troe",
             "rate-constant": {
-                "lpl-coefficients": [jnp.exp(params[0]), params[1], params[2] * PhysicalConstants.R_cal_mol],
-                "hpl-coefficients": [jnp.exp(params[3]), params[4], params[5] * PhysicalConstants.R_cal_mol],
+                "lpl-coefficients": [jnp.exp(params[0]), params[1], params[2] * constants.R_cal_mol],
+                "hpl-coefficients": [jnp.exp(params[3]), params[4], params[5] * constants.R_cal_mol],
                 "falloff-coefficients": [params[6], params[7], params[8], params[9]],
             },
         }

@@ -1,5 +1,5 @@
 from enum import IntEnum
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple
 
 import jax.numpy as jnp
 from jaxtyping import Array, Float64
@@ -57,12 +57,12 @@ def parse_plog(parameters: List[List[Float64]]) -> Tuple[Array, Array]:
     return (jnp.array(pressure_levels, dtype=jnp.float64), jnp.array(rate_constants, dtype=jnp.float64))
 
 
-def parse_falloff(rate_constant: Dict) -> Union[Tuple[Array, Array, int], Tuple[Array, Array, Array, int]]:
-    k_lpl = parse_arrhenius_parameters(rate_constant["rate-constant"]["lpl-coefficients"])
-    k_hpl = parse_arrhenius_parameters(rate_constant["rate-constant"]["hpl-coefficients"])
+def parse_falloff(rate_constant: Dict) -> Tuple[Array, Array, Array, int]:
+    lpl_coefficients = parse_arrhenius_parameters(rate_constant["rate-constant"]["lpl-coefficients"])
+    hpl_coefficients = parse_arrhenius_parameters(rate_constant["rate-constant"]["hpl-coefficients"])
 
     if rate_constant["falloff-type"] == "lindemann":
-        return (k_hpl, k_lpl, FittingType.lindemann.value)
+        return (hpl_coefficients, lpl_coefficients, jnp.empty(5), FittingType.lindemann.value)
 
     params = rate_constant["rate-constant"]["falloff-coefficients"]
 
@@ -77,21 +77,21 @@ def parse_falloff(rate_constant: Dict) -> Union[Tuple[Array, Array, int], Tuple[
 
     type_value = FittingType[rate_constant["falloff-type"]].value
 
-    return (k_hpl, k_lpl, params, type_value)
+    return (hpl_coefficients, lpl_coefficients, params, type_value)
 
 
 # def parse_cabr(rate_constant: Dict) -> Tuple[Array, int]:
-#     k_lpl, k_hpl = parse_arrhenius_parameters(rate_constant["parameters"])
+#     lpl_coefficients, hpl_coefficients = parse_arrhenius_parameters(rate_constant["parameters"])
 #     fitting_type = rate_constant["fitting_type"]
 #
 #     if fitting_type == "Lindemann":
 #         return (
-#             create_falloff_array(k_hpl, k_lpl, swap_order=True),
+#             create_falloff_array(hpl_coefficients, lpl_coefficients, swap_order=True),
 #             FittingType.lindemann.value,
 #         )
 #
 #     params, type_value = parse_fitting_params(rate_constant, fitting_type)
-#     return create_falloff_array(k_hpl, k_lpl, params, swap_order=True), type_value
+#     return create_falloff_array(hpl_coefficients, lpl_coefficients, params, swap_order=True), type_value
 #
 #
 # def parse_threebody(rate_constant: Dict) -> Array:

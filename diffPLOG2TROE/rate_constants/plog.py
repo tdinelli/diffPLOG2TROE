@@ -83,7 +83,7 @@ class Plog(eqx.Module):
         str_obj = "{}\t\t{:.5e} {:.5f} {:.5e}\n".format(self.name, 0.0, 0.0, 0.0)
         for i in range(self.number_of_pressure_levels):
             arrhenius = self.k_levels[i]
-            str_obj += " PLOG / {:.5e} {:.5f} {:.5e} {:.5e} /\n".format(
+            str_obj += " PLOG / {:.5e}\t{:.5e} {:.5f} {:.5e} /\n".format(
                 self.p_levels[i], jnp.exp(arrhenius.lnA), arrhenius.n, arrhenius.EaR * constants.R_cal_mol
             )
         return str_obj

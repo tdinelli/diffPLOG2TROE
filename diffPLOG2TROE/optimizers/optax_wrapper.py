@@ -1,122 +1,161 @@
 from typing import Any, Callable, Dict, Union
 
-import jax
 import jax.numpy as jnp
 import optax
-from jax import value_and_grad
-from jaxtyping import Array
+from jax import jit, value_and_grad
+from jaxtyping import Array, Float64
 
 
 class OptaxWrapper:
-    """Wrapper around Optax optimizers."""
+    """
+    Wrapper around optimization algorithms with a unified interface.
 
-    def __init__(
-        self,
-        optax_options: Dict[str, Any],
-        logger=None,
-    ) -> None:
-        self.algorithm = optax_options["algorithm"]
-        self.max_steps = optax_options["max_steps"]
-        self.early_stop_patience = optax_options["patience"]
-        self.early_stop_delta = optax_options["ftol"]
-        self.clip_norm = optax_options["clip_norm"] or 2
-        self.log_interval = optax_options["steps_file"]
+    This class provides a common interface to various optimizers including:
+    - Standard Optax optimizers (Adam, AdaBelief, SGD)
+    - Quasi-Newton methods (L-BFGS)
+    - Trust region methods (planned for future implementation)
+
+    Attributes:
+        algorithm (str): Name of the optimization algorithm to use
+        max_steps (int): Maximum number of optimization steps
+        early_stop_patience (int): Number of steps without improvement before early stopping
+        early_stop_delta (float): Minimum improvement threshold to reset patience counter
+        log_interval (int): Frequency of logging optimization progress
+        learning_rate (float): Base learning rate for optimizers
+    """
+
+    def __init__(self, opt_options: Dict[str, Any], logger: Any = None) -> None:
+        """
+        Initialize optimizer wrapper with the given options.
+
+        Args:
+            opt_options: Dictionary containing optimization configuration
+            logger: Optional logger instance for recording progress
+
+        Configuration options:
+            Common options:
+              - algorithm: Optimization algorithm name ('adam', 'sgd', 'adabelief', 'lbfgs', etc.)
+              - max_steps: Maximum number of optimization steps
+              - patience: Steps without improvement before early stopping
+              - ftol: Tolerance for improvement in loss value
+              - steps_file: Interval for logging progress
+              - learning_rate: Base learning rate
+              - clip_norm: Gradient norm clipping threshold (for applicable algorithms)
+
+            For gradient-based optimizers (adam, sgd, adabelief):
+              - use_scheduler: Whether to use learning rate scheduling
+              - schedule_type: Type of schedule ('cosine', 'exponential', 'linear')
+              - warmup_steps: Steps for warmup phase
+              - decay_steps: Steps for decay phase
+              - peak_value: Maximum learning rate
+              - end_value: Final learning rate
+              - init_value: Initial learning rate (for warmup)
+
+            For L-BFGS:
+              - history_size: Number of past iterations to store
+              - line_search: Line search method ('zoom', 'strong_wolfe', etc.)
+        """
+        # Extract base configuration
+        self.algorithm = opt_options["algorithm"]
+        self.max_steps = opt_options["max_steps"]
+        self.early_stop_patience = opt_options.get("patience", 10)
+        self.early_stop_delta = opt_options.get("ftol", 1e-6)
+        self.clip_norm = opt_options.get("clip_norm", 2.0)  # Not used yet
+        self.log_interval = opt_options.get("steps_file", 100)
         self.logger = logger
+        self.learning_rate = opt_options.get("learning_rate", 1e-3)
 
-        self.learning_rate = optax_options["learning_rate"]
-        self.use_scheduler = optax_options.get("use_scheduler", False)
+        # Optimizer-specific configuration
+        self.optimizer_config = {}
 
-        if self.use_scheduler:
-            self.schedule_type = optax_options.get("schedule_type", "cosine")
-            self.warmup_steps = optax_options.get("warmup_steps", 1000)
-            self.decay_steps = optax_options.get("decay_steps", 10000)
-            self.peak_value = optax_options.get("peak_value", self.learning_rate)
-            self.end_value = optax_options.get("end_value", self.learning_rate)
-            self.init_value = optax_options.get("init_value", 0.0)
+        # Configure first-order gradient-based methods (Adam, SGD, AdaBelief)
+        if self.algorithm in ["adam", "adabelief", "sgd"]:
+            self.optimizer_config.update(
+                {
+                    "use_scheduler": opt_options.get("use_scheduler", False),
+                    "schedule_type": opt_options.get("schedule_type", "cosine"),
+                    "warmup_steps": opt_options.get("warmup_steps", 1000),
+                    "decay_steps": opt_options.get("decay_steps", 10000),
+                    "peak_value": opt_options.get("peak_value", self.learning_rate),
+                    "end_value": opt_options.get("end_value", self.learning_rate / 100),
+                    "init_value": opt_options.get("init_value", 0.0),
+                }
+            )
+        elif self.algorithm == "lbfgs":
+            self.optimizer_config.update(
+                {
+                    "history_size": opt_options.get("history_size", 10),
+                    "line_search": opt_options.get("line_search", "zoom"),
+                }
+            )
+        elif self.algorithm == "trust_region":
+            raise ValueError("Trust region not implemented yet!")
+            # self.optimizer_config.update(
+            #     {
+            #         "initial_radius": opt_options.get("initial_radius", 1.0),
+            #         "max_radius": opt_options.get("max_radius", 100.0),
+            #         "eta1": opt_options.get("eta1", 0.25),
+            #         "eta2": opt_options.get("eta2", 0.75),
+            #         "gamma1": opt_options.get("gamma1", 0.5),
+            #         "gamma2": opt_options.get("gamma2", 2.0),
+            #     }
+            # )
+            # self._log("Warning: Trust region method is not yet implemented")
+        else:
+            raise ValueError(f"Unknown algorithm {self.algorithm}")
 
         # Runtime state
         self.step = 0
-        self.best_loss = float("inf")
+        self.best_loss = jnp.float64("inf")
         self.best_params = None
         self.steps_without_improvement = 0
 
-    def _log(self, message: str) -> None:
-        """Helper method to log messages"""
-        if self.logger:
-            self.logger.info(message)
+    def _create_optax_optimizer(self) -> optax.GradientTransformation:
+        """
+        Create an Optax optimizer based on configuration.
+
+        Returns:
+            Optax optimizer instance
+        """
+        # Handle learning rate scheduling for applicable optimizers
+        if self.algorithm in ["adam", "adabelief", "sgd"] and self.optimizer_config["use_scheduler"]:
+            lr = self._create_learning_rate_schedule()
         else:
-            print(message)
+            lr = self.learning_rate
 
-    def _create_optimizer(self) -> optax.GradientTransformation:
-        """Create Optax optimizer based on configuration"""
-        lr = self._create_learning_rate_schedule()
-
+        # Create optimizer based on algorithm
         if self.algorithm == "adam":
             optimizer = optax.adam(learning_rate=lr)
         elif self.algorithm == "adabelief":
             optimizer = optax.adabelief(learning_rate=lr)
         elif self.algorithm == "sgd":
             optimizer = optax.sgd(learning_rate=lr)
+        elif self.algorithm == "lbfgs":
+            optimizer = optax.lbfgs(learning_rate=lr)
         else:
             raise ValueError(f"Unsupported optimizer: {self.algorithm}")
 
-        # Add gradient clipping if requested
-        if self.clip_norm > 0:
-            optimizer = optax.chain(
-                optax.clip_by_global_norm(self.clip_norm),
-                optimizer,
-            )
+        # Add gradient clipping if requested (for applicable algorithms) not yet implemented
+        # if self.clip_norm > 0 and self.algorithm not in ["lbfgs"]:
+        #     optimizer = optax.chain(
+        #         optax.clip_by_global_norm(self.clip_norm),
+        #         optimizer,
+        #     )
 
         return optimizer
 
-    def _create_learning_rate_schedule(self) -> Union[float, Callable]:
-        """Create a learning rate schedule based on configuration"""
-        if not self.use_scheduler:
-            return self.learning_rate
+    def _optax_optimize(self, loss_fn: Callable, base_params: Array, active_indices: Array) -> Dict[str, Any]:
+        """
+        Optimize using standard Optax optimizers.
 
-        if self.schedule_type == "cosine":
-            return optax.warmup_cosine_decay_schedule(
-                init_value=self.init_value,
-                peak_value=self.peak_value,
-                warmup_steps=self.warmup_steps,
-                decay_steps=self.decay_steps,
-                end_value=self.end_value,
-            )
-        elif self.schedule_type == "exponential":
-            if self.warmup_steps > 0:
-                warmup = optax.linear_schedule(
-                    init_value=self.init_value, end_value=self.peak_value, transition_steps=self.warmup_steps
-                )
+        Args:
+            loss_fn: Function that takes full parameters and returns loss value
+            base_params: Full parameter array (including fixed parameters)
+            active_indices: Indices of parameters to optimize
 
-                decay = optax.exponential_decay(
-                    init_value=self.peak_value,
-                    transition_steps=self.decay_steps // 10,  # Decay period
-                    decay_rate=0.9,
-                    end_value=self.end_value,
-                )
-
-                return optax.join_schedules(schedules=[warmup, decay], boundaries=[self.warmup_steps])
-            else:
-                return optax.exponential_decay(
-                    init_value=self.peak_value,
-                    transition_steps=self.decay_steps // 10,
-                    decay_rate=0.9,
-                    end_value=self.end_value,
-                )
-        elif self.schedule_type == "linear":
-            return optax.linear_schedule(
-                init_value=self.peak_value, end_value=self.end_value, transition_steps=self.decay_steps
-            )
-        else:
-            self._log(f"Unknown schedule type: {self.schedule_type}, using fixed learning rate")
-            return self.learning_rate
-
-    def optimize(
-        self,
-        loss_fn: Callable,
-        base_params: Array,
-        active_indices: Array,
-    ) -> Dict[str, Any]:
+        Returns:
+            Dictionary with optimization results
+        """
         # Reset state for this optimization run
         self.step = 0
         self.best_loss = jnp.float64("inf")
@@ -127,24 +166,30 @@ class OptaxWrapper:
         active_params = base_params[active_indices]
 
         # Create optimizer
-        optimizer = self._create_optimizer()
+        optimizer = self._create_optax_optimizer()
         opt_state = optimizer.init(active_params)
 
-        # Create update function with JAX JIT
-        @jax.jit
-        def update(params, opt_state, base_params_ref):
-            def loss_wrapper(active_params):
-                # Update full parameters with the active parameters
-                full_params = base_params_ref.at[active_indices].set(active_params)
-                return loss_fn(full_params)
+        # Create a loss wrapper function that works with active parameters
+        def loss_wrapper(active_params):
+            """Compute loss for active parameters by updating the full parameter array"""
+            full_params = base_params.at[active_indices].set(active_params)
+            return loss_fn(full_params)
 
+        @jit
+        def update(params, opt_state, base_params_ref):
+            """Single optimization step for standard optimizers"""
             loss_value, grads = value_and_grad(loss_wrapper)(params)
             updates, new_opt_state = optimizer.update(grads, opt_state, params)
             new_params = optax.apply_updates(params, updates)
             grad_norm = optax.global_norm(grads)
-            return new_params, new_opt_state, loss_value, grad_norm, base_params_ref.at[active_indices].set(new_params)
+            return (
+                new_params,
+                new_opt_state,
+                loss_value,
+                grad_norm,
+                base_params_ref.at[active_indices].set(new_params),
+            )
 
-        # Run optimization
         current_base_params = base_params.copy()
 
         for step in range(self.max_steps):
@@ -167,12 +212,17 @@ class OptaxWrapper:
             if step % self.log_interval == 0:
                 self._log(f"  Step {step}: loss = {loss_value:.6e}, grad_norm = {grad_norm:.6e}")
 
-            # Check early stopping condition
+            # Check early stopping conditions
             if self.steps_without_improvement >= self.early_stop_patience:
-                self._log(f"Early stopping triggered after {step} steps")
+                self._log(
+                    f"Early stopping triggered after {step} steps, {self.steps_without_improvement} without improvement."
+                )
                 break
 
-        # Return optimization results
+            if grad_norm < self.early_stop_delta:
+                self._log(f"Gradient norm below tolerance at step {step}")
+                break
+
         return {
             "params": self.best_params,
             "active_params": self.best_params[active_indices],
@@ -180,3 +230,98 @@ class OptaxWrapper:
             "iterations": self.step,
             "early_stopped": self.steps_without_improvement >= self.early_stop_patience,
         }
+
+    def optimize(
+        self,
+        loss_fn: Callable,
+        base_params: Array,
+        active_indices: Array,
+    ) -> Dict[str, Any]:
+        """
+        Optimize parameters using the selected algorithm.
+
+        Args:
+            loss_fn: Function that takes full parameters and returns loss value
+            base_params: Full parameter array (including fixed parameters)
+            active_indices: Indices of parameters to optimize
+
+        Returns:
+            Dictionary with optimization results containing:
+            - params: Optimized full parameter array
+            - active_params: Optimized active parameters
+            - loss: Final loss value
+            - iterations: Number of iterations performed
+            - early_stopped: Whether optimization stopped early
+        """
+        self._log(f"Starting optimization with {self.algorithm} algorithm")
+
+        if self.algorithm in ["adam", "adabelief", "sgd", "lbfgs"]:
+            return self._optax_optimize(loss_fn, base_params, active_indices)
+        elif self.algorithm == "trust_region":
+            # Placeholder for future trust region implementation
+            raise ValueError("Trust region not implemented yet!")
+        else:
+            raise ValueError(f"Unsupported optimization algorithm: {self.algorithm}")
+
+    def _create_learning_rate_schedule(self) -> Union[Float64, Callable]:
+        """
+        Create a learning rate schedule based on configuration.
+
+        Returns:
+            Learning rate schedule or scalar learning rate
+        """
+        config = self.optimizer_config
+
+        if not config["use_scheduler"]:
+            return self.learning_rate
+
+        if config["schedule_type"] == "cosine":
+            return optax.warmup_cosine_decay_schedule(
+                init_value=config["init_value"],
+                peak_value=config["peak_value"],
+                warmup_steps=config["warmup_steps"],
+                decay_steps=config["decay_steps"],
+                end_value=config["end_value"],
+            )
+        elif config["schedule_type"] == "exponential":
+            if config["warmup_steps"] > 0:
+                warmup = optax.linear_schedule(
+                    init_value=config["init_value"],
+                    end_value=config["peak_value"],
+                    transition_steps=config["warmup_steps"],
+                )
+
+                decay = optax.exponential_decay(
+                    init_value=config["peak_value"],
+                    transition_steps=config["decay_steps"] // 10,
+                    decay_rate=0.9,
+                    end_value=config["end_value"],
+                )
+
+                return optax.join_schedules(schedules=[warmup, decay], boundaries=[config["warmup_steps"]])
+            else:
+                return optax.exponential_decay(
+                    init_value=config["peak_value"],
+                    transition_steps=config["decay_steps"] // 10,
+                    decay_rate=0.9,
+                    end_value=config["end_value"],
+                )
+        elif config["schedule_type"] == "linear":
+            return optax.linear_schedule(
+                init_value=config["peak_value"], end_value=config["end_value"], transition_steps=config["decay_steps"]
+            )
+        else:
+            self._log(f"Unknown schedule type: {config['schedule_type']}, using fixed learning rate")
+            return self.learning_rate
+
+    def _log(self, message: str) -> None:
+        """
+        Log a message using the configured logger.
+
+        Args:
+            message: Message to log
+        """
+        if self.logger:
+            self.logger.info(message)
+        else:
+            print(message)

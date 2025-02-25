@@ -11,4 +11,4 @@ class PhysicalConstants:
     R_eV_mol = jnp.float64(5.189479288e19)  # Ideal gas constant [eV/mol/K]
     R_J_kmol = jnp.float64(8314.4621)  # Ideal gas constant [J/kmol/K]
     R_cal_kmol = jnp.float64(8314.4621 / 4.18443)  # Ideal gas constant [cal/kmol/K]
-    R_L_atm_K_mol = jnp.float64(0.08205746) # Ideal gas constant [L atm/K/mol]
+    R_L_atm_K_mol = jnp.float64(0.08205746)  # Ideal gas constant [L atm/K/mol]
