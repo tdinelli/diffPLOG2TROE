@@ -4,10 +4,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import equinox as eqx
 import jax.numpy as jnp
-import nlopt
-import numpy as np
 from jaxtyping import Array, Float64
 
+from .optimizers import NLOptWrapper, OptaxWrapper
+from .physical_constants import PhysicalConstants
 from .rate_constants import FallOff, Plog
 
 
@@ -20,7 +20,6 @@ class PlogRefitter(eqx.Module):
     k_plog: Array
     logger: logging.Logger
     initial_values: Any
-    R_gas = jnp.float64(1.987)
 
     def __init__(
         self,
@@ -75,7 +74,7 @@ class PlogRefitter(eqx.Module):
             else:
                 self.logger.info(f"  {name}: fixed at {self.initial_values[i]:.5e}")
 
-    def fit_arrhenius(self, k_values):
+    def fit_arrhenius(self, k_values: Array) -> Tuple[Float64, Float64, Float64]:
         log_k = jnp.log(k_values)
         log_T = jnp.log(self.T_range)
         inv_T = 1.0 / self.T_range
@@ -85,7 +84,7 @@ class PlogRefitter(eqx.Module):
 
     def estimate_initial_params(self) -> Array:
         """Estimate initial parameters with consideration for fixed values."""
-        self.logger.info("\nFirst guess estimate of the parameters:")
+        self.logger.info("First guess estimate of the parameters:")
         params_dict = {}
 
         # Low pressure limit estimation
@@ -95,7 +94,7 @@ class PlogRefitter(eqx.Module):
                 {
                     "lnA_low": lnA_low if self.param_mask[0] else jnp.log(self.initial_values[0]),
                     "n_low": n_low if self.param_mask[1] else self.initial_values[1],
-                    "EaR_low": EaR_low if self.param_mask[2] else self.initial_values[2] / self.R_gas,
+                    "EaR_low": EaR_low if self.param_mask[2] else self.initial_values[2] / PhysicalConstants.R_cal_mol,
                 }
             )
         else:  # All low-pressure params are fixed
@@ -103,7 +102,7 @@ class PlogRefitter(eqx.Module):
                 {
                     "lnA_low": jnp.log(self.initial_values[0]),
                     "n_low": self.initial_values[1],
-                    "EaR_low": self.initial_values[2] / self.R_gas,
+                    "EaR_low": self.initial_values[2] / PhysicalConstants.R_cal_mol,
                 }
             )
 
@@ -114,7 +113,9 @@ class PlogRefitter(eqx.Module):
                 {
                     "lnA_high": lnA_high if self.param_mask[3] else jnp.log(self.initial_values[3]),
                     "n_high": n_high if self.param_mask[4] else self.initial_values[4],
-                    "EaR_high": EaR_high if self.param_mask[5] else self.initial_values[5] / self.R_gas,
+                    "EaR_high": (
+                        EaR_high if self.param_mask[5] else self.initial_values[5] / PhysicalConstants.R_cal_mol
+                    ),
                 }
             )
         else:  # All high-pressure params are fixed
@@ -122,7 +123,7 @@ class PlogRefitter(eqx.Module):
                 {
                     "lnA_high": jnp.log(self.initial_values[3]),
                     "n_high": self.initial_values[4],
-                    "EaR_high": self.initial_values[5] / self.R_gas,
+                    "EaR_high": self.initial_values[5] / PhysicalConstants.R_cal_mol,
                 }
             )
 
@@ -138,13 +139,17 @@ class PlogRefitter(eqx.Module):
                 params_dict[param] = default_troe[param]
 
         self.logger.info(
-            "  Low pressure limit (A, n, Ea): {:.3e}, {:.3f}, {:.3e}".format(
-                jnp.exp(params_dict["lnA_low"]), params_dict["n_low"], params_dict["EaR_low"] * self.R_gas
+            "  High pressure limit (A, n, Ea): {:.3e}, {:.3f}, {:.3e}".format(
+                jnp.exp(params_dict["lnA_high"]),
+                params_dict["n_high"],
+                params_dict["EaR_high"] * PhysicalConstants.R_cal_mol,
             )
         )
         self.logger.info(
-            "  High pressure limit (A, n, Ea): {:.3e}, {:.3f}, {:.3e}".format(
-                jnp.exp(params_dict["lnA_high"]), params_dict["n_high"], params_dict["EaR_high"] * self.R_gas
+            "  Low pressure limit (A, n, Ea): {:.3e}, {:.3f}, {:.3e}".format(
+                jnp.exp(params_dict["lnA_low"]),
+                params_dict["n_low"],
+                params_dict["EaR_low"] * PhysicalConstants.R_cal_mol,
             )
         )
         self.logger.info(
@@ -158,116 +163,88 @@ class PlogRefitter(eqx.Module):
         return params
 
     @eqx.filter_jit
-    def loss(self, params: Array) -> Float64:
+    def loss(self, params: Array, loss_type: str = "log") -> Float64:
         """Compute the loss between PLOG and fitted Troe rates."""
         falloff_dict = self._create_falloff_dict(self.plog.name, params)
         falloff = FallOff(falloff_dict)
         k_troe = falloff.kinetic_constant(self.T_range, self.P_range)
 
-        # Use relative error in log space to handle large magnitude differences
-        # log_k_troe = jnp.log(k_troe + 1e-30)
-        # log_k_plog = jnp.log(self.k_plog + 1e-30)
-        # loss = jnp.mean((log_k_troe - log_k_plog) ** 2)
-
-        squared_errors = jnp.sum((1 - (k_troe / self.k_plog)) ** 2)
-        loss = jnp.sqrt(squared_errors)
+        if loss_type == "relative-ratio":
+            squared_errors = jnp.sum((1 - (k_troe / self.k_plog)) ** 2)
+            loss = jnp.sqrt(squared_errors)
+        elif loss_type == "log":
+            log_k_troe = jnp.log(k_troe + 1)
+            log_k_plog = jnp.log(self.k_plog + 1)
+            loss = jnp.sqrt(jnp.mean((log_k_troe - log_k_plog) ** 2))
+        elif loss_type == "max":
+            squared_errors = (1 - (k_troe / self.k_plog)) ** 2
+            loss = jnp.max(squared_errors)
+        elif loss_type == "rel-abs":
+            rel_error = jnp.abs(1 - (k_troe / self.k_plog))
+            loss = jnp.mean(rel_error**2)
 
         return loss
 
-    def fit(self, nlopt_options: Dict) -> Dict[str, Any]:
-        """Fit Troe parameters using hybrid NLOpt + gradient-based optimization."""
+    def fit(
+        self,
+        nlopt_options: Optional[Dict[str, Any]] = None,
+        optax_options: Optional[Dict[str, Any]] = None,
+        loss_type: str = "log",
+    ) -> Dict[str, Any]:
+        self.logger.info("\n")
+        self.logger.info("=" * 89)
         self.logger.info("Starting hybrid optimization")
 
         active_indices = jnp.where(self.param_mask)[0]
         base_params = self.estimate_initial_params()
-        bounds_low = np.array(
+        bounds_low = jnp.array(
             [
                 base_params[0] - 10,
                 base_params[1] - 5,
-                base_params[2] / self.R_gas - 30000,
+                base_params[2] / PhysicalConstants.R_cal_mol - 30000,
                 base_params[3] - 10,
                 base_params[4] - 5,
-                base_params[5] / self.R_gas - 30000,
+                base_params[5] / PhysicalConstants.R_cal_mol - 30000,
                 0.0,
                 0.0,
                 0.0,
                 0.0,
             ]
-        )[active_indices]
-        bounds_high = np.array(
+        )
+        bounds_high = jnp.array(
             [
                 base_params[0] + 10,
                 base_params[1] + 5,
-                base_params[2] / self.R_gas + 30000,
+                base_params[2] / PhysicalConstants.R_cal_mol + 30000,
                 base_params[3] + 10,
                 base_params[4] + 5,
-                base_params[5] / self.R_gas + 30000,
+                base_params[5] / PhysicalConstants.R_cal_mol + 30000,
                 1.0,
                 1e5,
                 1e30,
                 1e30,
             ]
-        )[active_indices]
+        )
 
-        # Phase 1: Global search with NLOpt
-        self.logger.info("\nPhase 1: Global optimization with NLOpt")
+        if nlopt_options is not None:
+            nlopt_optimizer = NLOptWrapper(nlopt_options, (bounds_low, bounds_high), self.logger)
+            results = nlopt_optimizer.optimize(self.loss, base_params, active_indices)
+            return self._create_falloff_dict(self.plog.name, results["params"])
 
-        # Create NLOpt optimizer
-        steps_file = nlopt_options["steps_file"]
-        opt = nlopt.opt(nlopt.GN_ISRES, len(active_indices))
-        opt.set_lower_bounds(bounds_low)
-        opt.set_upper_bounds(bounds_high)
-        opt.set_maxeval(nlopt_options["max_eval"])
-        opt.set_ftol_rel(nlopt_options["ftol_rel"])
-        opt.set_xtol_rel(nlopt_options["xtol_rel"])
-
-        # Define objective function for NLOpt
-        best_loss = float("inf")
-        best_params = base_params[active_indices].copy()
-        nlopt_step = 0
-
-        def objective(x, grad):
-            nonlocal best_loss, best_params, nlopt_step, steps_file
-
-            full_params = base_params.copy()
-            full_params = full_params.at[active_indices].set(x)
-            loss_value = float(self.loss(jnp.array(full_params)))
-
-            if loss_value < best_loss:
-                best_loss = loss_value
-                best_params = x.copy()
-
-            if nlopt_step % steps_file == 0:
-                self.logger.info(f"  Step {nlopt_step}: loss = {loss_value:.6e}")
-
-            nlopt_step += 1
-
-            return loss_value
-
-        opt.set_min_objective(objective)
-
-        # Run global optimization
-        try:
-            x = opt.optimize(best_params)
-            self.logger.info(f"NLOpt finished with status: {opt.last_optimize_result()}")
-            self.logger.info(f"Found minimum at: {best_loss:.6e}")
-        except nlopt.RoundoffLimited:
-            self.logger.info("NLOpt stopped due to roundoff errors")
-        except Exception as e:
-            self.logger.info(f"NLOpt stopped with error: {str(e)}")
-
-        return self._create_falloff_dict(self.plog.name, jnp.array(best_params, dtype=jnp.float64))
+        if optax_options is not None:
+            optax_optimizer = OptaxWrapper(optax_options, self.logger)
+            results = optax_optimizer.optimize(self.loss, base_params, active_indices)
+            return self._create_falloff_dict(self.plog.name, results["params"])
 
     @staticmethod
     def _create_falloff_dict(name: str, params: Array) -> Dict[str, Any]:
-        R_gas = jnp.float64(1.987)
         return {
             "name": name,
             "type": "falloff",
             "falloff-type": "troe",
             "rate-constant": {
-                "lpl-coefficients": [jnp.exp(params[0]), params[1], params[2] * R_gas],
-                "hpl-coefficients": [jnp.exp(params[3]), params[4], params[5] * R_gas],
+                "lpl-coefficients": [jnp.exp(params[0]), params[1], params[2] * PhysicalConstants.R_cal_mol],
+                "hpl-coefficients": [jnp.exp(params[3]), params[4], params[5] * PhysicalConstants.R_cal_mol],
                 "falloff-coefficients": [params[6], params[7], params[8], params[9]],
             },
         }
