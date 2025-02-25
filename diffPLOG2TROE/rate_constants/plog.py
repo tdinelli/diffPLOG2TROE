@@ -5,6 +5,7 @@ import jax.numpy as jnp
 from jax import lax, vmap
 from jaxtyping import Array, Float64
 
+from ..physical_constants import PhysicalConstants as constants
 from .arrhenius import Arrhenius
 from .rate_interpreter import parse_rate_constant
 
@@ -79,7 +80,10 @@ class Plog(eqx.Module):
             return vectorized_k(P)
 
     def __str__(self) -> str:
-        str_obj = "{}          {}\t{}\t{}\n".format(self.name, 1, 0, 0)
+        str_obj = "{}\t\t{:.5e} {:.5f} {:.5e}\n".format(self.name, 0.0, 0.0, 0.0)
         for i in range(self.number_of_pressure_levels):
-            str_obj += " PLOG / {}\t{}\t{}\t{} /\n".format(self.p_levels[i], 1, 0, 0)
+            arrhenius = self.k_levels[i]
+            str_obj += " PLOG / {:.5e} {:.5f} {:.5e} {:.5e} /\n".format(
+                self.p_levels[i], jnp.exp(arrhenius.lnA), arrhenius.n, arrhenius.EaR * constants.R_cal_mol
+            )
         return str_obj
