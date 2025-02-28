@@ -21,6 +21,7 @@ class PlogRefitter(eqx.Module):
     logger: logging.Logger
     initial_values: Any
     loss_name: str
+    falloff_type: str
 
     def __init__(
         self,
@@ -32,14 +33,18 @@ class PlogRefitter(eqx.Module):
         param_config: Optional[Dict[str, Union[bool, float, Dict[str, Any]]]] = None,
         loss_name: str = "log",
         log_name: str = "refitter.log",
+        falloff_type: str = "troe",
     ) -> None:
         self.logger = self._setup_logging(log_name)
         self.logger.info("=" * 89)
-        self.logger.info("Plog 2 TROE refitter")
+        self.logger.info(f"Plog 2 {falloff_type.upper()} refitter")
         self.logger.info(f" Temperature range [K]: {T_range}")
         self.logger.info(f" Pressure range [atm]: {P_range}")
 
-        # Set up loss function
+        self.falloff_type = falloff_type.lower()
+        if self.falloff_type not in ["troe", "sri"]:
+            raise ValueError(f"Unsupported falloff type: {falloff_type}. Must be 'troe' or 'sri'.")
+
         self.loss_name = loss_name
         self.logger.info(f" Loss function: {self.loss_name}")
 
@@ -49,8 +54,12 @@ class PlogRefitter(eqx.Module):
         self.P_range = jnp.logspace(jnp.log10(P_range[0]), jnp.log10(P_range[1]), n_P)
         self.k_plog = self.plog.kinetic_constant(self.T_range, self.P_range)
 
-        # Process parameter configuration
-        self.param_names = ["A_low", "n_low", "E_low", "A_high", "n_high", "E_high", "A", "T3", "T1", "T2"]
+        self.param_names = ["A_low", "n_low", "E_low", "A_high", "n_high", "E_high"]
+        if self.falloff_type == "troe":
+            self.param_names.extend(["A", "T3", "T1", "T2"])
+        else:  # sri
+            self.param_names.extend(["a", "b", "c", "d", "e"])
+
         if param_config is None:
             self.param_mask = jnp.ones(len(self.param_names), dtype=bool)
             self.initial_values = [None] * len(self.param_names)
@@ -93,9 +102,13 @@ class PlogRefitter(eqx.Module):
         self.logger.info("First guess estimate of the parameters:")
         params_dict = {}
 
+        # ====================================================================
         # Low pressure limit estimation
         if any(not self.initial_values[i] for i in range(3)):  # If any low-pressure params need estimation
-            lnA_low, n_low, EaR_low = self._fit_arrhenius(self.k_plog[0])
+            lnA_low, n_low, EaR_low = self._fit_arrhenius(
+                self.k_plog[0]
+                / ((self.plog.p_levels[0] / (constants.R_L_atm_K_mol * self.T_range)) * jnp.float64(0.001))
+            )
             params_dict.update(
                 {
                     "lnA_low": lnA_low if self.param_mask[0] else jnp.log(self.initial_values[0]),
@@ -112,6 +125,7 @@ class PlogRefitter(eqx.Module):
                 }
             )
 
+        # ====================================================================
         # High pressure limit estimation
         if any(not self.initial_values[i] for i in range(3, 6)):  # If any high-pressure params need estimation
             lnA_high, n_high, EaR_high = self._fit_arrhenius(self.k_plog[-1])
@@ -131,16 +145,39 @@ class PlogRefitter(eqx.Module):
                 }
             )
 
-        # Troe parameters estimation
         T_mean = jnp.mean(self.T_range)
-        default_troe = {"A": 0.5, "T3": T_mean * 0.7, "T1": T_mean * 0.2, "T2": T_mean * 1.5}
+        if self.falloff_type == "troe":
+            # ================================================================
+            # TROE parameters estimation
+            default_troe = {"A": 0.5, "T3": T_mean * 0.7, "T1": T_mean * 0.2, "T2": T_mean * 1.5}
 
-        # Update Troe parameters based on fixed values or defaults
-        for i, param in enumerate(["A", "T3", "T1", "T2"], start=6):
-            if self.initial_values and self.initial_values[i] is not None:
-                params_dict[param] = self.initial_values[i]
-            else:
-                params_dict[param] = default_troe[param]
+            for i, param in enumerate(["A", "T3", "T1", "T2"], start=6):
+                if self.initial_values and self.initial_values[i] is not None:
+                    params_dict[param] = self.initial_values[i]
+                else:
+                    params_dict[param] = default_troe[param]
+
+            self.logger.info(
+                "  Troe parameters (A, T3, T1, T2): {:.3f}, {:.3e}, {:.3e}, {:.3e}\n".format(
+                    params_dict["A"], params_dict["T3"], params_dict["T1"], params_dict["T2"]
+                )
+            )
+        else:  # sri
+            # ================================================================
+            # SRI parameters estimation
+            default_sri = {"a": 1.0, "b": 0.5 * T_mean, "c": T_mean, "d": 1.0, "e": 0.0}
+
+            for i, param in enumerate(["a", "b", "c", "d", "e"], start=6):
+                if self.initial_values and self.initial_values[i] is not None:
+                    params_dict[param] = self.initial_values[i]
+                else:
+                    params_dict[param] = default_sri[param]
+
+            self.logger.info(
+                "  SRI parameters (a, b, c, d, e): {:.3f}, {:.3e}, {:.3e}, {:.3f}, {:.3f}\n".format(
+                    params_dict["a"], params_dict["b"], params_dict["c"], params_dict["d"], params_dict["e"]
+                )
+            )
 
         self.logger.info(
             "  High pressure limit (A, n, Ea): {:.3e}, {:.3f}, {:.3e}".format(
@@ -156,11 +193,6 @@ class PlogRefitter(eqx.Module):
                 params_dict["EaR_low"] * constants.R_cal_mol,
             )
         )
-        self.logger.info(
-            "  Troe parameters (A, T3, T1, T2): {:.3f}, {:.3e}, {:.3e}, {:.3e}\n".format(
-                params_dict["A"], params_dict["T3"], params_dict["T1"], params_dict["T2"]
-            )
-        )
 
         params = jnp.array([params_dict[name] for name in params_dict.keys()], dtype=jnp.float64)
 
@@ -168,7 +200,7 @@ class PlogRefitter(eqx.Module):
 
     @eqx.filter_jit
     def loss(self, params: Array) -> Float64:
-        """Compute the loss between PLOG and fitted Troe rates."""
+        """Compute the loss between PLOG and fitted Troe/SRI rates."""
         falloff_dict = self._create_falloff_dict(self.plog.name, params)
         falloff = FallOff(falloff_dict)
         k_troe = falloff.kinetic_constant(self.T_range, self.P_range)
@@ -189,44 +221,39 @@ class PlogRefitter(eqx.Module):
 
         return loss
 
-    def fit(
-        self,
-        nlopt_options: Optional[Dict[str, Any]] = None,
-        optax_options: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+    def fit(self, nlopt_options: Optional[Dict[str, Any]] = None, optax_options: Optional[Dict[str, Any]] = None):
+        self.logger.info("")
         self.logger.info("=" * 89)
         self.logger.info("Starting optimization")
 
         active_indices = jnp.where(self.param_mask)[0]
         base_params = self.estimate_initial_params()
-        bounds_low = jnp.array(
-            [
-                base_params[0] - 10,
-                base_params[1] - 5,
-                base_params[2] / constants.R_cal_mol - 30000,
-                base_params[3] - 10,
-                base_params[4] - 5,
-                base_params[5] / constants.R_cal_mol - 30000,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-            ]
-        )
-        bounds_high = jnp.array(
-            [
-                base_params[0] + 10,
-                base_params[1] + 5,
-                base_params[2] / constants.R_cal_mol + 30000,
-                base_params[3] + 10,
-                base_params[4] + 5,
-                base_params[5] / constants.R_cal_mol + 30000,
-                1.0,
-                1e5,
-                1e30,
-                1e30,
-            ]
-        )
+
+        # Define bounds based on falloff type
+        common_bounds_low = [
+            base_params[0] - 10,  # lnA_low
+            base_params[1] - 5,  # n_low
+            base_params[2] / constants.R_cal_mol - 30000,  # EaR_low
+            base_params[3] - 10,  # lnA_high
+            base_params[4] - 5,  # n_high
+            base_params[5] / constants.R_cal_mol - 30000,  # EaR_high
+        ]
+
+        common_bounds_high = [
+            base_params[0] + 10,  # lnA_low
+            base_params[1] + 5,  # n_low
+            base_params[2] / constants.R_cal_mol + 30000,  # EaR_low
+            base_params[3] + 10,  # lnA_high
+            base_params[4] + 5,  # n_high
+            base_params[5] / constants.R_cal_mol + 30000,  # EaR_high
+        ]
+
+        if self.falloff_type == "troe":
+            bounds_low = jnp.array(common_bounds_low + [0.0, 0.0, 0.0, 0.0])
+            bounds_high = jnp.array(common_bounds_high + [1.0, 1e5, 1e30, 1e30])
+        else:  # sri
+            bounds_low = jnp.array(common_bounds_low + [0.0, 0.0, 0.0, 0.0, -1.0])
+            bounds_high = jnp.array(common_bounds_high + [1e2, 1e5, 1e5, 2.0, 2.0])
 
         if nlopt_options is not None:
             nlopt_optimizer = NLOptWrapper(nlopt_options, (bounds_low, bounds_high), self.logger)
@@ -238,18 +265,24 @@ class PlogRefitter(eqx.Module):
             results = optax_optimizer.optimize(self.loss, base_params, active_indices)
             return self._create_falloff_dict(self.plog.name, results["params"])
 
-    @staticmethod
-    def _create_falloff_dict(name: str, params: Array) -> Dict[str, Any]:
-        return {
+    def _create_falloff_dict(self, name: str, params: Array) -> Dict[str, Any]:
+        """Create a falloff dictionary with the appropriate falloff type."""
+        result = {
             "name": name,
             "type": "falloff",
-            "falloff-type": "troe",
+            "falloff-type": self.falloff_type,
             "rate-constant": {
                 "lpl-coefficients": [jnp.exp(params[0]), params[1], params[2] * constants.R_cal_mol],
                 "hpl-coefficients": [jnp.exp(params[3]), params[4], params[5] * constants.R_cal_mol],
-                "falloff-coefficients": [params[6], params[7], params[8], params[9]],
             },
         }
+
+        if self.falloff_type == "troe":
+            result["rate-constant"]["falloff-coefficients"] = [params[6], params[7], params[8], params[9]]
+        else:  # sri
+            result["rate-constant"]["falloff-coefficients"] = [params[6], params[7], params[8], params[9], params[10]]
+
+        return result
 
     @staticmethod
     def _setup_logging(log_name: str) -> logging.Logger:
