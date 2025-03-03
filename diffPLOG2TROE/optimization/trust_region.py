@@ -1,3 +1,8 @@
+from typing import Any, Callable, Dict
+
+from jaxtyping import Array
+
+
 def _trust_region_optimize(
     self,
     loss_fn: Callable,

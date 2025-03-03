@@ -1,11 +1,9 @@
-from dataclasses import dataclass
-from typing import ClassVar, Dict
-from jaxtyping import Float64
+from typing import Dict
 
 import jax.numpy as jnp
+from jaxtyping import Float64
 
 
-@dataclass(frozen=True)
 class PhysicalConstants:
     """
     Physical constants for chemical kinetics calculations.
@@ -19,14 +17,10 @@ class PhysicalConstants:
     - https://physics.nist.gov/cuu/Constants/
     """
 
-    # Conversion factors for derivation
-    _J_TO_CAL: ClassVar[float] = 4.184  # Conversion from joules to calories
-    _MOL_TO_KMOL: ClassVar[float] = 1000.0  # Conversion from mol to kmol
-
-    # Base value (CODATA 2018)
+    _J_TO_CAL: Float64 = jnp.float64(4.184)  # Conversion from joules to calories
+    _MOL_TO_KMOL: Float64 = jnp.float64(1000.0)  # Conversion from mol to kmol
     R_J_mol: Float64 = jnp.float64(8.31446261815324)  # Ideal gas constant [J/mol/K]
 
-    # Derived gas constants in various units
     @property
     def R_cal_mol(self) -> Float64:
         """Ideal gas constant [cal/mol/K]"""

@@ -63,7 +63,7 @@ class Boundaries:
         Compute the upper and lower boundaries for the rate constants.
 
         Returns:
-            Tuple[Array, Array]: Lower and upper bound parameters as [A, n, Ea/R]
+            Tuple[Array, Array]: Lower and upper bound parameters as [A, n, Ea]
         """
         if self.uncertainty_type == "symmetric":
             return self._compute_symmetric_boundaries()

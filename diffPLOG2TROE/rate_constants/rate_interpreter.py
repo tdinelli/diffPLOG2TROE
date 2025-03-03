@@ -78,21 +78,3 @@ def parse_falloff(rate_constant: Dict) -> Tuple[Array, Array, Array, int]:
     type_value = FittingType[rate_constant["falloff-type"]].value
 
     return (hpl_coefficients, lpl_coefficients, params, type_value)
-
-
-# def parse_cabr(rate_constant: Dict) -> Tuple[Array, int]:
-#     lpl_coefficients, hpl_coefficients = parse_arrhenius_parameters(rate_constant["parameters"])
-#     fitting_type = rate_constant["fitting_type"]
-#
-#     if fitting_type == "Lindemann":
-#         return (
-#             create_falloff_array(hpl_coefficients, lpl_coefficients, swap_order=True),
-#             FittingType.lindemann.value,
-#         )
-#
-#     params, type_value = parse_fitting_params(rate_constant, fitting_type)
-#     return create_falloff_array(hpl_coefficients, lpl_coefficients, params, swap_order=True), type_value
-#
-#
-# def parse_threebody(rate_constant: Dict) -> Array:
-#     return jnp.array(rate_constant["parameters"], dtype=jnp.float64)

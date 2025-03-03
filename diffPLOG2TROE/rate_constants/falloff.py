@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jax import lax, vmap
 from jaxtyping import Array, Float64
 
-from ..physical_constants import PhysicalConstants as constants
+from ..physical_constants import constants
 from .arrhenius import Arrhenius
 from .falloff_functions import lindemann, sri, troe
 from .rate_interpreter import parse_rate_constant

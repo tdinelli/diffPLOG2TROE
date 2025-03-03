@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jax import jit, lax
 from jaxtyping import Array, Float64
 
-from ..physical_constants import PhysicalConstants as constants
+from ..physical_constants import constants
 from .rate_interpreter import parse_rate_constant
 
 
