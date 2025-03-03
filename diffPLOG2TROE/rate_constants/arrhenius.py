@@ -1,7 +1,9 @@
-from typing import Dict, Union
+import warnings
+from typing import Dict, Tuple, Union
 
 import equinox as eqx
 import jax.numpy as jnp
+from jax import jit
 from jaxtyping import Array, Float64
 
 from ..physical_constants import PhysicalConstants as constants
@@ -108,3 +110,76 @@ class Arrhenius(eqx.Module):
             H+O2=OH+O       2.65000e+16 -6.71000e-01 1.70410e+04
         """
         return "{}\t\t{:.5e} {:.5e} {:.5e}".format(self.name, jnp.exp(self.lnA), self.n, self.EaR * constants.R_cal_mol)
+
+
+@jit
+def refit_arrhenius(
+    rate_constant: Array, temperature: Array, three_params: bool = False, residual_threshold: Float64 = 1.0
+) -> Tuple[Float64, Float64, Float64]:
+    """
+    Refit Arrhenius parameters from rate constant data using least squares regression.
+
+    This function calculates parameters for the Arrhenius equation by fitting experimental
+    rate constant data at different temperatures. It can fit either the standard Arrhenius
+    equation or the modified Arrhenius equation with a temperature exponent.
+
+    Standard Arrhenius equation:
+        k = A * exp(-Ea/(R*T))
+
+    Modified Arrhenius equation:
+        k = A * T^n * exp(-Ea/(R*T))
+
+    The fitting is performed by solving the least squares problem for:
+        ln(k) = ln(A) + n*ln(T) - (Ea/R)*(1/T)
+
+    Parameters
+    ----------
+    rate_constant : Array
+        Experimental rate constants [units consistent with your kinetic]
+    temperature : Array
+        Temperatures corresponding to each rate constant [K]
+    three_params : bool, default=False
+        If True, fits the modified Arrhenius equation with temperature exponent (A, n, Ea)
+        If False, fits the standard Arrhenius equation (A, Ea)
+    residual_threshold : float, default=1.0
+        Threshold for the sum of squared residuals. If the fit produces residuals
+        above this value, a warning will be issued.
+
+    Returns
+    -------
+    Tuple[Float64, Float64, Float64]
+        A tuple containing:
+        - ln(A): Natural logarithm of the pre-exponential factor
+        - n: Temperature exponent (0 for standard Arrhenius)
+        - Ea/R: Activation energy divided by gas constant [K]
+
+    Warns
+    -----
+    UserWarning
+        If the sum of squared residuals exceeds the specified threshold,
+        indicating a potentially poor fit to the Arrhenius model.
+
+    Notes
+    -----
+    The units of the pre-exponential factor A depend on the reaction order
+    and the units used for the rate constants.
+
+    Consider plotting ln(k) vs 1/T to visually verify the linearity of your data
+    when residuals are high.
+    """
+    log_k = jnp.log(rate_constant)
+    inv_T = 1.0 / temperature
+
+    if three_params:
+        log_T = jnp.log(temperature)
+        X = jnp.vstack([jnp.ones_like(log_T), log_T, -inv_T]).T
+    else:
+        X = jnp.vstack([jnp.ones_like(inv_T), -inv_T]).T
+
+    beta, residuals, _, _ = jnp.linalg.lstsq(X, log_k, rcond=None)
+
+    if residuals > residual_threshold:
+        warnings.warn(f"High residuals value ({residuals:.4f}) detected in Arrhenius fit. ", UserWarning)
+
+    # Return ln(A), n, Ea/R with n=0 for two-parameter model
+    return beta[0], beta[1] if three_params else 0.0, beta[-1]
