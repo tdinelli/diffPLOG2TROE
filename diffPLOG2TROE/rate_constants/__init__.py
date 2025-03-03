@@ -1,3 +1,3 @@
-from .arrhenius import Arrhenius
+from .arrhenius import Arrhenius, refit_arrhenius
 from .plog import Plog
 from .falloff import FallOff
