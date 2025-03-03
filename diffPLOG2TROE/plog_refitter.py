@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, Float64
+from optax import losses
 
 from .optimization import NLOptWrapper, OptaxWrapper
 from .physical_constants import PhysicalConstants as constants
@@ -205,19 +206,60 @@ class PlogRefitter(eqx.Module):
         falloff = FallOff(falloff_dict)
         k_troe = falloff.kinetic_constant(self.T_range, self.P_range)
 
-        if self.loss_name == "relative-ratio":
-            squared_errors = jnp.sum((1 - (k_troe / self.k_plog)) ** 2)
-            loss = jnp.sqrt(squared_errors)
-        elif self.loss_name == "log":
-            log_k_troe = jnp.log(k_troe + 1)
-            log_k_plog = jnp.log(self.k_plog + 1)
-            loss = jnp.sqrt(jnp.mean((log_k_troe - log_k_plog) ** 2))
-        elif self.loss_name == "max":
-            squared_errors = (1 - (k_troe / self.k_plog)) ** 2
-            loss = jnp.max(squared_errors)
-        elif self.loss_name == "rel-abs":
-            rel_error = jnp.abs(1 - (k_troe / self.k_plog))
-            loss = jnp.mean(rel_error**2)
+        if self.loss_name == "squared-error":
+            residuals = losses.squared_error(k_troe, self.k_plog)
+            loss = jnp.mean(residuals)
+        elif self.loss_name == "log-squared-error":
+            residuals = losses.squared_error(jnp.log(k_troe), jnp.log(self.k_plog))
+            loss = jnp.mean(residuals)
+        elif self.loss_name == "l2":
+            l2_norm = losses.l2_loss(k_troe, self.k_plog)
+            loss = jnp.mean(l2_norm)
+        elif self.loss_name == "log-l2":
+            l2_norm = losses.l2_loss(jnp.log(k_troe), jnp.log(self.k_plog))
+            loss = jnp.mean(l2_norm)
+        elif self.loss_name == "logcosh":
+            logcosh = losses.log_cosh(k_troe, self.k_plog)
+            loss = jnp.mean(logcosh)
+        elif self.loss_name == "log-logcosh":
+            logcosh = losses.log_cosh(jnp.log(k_troe), jnp.log(self.k_plog))
+            loss = jnp.mean(logcosh)
+
+        # if self.loss_name == "relative-ratio":
+        #     squared_errors = jnp.sum((1 - (k_troe / self.k_plog)) ** 2)
+        #     loss = jnp.sqrt(squared_errors)
+        # elif self.loss_name == "log":
+        #     log_k_troe = jnp.log(k_troe + 1)
+        #     log_k_plog = jnp.log(self.k_plog + 1)
+        #     loss = jnp.mean((log_k_troe - log_k_plog) ** 2)
+        # elif self.loss_name == "max":
+        #     squared_errors = (1 - (k_troe / self.k_plog)) ** 2
+        #     loss = jnp.max(squared_errors)
+        # elif self.loss_name == "rel-abs":
+        #     rel_error = jnp.abs(1 - (k_troe / self.k_plog))
+        #     loss = jnp.mean(rel_error**2)
+        # elif self.loss_name == "huber":
+        #     log_k_troe = jnp.log(k_troe + 1)
+        #     log_k_plog = jnp.log(self.k_plog + 1)
+        #     rel_error = jnp.mean((log_k_troe - log_k_plog) ** 2)
+        #     delta = 0.1  # This can be adjusted as needed
+        #
+        #     # Apply Huber loss
+        #     # For small errors (|x| <= delta): 0.5 * x^2
+        #     # For large errors (|x| > delta): delta * (|x| - 0.5 * delta)
+        #     abs_rel_error = jnp.abs(rel_error)
+        #     loss = jnp.mean(
+        #         jnp.where(
+        #             abs_rel_error <= delta,
+        #             0.5 * rel_error**2,
+        #             delta * (abs_rel_error - 0.5 * delta),
+        #         )
+        #     )
+        # elif self.loss_name == "ciao":
+        #     log_k_troe = jnp.log(k_troe + 1)
+        #     log_k_plog = jnp.log(self.k_plog + 1)
+        #     residuals = log_k_troe - log_k_plog
+        #     loss = jnp.mean(jnp.abs(residuals / log_k_plog))
 
         return loss
 
@@ -231,25 +273,25 @@ class PlogRefitter(eqx.Module):
 
         # Define bounds based on falloff type
         common_bounds_low = [
-            base_params[0] - 10,  # lnA_low
+            base_params[0] - 20,  # lnA_low
             base_params[1] - 5,  # n_low
-            base_params[2] / constants.R_cal_mol - 30000,  # EaR_low
-            base_params[3] - 10,  # lnA_high
+            base_params[2] / constants.R_cal_mol - 70000,  # EaR_low
+            base_params[3] - 20,  # lnA_high
             base_params[4] - 5,  # n_high
-            base_params[5] / constants.R_cal_mol - 30000,  # EaR_high
+            base_params[5] / constants.R_cal_mol - 70000,  # EaR_high
         ]
 
         common_bounds_high = [
-            base_params[0] + 10,  # lnA_low
+            base_params[0] + 20,  # lnA_low
             base_params[1] + 5,  # n_low
-            base_params[2] / constants.R_cal_mol + 30000,  # EaR_low
-            base_params[3] + 10,  # lnA_high
+            base_params[2] / constants.R_cal_mol + 70000,  # EaR_low
+            base_params[3] + 20,  # lnA_high
             base_params[4] + 5,  # n_high
-            base_params[5] / constants.R_cal_mol + 30000,  # EaR_high
+            base_params[5] / constants.R_cal_mol + 70000,  # EaR_high
         ]
 
         if self.falloff_type == "troe":
-            bounds_low = jnp.array(common_bounds_low + [0.0, 0.0, 0.0, 0.0])
+            bounds_low = jnp.array(common_bounds_low + [0, 0.0, 0.0, 0.0])
             bounds_high = jnp.array(common_bounds_high + [1.0, 1e5, 1e30, 1e30])
         else:  # sri
             bounds_low = jnp.array(common_bounds_low + [0.0, 0.0, 0.0, 0.0, -1.0])
@@ -261,7 +303,7 @@ class PlogRefitter(eqx.Module):
             return self._create_falloff_dict(self.plog.name, results["params"])
 
         if optax_options is not None:
-            optax_optimizer = OptaxWrapper(optax_options, self.logger)
+            optax_optimizer = OptaxWrapper(optax_options, (bounds_low, bounds_high), self.logger)
             results = optax_optimizer.optimize(self.loss, base_params, active_indices)
             return self._create_falloff_dict(self.plog.name, results["params"])
 

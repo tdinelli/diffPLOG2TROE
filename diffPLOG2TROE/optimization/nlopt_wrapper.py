@@ -157,6 +157,7 @@ class NLOptWrapper:
             "DIRECT_L_RAND_NOSCAL": nlopt.GN_DIRECT_L_RAND_NOSCAL,
             "DIRECT_NOSCAL": nlopt.GN_DIRECT_NOSCAL,  # Fixed typo in algorithm name
             "CRSLM": nlopt.GN_CRS2_LM,
+            "AGS": nlopt.GN_AGS,
             "ESCH": nlopt.GN_ESCH,
             "TNEWTON_PRECOND_RESTART": nlopt.LD_TNEWTON_PRECOND_RESTART,
             "TNEWTON_RESTART": nlopt.LD_TNEWTON_RESTART,
