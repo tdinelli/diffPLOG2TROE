@@ -5,10 +5,10 @@ import jax.numpy as jnp
 from jax import lax, vmap
 from jaxtyping import Array, Float64
 
+from ..physical_constants import PhysicalConstants as constants
 from .arrhenius import Arrhenius
 from .falloff_functions import lindemann, sri, troe
 from .rate_interpreter import parse_rate_constant
-from ..physical_constants import PhysicalConstants as constants
 
 
 class FallOff(eqx.Module):
@@ -33,13 +33,10 @@ class FallOff(eqx.Module):
 
     def _compute_falloff_factor(self, T: Union[Float64, Array], Pr: Union[Float64, Array]) -> Union[Float64, Array]:
         operand = (T, Pr, self.falloff_coefficients)
+        # 0: Lindemann, 1: Troe, 2: Sri
         return lax.switch(
-            self.falloff_type,  # 0: Lindemann, 1: Troe, 2: Sri
-            [
-                lambda _: lindemann(T),
-                lambda x: troe(*x),
-                lambda x: sri(*x),
-            ],
+            self.falloff_type,
+            [lambda _: lindemann(T), lambda x: troe(*x), lambda x: sri(*x)],
             operand,
         )
 
