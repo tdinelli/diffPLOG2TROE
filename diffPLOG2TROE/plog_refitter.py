@@ -4,12 +4,15 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import equinox as eqx
 import jax.numpy as jnp
+from jax import debug
 from jaxtyping import Array, Float64
 from optax import losses
 
+from .boundaries import Boundaries
 from .optimization import NLOptWrapper, OptaxWrapper
 from .physical_constants import PhysicalConstants as constants
-from .rate_constants import FallOff, Plog
+from .rate_constants import Arrhenius, FallOff, Plog
+from .rate_constants.arrhenius import refit_arrhenius
 
 
 class PlogRefitter(eqx.Module):
@@ -118,15 +121,15 @@ class PlogRefitter(eqx.Module):
             else:
                 self.logger.info(f"  {name}: fixed at {self.initial_values[i]:.5e}")
 
-    @eqx.filter_jit
+    # @eqx.filter_jit
     def loss(self, params: Array) -> Float64:
         """Compute the loss between PLOG and estimate rate constant based on the fitting type selected."""
-        falloff_dict = self._create_falloff_dict(self.plog.name, params)
+        falloff_dict = self._create_falloff_dict(self.plog.name, self.falloff_type, params[:10])
         falloff = FallOff(falloff_dict)
         k_falloff = falloff.kinetic_constant(self.T_range, self.P_range)
 
         if self.fitting_mode == "duplicate":
-            lindemann_dict = self._create_lindemann_dict(self.plog.name, params)
+            lindemann_dict = self._create_falloff_dict(self.plog.name, "lindemann", params[10:])
             lindemann = FallOff(lindemann_dict)
             k_lindemann = lindemann.kinetic_constant(self.T_range, self.P_range)
         else:
@@ -168,14 +171,14 @@ class PlogRefitter(eqx.Module):
 
         active_indices = jnp.where(self.param_mask)[0]
         base_params = self._estimate_initial_params()
-        bounds_low, bounds_high = self._create_boundaries(base_params)
+        lower_bounds, upper_bounds = self._create_boundaries(base_params)
 
         if nlopt_options is not None:
-            nlopt_optimizer = NLOptWrapper(nlopt_options, (bounds_low, bounds_high), self.logger)
+            nlopt_optimizer = NLOptWrapper(nlopt_options, (lower_bounds, upper_bounds), self.logger)
             results = nlopt_optimizer.optimize(self.loss, base_params, active_indices)
             optimized_params = results["params"]
         elif optax_options is not None:
-            optax_optimizer = OptaxWrapper(optax_options, (bounds_low, bounds_high), self.logger)
+            optax_optimizer = OptaxWrapper(optax_options, (lower_bounds, upper_bounds), self.logger)
             results = optax_optimizer.optimize(self.loss, base_params, active_indices)
             optimized_params = results["params"]
         else:
@@ -185,14 +188,14 @@ class PlogRefitter(eqx.Module):
         # Return results based on fitting mode
         if self.fitting_mode == "single":
             if self.falloff_type == "troe":
-                return self._create_falloff_dict(self.plog.name, optimized_params)
+                return self._create_falloff_dict(self.plog.name, self.falloff_type, optimized_params)
             elif self.falloff_type == "sri":
-                return self._create_falloff_dict(self.plog.name, optimized_params)
+                return self._create_falloff_dict(self.plog.name, self.falloff_type, optimized_params)
             else:  # lindemann
-                return self._create_lindemann_dict(self.plog.name, optimized_params)
+                return self._create_falloff_dict(self.plog.name, self.falloff_type, optimized_params)
         else:  # duplicate mode
-            troe_dict = self._create_falloff_dict(self.plog.name, optimized_params)
-            lind_dict = self._create_lindemann_dict(self.plog.name, optimized_params)
+            troe_dict = self._create_falloff_dict(self.plog.name, "troe", optimized_params)
+            lind_dict = self._create_falloff_dict(self.plog.name, "lindemann", optimized_params)
             return troe_dict, lind_dict
 
     def _estimate_initial_params(self) -> Array:
@@ -202,13 +205,9 @@ class PlogRefitter(eqx.Module):
 
         T_mean = jnp.mean(self.T_range)
 
-        # Estimate high pressure limit from highest pressure PLOG
-        lnA_high, n_high, EaR_high = self._fit_arrhenius(self.k_plog[-1])
-
-        # Estimate low pressure limit from lowest pressure PLOG
-        lnA_low, n_low, EaR_low = self._fit_arrhenius(
-            self.k_plog[0] / ((self.plog.p_levels[0] / (constants.R_L_atm_K_mol * self.T_range)) * jnp.float64(0.001))
-        )
+        # HPL and LPL from the plog level
+        lnA_high, n_high, EaR_high = self.plog.k_levels[-1].lnA, self.plog.k_levels[-1].n, self.plog.k_levels[-1].EaR
+        lnA_low, n_low, EaR_low = self.plog.k_levels[0].lnA, self.plog.k_levels[0].n, self.plog.k_levels[0].EaR
 
         # Default values for different falloff parameters
         default_troe = {"A": 0.5, "T3": T_mean * 0.7, "T1": T_mean * 0.2, "T2": T_mean * 1.5}
@@ -356,8 +355,15 @@ class PlogRefitter(eqx.Module):
                     ],
                     dtype=jnp.float64,
                 )
-
         else:  # duplicate mode
+            # Estimate high pressure limit from highest pressure PLOG split the contribution equally between the two rate constants
+            lnA_high, n_high, EaR_high = refit_arrhenius((self.k_plog[-1] / 2), self.T_range, True)
+
+            # Estimate low pressure limit from lowest pressure PLOG split the contribution equally between the two rate constants
+            M = (self.plog.p_levels[0] / (constants.R_L_atm_K_mol * self.T_range)) * jnp.float64(0.001)
+            k_low = (self.k_plog[0] / M) / 2
+            lnA_low, n_low, EaR_low = refit_arrhenius(k_low, self.T_range, True)
+
             # ---------------------------------------------------------
             # Estimate Troe reaction parameters (first reaction)
             # ---------------------------------------------------------
@@ -393,25 +399,15 @@ class PlogRefitter(eqx.Module):
             # ---------------------------------------------------------
             # Estimate Lindemann reaction parameters (second reaction)
             # ---------------------------------------------------------
-
-            # For the Lindemann reaction, we'll use different initial values
-            lnA_high_lind = lnA_high - 0.3  # Slightly lower A factor
-            n_high_lind = n_high + 0.1  # Slightly higher temperature dependence
-            EaR_high_lind = EaR_high * 0.95  # Slightly lower activation energy
-
-            lnA_low_lind = lnA_low - 0.3
-            n_low_lind = n_low + 0.1
-            EaR_low_lind = EaR_low * 0.95
-
             # Store Lindemann parameters
             for i, (name, value) in enumerate(
                 [
-                    ("lnA_low_lind", lnA_low_lind),
-                    ("n_low_lind", n_low_lind),
-                    ("EaR_low_lind", EaR_low_lind),
-                    ("lnA_high_lind", lnA_high_lind),
-                    ("n_high_lind", n_high_lind),
-                    ("EaR_high_lind", EaR_high_lind),
+                    ("lnA_low_lind", lnA_low),
+                    ("n_low_lind", n_low),
+                    ("EaR_low_lind", EaR_low),
+                    ("lnA_high_lind", lnA_high),
+                    ("n_high_lind", n_high),
+                    ("EaR_high_lind", EaR_high),
                 ],
                 start=10,
             ):
@@ -447,7 +443,7 @@ class PlogRefitter(eqx.Module):
                 )
             )
 
-            self.logger.info("\nLindemann reaction parameters:")
+            self.logger.info("Lindemann reaction parameters:")
             self.logger.info(
                 "  High pressure limit (A, n, Ea): {:.3e}, {:.3f}, {:.3e}".format(
                     jnp.exp(params_dict["lnA_high_lind"]),
@@ -456,7 +452,7 @@ class PlogRefitter(eqx.Module):
                 )
             )
             self.logger.info(
-                "  Low pressure limit (A, n, Ea): {:.3e}, {:.3f}, {:.3e}".format(
+                "  Low pressure limit (A, n, Ea): {:.3e}, {:.3f}, {:.3e}\n".format(
                     jnp.exp(params_dict["lnA_low_lind"]),
                     params_dict["n_low_lind"],
                     params_dict["EaR_low_lind"] * constants.R_cal_mol,
@@ -490,123 +486,105 @@ class PlogRefitter(eqx.Module):
 
     def _create_boundaries(self, params: Array) -> Tuple[Array, Array]:
         if self.fitting_mode == "single":
-            common_bounds_low = [
-                params[0] - 20,  # lnA_low
-                params[1] - 5,  # n_low
-                params[2] / constants.R_cal_mol - 70000,  # EaR_low
-                params[3] - 20,  # lnA_high
-                params[4] - 5,  # n_high
-                params[5] / constants.R_cal_mol - 70000,  # EaR_high
-            ]
+            lpl_params = jnp.array([jnp.exp(params[0]), params[1], params[2] * constants.R_cal_mol])
+            lpl_arrhenius = Arrhenius(
+                {"name": "low", "type": "arrhenius", "rate-constant": {"coefficients": lpl_params}}
+            )
+            k_lpl = lpl_arrhenius.kinetic_constant(self.T_range)
+            boundaries = Boundaries(k_lpl, 0.8, "symmetric", (self.T_range[0], self.T_range[-1]))
+            lpl_lb, lpl_ub = boundaries.compute_boundaries()
 
-            common_bounds_high = [
-                params[0] + 20,  # lnA_low
-                params[1] + 5,  # n_low
-                params[2] / constants.R_cal_mol + 70000,  # EaR_low
-                params[3] + 20,  # lnA_high
-                params[4] + 5,  # n_high
-                params[5] / constants.R_cal_mol + 70000,  # EaR_high
-            ]
+            hpl_params = jnp.array([jnp.exp(params[3]), params[4], params[5] * constants.R_cal_mol])
+            hpl_arrhenius = Arrhenius(
+                {"name": "high", "type": "arrhenius", "rate-constant": {"coefficients": hpl_params}}
+            )
+            k_hpl = hpl_arrhenius.kinetic_constant(self.T_range)
+            boundaries = Boundaries(k_hpl, 0.8, "symmetric", (self.T_range[0], self.T_range[-1]))
+            hpl_lb, hpl_ub = boundaries.compute_boundaries()
 
+            common_bounds_low = jnp.concatenate([lpl_lb, hpl_lb])
+            common_bounds_high = jnp.concatenate([lpl_ub, hpl_ub])
             if self.falloff_type == "troe":
-                bounds_low = jnp.array(common_bounds_low + [0, 0.0, 0.0, 0.0])
-                bounds_high = jnp.array(common_bounds_high + [1.0, 1e5, 1e30, 1e30])
+                lower_bounds = jnp.concatenate([common_bounds_low, jnp.array([0, 0.0, 0.0, 0.0])])
+                upper_bounds = jnp.concatenate([common_bounds_high, jnp.array([1.0, 1e5, 1e30, 1e30])])
             elif self.falloff_type == "sri":
-                bounds_low = jnp.array(common_bounds_low + [0.0, 0.0, 0.0, 0.0, -1.0])
-                bounds_high = jnp.array(common_bounds_high + [1e2, 1e5, 1e5, 2.0, 2.0])
+                lower_bounds = jnp.concatenate([common_bounds_low, jnp.array([0.0, 0.0, 0.0, 0.0, -1.0])])
+                upper_bounds = jnp.concatenate([common_bounds_high, jnp.array([1e2, 1e5, 1e5, 2.0, 2.0])])
             else:  # lindemann
-                bounds_low = jnp.array(common_bounds_low)
-                bounds_high = jnp.array(common_bounds_high)
+                lower_bounds = common_bounds_low
+                upper_bounds = common_bounds_high
         else:  # duplicate mode
-            # Bounds for Troe reaction
-            troe_bounds_low = [
-                params[0] - 20,  # lnA_low_troe
-                params[1] - 5,  # n_low_troe
-                params[2] - 70000,  # EaR_low_troe
-                params[3] - 20,  # lnA_high_troe
-                params[4] - 5,  # n_high_troe
-                params[5] - 70000,  # EaR_high_troe
-                0.0,  # A_troe
-                0.0,  # T3_troe
-                0.0,  # T1_troe
-                0.0,  # T2_troe
-            ]
+            # ----------------------------------------------------------------
+            # Troe boundaries
+            # ----------------------------------------------------------------
+            lpl_params_1 = jnp.array([jnp.exp(params[0]), params[1], params[2] * constants.R_cal_mol])
+            lpl_arrhenius_1 = Arrhenius(
+                {"name": "low", "type": "arrhenius", "rate-constant": {"coefficients": lpl_params_1}}
+            )
+            k_lpl_1 = lpl_arrhenius_1.kinetic_constant(self.T_range)
+            boundaries = Boundaries(k_lpl_1, 0.8, "symmetric", (self.T_range[0], self.T_range[-1]))
+            lpl_lb_1, lpl_ub_1 = boundaries.compute_boundaries()
 
-            troe_bounds_high = [
-                params[0] + 20,  # lnA_low_troe
-                params[1] + 5,  # n_low_troe
-                params[2] + 70000,  # EaR_low_troe
-                params[3] + 20,  # lnA_high_troe
-                params[4] + 5,  # n_high_troe
-                params[5] + 70000,  # EaR_high_troe
-                1.0,  # A_troe
-                1e5,  # T3_troe
-                1e30,  # T1_troe
-                1e30,  # T2_troe
-            ]
+            hpl_params_1 = jnp.array([jnp.exp(params[3]), params[4], params[5] * constants.R_cal_mol])
+            hpl_arrhenius_1 = Arrhenius(
+                {"name": "high", "type": "arrhenius", "rate-constant": {"coefficients": hpl_params_1}}
+            )
+            k_hpl_1 = hpl_arrhenius_1.kinetic_constant(self.T_range)
+            boundaries = Boundaries(k_hpl_1, 0.8, "symmetric", (self.T_range[0], self.T_range[-1]))
+            hpl_lb_1, hpl_ub_1 = boundaries.compute_boundaries()
 
-            # Bounds for Lindemann reaction
-            lind_bounds_low = [
-                params[10] - 20,  # lnA_low_lind
-                params[11] - 5,  # n_low_lind
-                params[12] - 70000,  # EaR_low_lind
-                params[13] - 20,  # lnA_high_lind
-                params[14] - 5,  # n_high_lind
-                params[15] - 70000,  # EaR_high_lind
-            ]
+            common_bounds_low = jnp.concatenate([lpl_lb_1, hpl_lb_1])
+            common_bounds_high = jnp.concatenate([lpl_ub_1, hpl_ub_1])
+            troe_bounds_low = jnp.concatenate([common_bounds_low, jnp.array([0, 0.0, 0.0, 0.0])])
+            troe_bounds_high = jnp.concatenate([common_bounds_high, jnp.array([1.0, 1e5, 1e30, 1e30])])
 
-            lind_bounds_high = [
-                params[10] + 20,  # lnA_low_lind
-                params[11] + 5,  # n_low_lind
-                params[12] + 70000,  # EaR_low_lind
-                params[13] + 20,  # lnA_high_lind
-                params[14] + 5,  # n_high_lind
-                params[15] + 70000,  # EaR_high_lind
-            ]
+            # ----------------------------------------------------------------
+            # Lindemann boundaries
+            # ----------------------------------------------------------------
+            lpl_params_2 = jnp.array([jnp.exp(params[10]), params[11], params[12] * constants.R_cal_mol])
+            lpl_arrhenius_2 = Arrhenius(
+                {"name": "low", "type": "arrhenius", "rate-constant": {"coefficients": lpl_params_2}}
+            )
+            k_lpl_2 = lpl_arrhenius_2.kinetic_constant(self.T_range)
+            boundaries = Boundaries(k_lpl_2, 0.8, "symmetric", (self.T_range[0], self.T_range[-1]))
+            lpl_lb_2, lpl_ub_2 = boundaries.compute_boundaries()
 
-            bounds_low = jnp.array(troe_bounds_low + lind_bounds_low)
-            bounds_high = jnp.array(troe_bounds_high + lind_bounds_high)
+            hpl_params_2 = jnp.array([jnp.exp(params[13]), params[14], params[15] * constants.R_cal_mol])
+            hpl_arrhenius_2 = Arrhenius(
+                {"name": "low", "type": "arrhenius", "rate-constant": {"coefficients": hpl_params_2}}
+            )
+            k_hpl_2 = hpl_arrhenius_2.kinetic_constant(self.T_range)
+            boundaries = Boundaries(k_hpl_2, 0.8, "symmetric", (self.T_range[0], self.T_range[-1]))
+            hpl_lb_2, hpl_ub_2 = boundaries.compute_boundaries()
 
-        return bounds_low, bounds_high
+            lind_bounds_low = jnp.concatenate([lpl_lb_2, hpl_lb_2])
 
-    def _fit_arrhenius(self, k_values: Array) -> Tuple[Float64, Float64, Float64]:
-        log_k = jnp.log(k_values)
-        log_T = jnp.log(self.T_range)
-        inv_T = 1.0 / self.T_range
-        X = jnp.vstack([jnp.ones_like(log_T), log_T, -inv_T]).T
-        beta = jnp.linalg.lstsq(X, log_k, rcond=None)[0]
-        return beta[0], beta[1], beta[2]  # lnA, n, Ea/R
+            lind_bounds_high = jnp.concatenate([lpl_ub_2, hpl_ub_2])
 
-    def _create_falloff_dict(self, name: str, params: Array) -> Dict[str, Any]:
+            lower_bounds = jnp.concatenate([troe_bounds_low, lind_bounds_low])
+            upper_bounds = jnp.concatenate([troe_bounds_high, lind_bounds_high])
+
+        return lower_bounds, upper_bounds
+
+    @staticmethod
+    def _create_falloff_dict(name: str, falloff_type: str, params: Array) -> Dict[str, Any]:
         """Create a falloff dictionary with the appropriate falloff type."""
         result = {
             "name": name,
             "type": "falloff",
-            "falloff-type": self.falloff_type,
+            "falloff-type": falloff_type,
             "rate-constant": {
                 "lpl-coefficients": [jnp.exp(params[0]), params[1], params[2] * constants.R_cal_mol],
                 "hpl-coefficients": [jnp.exp(params[3]), params[4], params[5] * constants.R_cal_mol],
             },
         }
 
-        if self.falloff_type == "troe":
+        if falloff_type == "troe":
             result["rate-constant"]["falloff-coefficients"] = [params[6], params[7], params[8], params[9]]
-        else:  # sri
+        if falloff_type == "sri":
             result["rate-constant"]["falloff-coefficients"] = [params[6], params[7], params[8], params[9], params[10]]
 
         return result
-
-    def _create_lindemann_dict(self, name: str, params: Array) -> Dict[str, Any]:
-        """Create a Lindemann falloff dictionary from parameters."""
-        return {
-            "name": name,
-            "type": "falloff",
-            "falloff-type": "lindemann",
-            "rate-constant": {
-                "lpl-coefficients": [jnp.exp(params[10]), params[11], params[12] * constants.R_cal_mol],
-                "hpl-coefficients": [jnp.exp(params[13]), params[14], params[15] * constants.R_cal_mol],
-            },
-        }
 
     @staticmethod
     def _setup_logging(log_name: str) -> logging.Logger:

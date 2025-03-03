@@ -3,9 +3,9 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import jax.numpy as jnp
 import optax
-from optax.projections import projection_box
 from jax import jit, value_and_grad
 from jaxtyping import Array, Float64
+from optax.projections import projection_box
 
 
 @dataclass
@@ -253,6 +253,7 @@ class OptaxWrapper:
                 self._log(f"Gradient norm below tolerance at step {step}")
                 break
 
+        self._log(f"Found minimum at: {self.best_loss:.6e}")
         return {
             "params": self.best_params,
             "active_params": self.best_params[active_indices],

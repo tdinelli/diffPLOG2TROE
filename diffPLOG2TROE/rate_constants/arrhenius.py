@@ -1,9 +1,8 @@
-import warnings
 from typing import Dict, Tuple, Union
 
 import equinox as eqx
 import jax.numpy as jnp
-from jax import jit
+from jax import jit, lax
 from jaxtyping import Array, Float64
 
 from ..physical_constants import PhysicalConstants as constants
@@ -114,7 +113,7 @@ class Arrhenius(eqx.Module):
 
 @jit
 def refit_arrhenius(
-    rate_constant: Array, temperature: Array, three_params: bool = False, residual_threshold: Float64 = 1.0
+    rate_constant: Array, temperature: Array, three_params: bool = False
 ) -> Tuple[Float64, Float64, Float64]:
     """
     Refit Arrhenius parameters from rate constant data using least squares regression.
@@ -141,9 +140,6 @@ def refit_arrhenius(
     three_params : bool, default=False
         If True, fits the modified Arrhenius equation with temperature exponent (A, n, Ea)
         If False, fits the standard Arrhenius equation (A, Ea)
-    residual_threshold : float, default=1.0
-        Threshold for the sum of squared residuals. If the fit produces residuals
-        above this value, a warning will be issued.
 
     Returns
     -------
@@ -152,12 +148,6 @@ def refit_arrhenius(
         - ln(A): Natural logarithm of the pre-exponential factor
         - n: Temperature exponent (0 for standard Arrhenius)
         - Ea/R: Activation energy divided by gas constant [K]
-
-    Warns
-    -----
-    UserWarning
-        If the sum of squared residuals exceeds the specified threshold,
-        indicating a potentially poor fit to the Arrhenius model.
 
     Notes
     -----
@@ -170,16 +160,14 @@ def refit_arrhenius(
     log_k = jnp.log(rate_constant)
     inv_T = 1.0 / temperature
 
-    if three_params:
-        log_T = jnp.log(temperature)
-        X = jnp.vstack([jnp.ones_like(log_T), log_T, -inv_T]).T
-    else:
-        X = jnp.vstack([jnp.ones_like(inv_T), -inv_T]).T
+    X = lax.cond(
+        three_params,
+        lambda _: jnp.vstack([jnp.ones_like(inv_T), jnp.log(temperature), -inv_T]).T,
+        lambda _: jnp.vstack([jnp.ones_like(inv_T), jnp.zeros_like(inv_T), -inv_T]).T,
+        None
+    )
 
-    beta, residuals, _, _ = jnp.linalg.lstsq(X, log_k, rcond=None)
-
-    if residuals > residual_threshold:
-        warnings.warn(f"High residuals value ({residuals:.4f}) detected in Arrhenius fit. ", UserWarning)
+    beta = jnp.linalg.lstsq(X, log_k, rcond=None)[0]
 
     # Return ln(A), n, Ea/R with n=0 for two-parameter model
-    return beta[0], beta[1] if three_params else 0.0, beta[-1]
+    return beta[0], beta[1], beta[-1]
