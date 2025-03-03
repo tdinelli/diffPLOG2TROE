@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -10,153 +10,65 @@ from .rate_interpreter import parse_rate_constant
 
 
 class Arrhenius(eqx.Module):
-    """
-    Represents a modified Arrhenius rate expression for chemical kinetics.
-
-    The modified Arrhenius equation is commonly used in chemical kinetics to model
-    the temperature dependence of reaction rate constants:
-
-    k(T) = A * T^n * exp(-Ea/(R*T))
-
-    Where:
-    - A: Pre-exponential factor [units depend on reaction order]
-    - n: Temperature exponent [dimensionless]
-    - Ea: Activation energy [cal/mol]
-    - R: Gas constant [cal/(mol*K)]
-    - T: Temperature [K]
-
-    For numerical stability, this implementation internally stores ln(A) rather than A.
-
-    Attributes:
-        lnA (Float64): Natural logarithm of the pre-exponential factor
-        n (Float64): Temperature exponent
-        EaR (Float64): Activation energy divided by the gas constant (Ea/R)
-        name (str): Name or identifier for the reaction
-    """
-
     lnA: Float64
     n: Float64
     EaR: Float64
     name: str
 
-    def __init__(self, rate_constant: Dict) -> None:
-        """
-        Initialize an Arrhenius rate expression from a dictionary of parameters.
+    def __init__(
+        self,
+        rate_dict: Optional[Dict] = None,
+        params: Optional[Array] = None,
+        name: Optional[str] = None,
+    ) -> None:
+        if isinstance(rate_dict, dict):
+            self._init_from_dict(rate_dict)
+        elif params is not None:
+            if name is None:
+                raise ValueError("Reaction name must be provided when initializing with params")
+            self._init_from_array(name, params)
+        else:
+            raise ValueError("Either rate_dict or params must be provided")
 
-        The dictionary is expected to contain rate constant information in a standard
-        format that can be parsed by the parse_rate_constant function.
-
-        Args:
-            rate_constant (Dict): Dictionary containing rate constant information with:
-                - "name": Reaction name or identifier
-                - Rate constant parameters (accessed via parse_rate_constant)
-
-        Example:
-            >>> arrhenius = Arrhenius({
-            ...     "name": "H + O2 = O + OH",
-            ...     "type": "arrhenius",
-            ...     "rate-constant": {"coefficients": [2.65e+16, -0.671, 17041.0]}
-            ... })
-        """
-        self.name = rate_constant["name"]
-        parameters = parse_rate_constant(rate_constant)
+    def _init_from_dict(self, rate_const: Dict) -> None:
+        """Initialize from a dictionary containing rate constant information."""
+        self.name = rate_const["name"]
+        parameters = parse_rate_constant(rate_const)
         self.lnA = jnp.log(parameters[0])
         self.n = parameters[1]
         self.EaR = parameters[2] / constants.R_cal_mol
 
+    def _init_from_array(self, name: str, params: Array) -> None:
+        """Initialize from an array of [A, n, Ea] values."""
+        self.name = name
+        self.lnA = jnp.log(params[0])
+        self.n = params[1]
+        self.EaR = params[2] / constants.R_cal_mol
+
+    @classmethod
+    def from_data(cls, rates: Array, temps: Array, name: str, three_params: bool = True) -> "Arrhenius":
+        """Create an Arrhenius instance by fitting to experimental data."""
+        lnA, n, EaR = refit_arrhenius(rates, temps, three_params)
+        params = jnp.array([jnp.exp(lnA), n, EaR * constants.R_cal_mol])
+        return cls(params=params, name=name)
+
     @eqx.filter_jit
     def kinetic_constant(self, T: Union[Float64, Array]) -> Union[Float64, Array]:
-        """
-        Calculate the rate constant at the specified temperature(s).
-
-        This method implements the modified Arrhenius equation:
-        k(T) = A * T^n * exp(-Ea/(R*T))
-
-        This is computed in logarithmic form for numerical stability:
-        ln(k(T)) = ln(A) + n*ln(T) - Ea/(R*T)
-
-        The method is just-in-time compiled with JAX for performance and can
-        handle both single temperature values and arrays of temperatures.
-
-        Args:
-            T (Float64 or Array): Temperature(s) in Kelvin at which to evaluate
-                                 the rate constant
-
-        Returns:
-            Float64 or Array: Rate constant(s) evaluated at the specified temperature(s)
-
-        Example:
-            >>> arr = Arrhenius({"name": "Example", "type": "arrhenius",
-            ...                  "rate-constant": {"coefficients": [1.0e+13, 0.0, 0.0]}})
-            >>> arr.kinetic_constant(1000.0)
-            1.0e+13
-            >>> arr.kinetic_constant(jnp.array([300.0, 1000.0, 2000.0]))
-            Array([1.0e+13, 1.0e+13, 1.0e+13], dtype=float64)
-        """
+        """Calculate rate constant at given temperature(s)."""
         return jnp.exp(self.lnA + self.n * jnp.log(T) - self.EaR / T)
 
     def __str__(self) -> str:
-        """
-        Return a string representation following the CHEMKIN formalism of the reaction stored whithin the object.
-
-        Returns:
-            str: Formatted string with reaction name and Arrhenius parameters
-
-        Example:
-            >>> arr = Arrhenius({"name": "H+O2=OH+O", "type": "arrhenius",
-            ...                  "rate-constant": {"coefficients": [2.65e+16, -0.671, 17041.0]}})
-            >>> print(arr)
-            H+O2=OH+O       2.65000e+16 -6.71000e-01 1.70410e+04
-        """
+        """Return a string representation in CHEMKIN format."""
         return "{}\t\t{:.5e} {:.5e} {:.5e}".format(self.name, jnp.exp(self.lnA), self.n, self.EaR * constants.R_cal_mol)
 
 
 @jit
 def refit_arrhenius(
-    rate_constant: Array, temperature: Array, three_params: bool = False
+    rate_constant: Array,
+    temperature: Array,
+    three_params: bool = False,
 ) -> Tuple[Float64, Float64, Float64]:
-    """
-    Refit Arrhenius parameters from rate constant data using least squares regression.
-
-    This function calculates parameters for the Arrhenius equation by fitting experimental
-    rate constant data at different temperatures. It can fit either the standard Arrhenius
-    equation or the modified Arrhenius equation with a temperature exponent.
-
-    Standard Arrhenius equation:
-        k = A * exp(-Ea/(R*T))
-
-    Modified Arrhenius equation:
-        k = A * T^n * exp(-Ea/(R*T))
-
-    The fitting is performed by solving the least squares problem for:
-        ln(k) = ln(A) + n*ln(T) - (Ea/R)*(1/T)
-
-    Parameters
-    ----------
-    rate_constant : Array
-        Experimental rate constants [units consistent with your kinetic]
-    temperature : Array
-        Temperatures corresponding to each rate constant [K]
-    three_params : bool, default=False
-        If True, fits the modified Arrhenius equation with temperature exponent (A, n, Ea)
-        If False, fits the standard Arrhenius equation (A, Ea)
-
-    Returns
-    -------
-    Tuple[Float64, Float64, Float64]
-        A tuple containing:
-        - ln(A): Natural logarithm of the pre-exponential factor
-        - n: Temperature exponent (0 for standard Arrhenius)
-        - Ea/R: Activation energy divided by gas constant [K]
-
-    Notes
-    -----
-    The units of the pre-exponential factor A depend on the reaction order
-    and the units used for the rate constants.
-
-    Consider plotting ln(k) vs 1/T to visually verify the linearity of your data
-    when residuals are high.
-    """
+    """Refit Arrhenius parameters from rate constant data using least squares regression."""
     log_k = jnp.log(rate_constant)
     inv_T = 1.0 / temperature
 
@@ -164,7 +76,7 @@ def refit_arrhenius(
         three_params,
         lambda _: jnp.vstack([jnp.ones_like(inv_T), jnp.log(temperature), -inv_T]).T,
         lambda _: jnp.vstack([jnp.ones_like(inv_T), jnp.zeros_like(inv_T), -inv_T]).T,
-        None
+        None,
     )
 
     beta = jnp.linalg.lstsq(X, log_k, rcond=None)[0]
