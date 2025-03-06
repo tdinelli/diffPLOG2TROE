@@ -500,7 +500,7 @@ class ParameterManager:
             upper_bound = param_value * (10**uncertainty_factor)
 
         # Apply parameter-specific constraints
-        if param_name.startswith("A_") or (param_name == "A" or param_name == "secondary_A"):
+        if param_name.startswith("A_") or (param_name == "secondary_A"):
             # A-factors (pre-exponential)
             # A-factors are usually positive and can vary by many orders of magnitude
             # Ensure a reasonable lower bound
@@ -537,8 +537,8 @@ class ParameterManager:
         # Troe parameters
         elif param_name == "A" or param_name == "secondary_A":
             # Troe alpha parameter typically between 0 and 1
-            lower_bound = max(lower_bound, 0.0)
-            upper_bound = min(upper_bound, 1.0)
+            lower_bound = 0.0
+            upper_bound = 1.0
 
         elif param_name == "T3" or param_name == "secondary_T3":
             # T3 parameter (T*) typically positive

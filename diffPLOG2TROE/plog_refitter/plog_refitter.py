@@ -92,6 +92,7 @@ class PlogRefitter:
         uncertainty_factor: float = 1.0,
         uncertainty_type: str = "symmetric",
         tol: float = 1e-6,
+        learning_rate: float = 1e-3
     ) -> Dict[str, Any]:
         # Calculate parameter bounds
         lower_bounds, upper_bounds = self.param_manager.calculate_optimization_bounds(
@@ -103,5 +104,6 @@ class PlogRefitter:
             upper_bounds=upper_bounds,
             max_iterations=max_iterations,
             tol=tol,
+            learning_rate=learning_rate
         )
         return results
