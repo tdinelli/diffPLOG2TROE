@@ -1,3 +1,68 @@
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "diffPLOG2TROE"
+dynamic = ["version"]
+description = "A differentiable PLOG to TROE refitter"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Timoteo Dinelli", email = "timoteo.dinelli@polimi.it"},
+]
+keywords = ["chemistry", "reaction-kinetics", "differentiable"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
+
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "jax",
+    "jaxtyping",
+    "chex",
+    "optax",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "mkdocs",
+]
+docs = [
+    "mkdocs",
+    "mkdocs-material",
+    "mkdocstrings[python]",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/tdinelli/diffPLOG2TROE"
+"Bug Tracker" = "https://github.com/tdinelli/diffPLOG2TROE/issues"
+"Documentation" = "https://tdinelli.github.io/diffPLOG2TROE"
+
+[tool.setuptools]
+packages = ["diffPLOG2TROE"]
+
+[tool.setuptools.dynamic]
+version = {attr = "diffPLOG2TROE.__version__"}
+
+[tool.setuptools.package-data]
+diffPLOG2TROE = ["py.typed"]
+
+[tool.setuptools.exclude-package-data]
+"*" = [
+    "tests",
+    "examples",
+    "docs",
+    "devtools",
+    "__pycache__",
+]
