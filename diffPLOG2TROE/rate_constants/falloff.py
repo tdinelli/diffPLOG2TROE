@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Tuple, Union
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -38,7 +38,6 @@ class FallOff(eqx.Module):
                 self._init_from_array(name, hpl_params, lpl_params, falloff_params, falloff_type, efficiencies)
             else:
                 self._init_from_array("unknown :(", hpl_params, lpl_params, falloff_params, falloff_type, efficiencies)
-
         else:
             raise ValueError("Either rate_dict or all required parameters must be provided")
 
@@ -77,7 +76,7 @@ class FallOff(eqx.Module):
             self.explicit_efficiencies = False
 
     def _calculate_concentration(self, P: Float64, T: Union[Float64, Array]) -> Union[Float64, Array]:
-        """Calculate concentration [mol/L] from pressure [atm] and temperature [K]."""
+        """Calculate concentration [mol/cm3] from pressure [atm] and temperature [K]."""
         return (P / (constants.R_L_atm_K_mol * T)) * jnp.float64(0.001)
 
     def _compute_falloff_factor(self, T: Union[Float64, Array], Pr: Union[Float64, Array]) -> Union[Float64, Array]:
@@ -85,21 +84,25 @@ class FallOff(eqx.Module):
         operand = (T, Pr, self.falloff_params)
         return lax.switch(
             self.falloff_type,
-            [lambda _: lindemann(T), lambda x: troe(*x), lambda x: sri(*x)],
+            [lambda x: lindemann(*x), lambda x: troe(*x), lambda x: sri(*x)],
             operand,
         )
 
     @eqx.filter_jit
-    def _single_P_kinetic_constant(self, T: Union[Float64, Array], P: Float64) -> Union[Float64, Array]:
+    def _single_P_kinetic_constant(
+        self, T: Union[Float64, Array], P: Float64
+    ) -> Tuple[Union[Float64, Array], Union[Float64, Array]]:
         k_hpl = self.hpl.kinetic_constant(T)
         k_lpl = self.lpl.kinetic_constant(T)
         M = self._calculate_concentration(P, T)
-        Pr = k_lpl * M / k_hpl
+        Pr = (k_lpl * M) / k_hpl
         F = self._compute_falloff_factor(T, Pr)
-        return k_hpl * (Pr / (1 + Pr)) * F
+        return (k_hpl * (Pr / (1 + Pr)) * F, M)
 
     @eqx.filter_jit
-    def kinetic_constant(self, T: Union[Float64, Array], P: Union[Float64, Array]) -> Union[Float64, Array]:
+    def kinetic_constant(
+        self, T: Union[Float64, Array], P: Union[Float64, Array]
+    ) -> Tuple[Union[Float64, Array], Union[Float64, Array]]:
         if jnp.isscalar(P) or P.ndim == 0:
             return self._single_P_kinetic_constant(T, P)
         else:
