@@ -24,9 +24,10 @@ class Arrhenius(eqx.Module):
         if isinstance(rate_dict, dict):
             self._init_from_dict(rate_dict)
         elif params is not None:
-            if name is None:
-                raise ValueError("Reaction name must be provided when initializing with params")
-            self._init_from_array(name, params)
+            if isinstance(name, str):
+                self._init_from_array(name, params)
+            else:
+                self._init_from_array("unknown :(", params)
         else:
             raise ValueError("Either rate_dict or params must be provided")
 
@@ -56,6 +57,10 @@ class Arrhenius(eqx.Module):
     def kinetic_constant(self, T: Union[Float64, Array]) -> Union[Float64, Array]:
         """Calculate rate constant at given temperature(s)."""
         return jnp.exp(self.lnA + self.n * jnp.log(T) - self.EaR / T)
+
+    def get_parameters(self) -> Tuple[Float64, Float64, Float64]:
+        """Return the Arrhenius parameters (A, n, Ea)."""
+        return jnp.exp(self.lnA), self.n, self.EaR * constants.R_cal_mol
 
     def __str__(self) -> str:
         """Return a string representation in CHEMKIN format."""

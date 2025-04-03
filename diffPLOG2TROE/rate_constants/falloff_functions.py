@@ -10,17 +10,22 @@ def lindemann(T: Union[Float64, Array]) -> Union[Float64, Array]:
 
 def troe(T: Union[Float64, Array], Pr: Union[Float64, Array], params: Array) -> Union[Float64, Array]:
     A, T3, T1, T2, _ = params
-
     Fcent = (1 - A) * jnp.exp(-T / T3) + A * jnp.exp(-T / T1) + jnp.exp(-T2 / T)
     logFcent = jnp.log10(Fcent)
+
     c = -0.4 - 0.67 * logFcent
     n = 0.75 - 1.27 * logFcent
-    logPr = jnp.log10(Pr)
-
+    logPr = jnp.log10(jnp.maximum(Pr, 1.0e-32))
     d = logPr + c
     f1 = (d / (n - 0.14 * d)) ** 2
 
-    return 10.0 ** (logFcent / (1.0 + f1))
+    result = jnp.where(
+        Pr > 1.0e-32,
+        10.0 ** (logFcent / (1.0 + f1)),  # normal case
+        10.0 ** (logFcent / (1.0 + (1.0 / 0.14) ** 2)),  # OpenSMOKE does this Asymptotic value for F when f --> -Inf
+    )
+
+    return result
 
 
 def sri(T: Union[Float64, Array], Pr: Union[Float64, Array], params: Array) -> Union[Float64, Array]:

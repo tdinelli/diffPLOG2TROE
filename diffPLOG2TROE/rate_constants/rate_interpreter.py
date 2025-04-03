@@ -57,12 +57,12 @@ def parse_plog(parameters: List[List[Float64]]) -> Tuple[Array, Array]:
     return (jnp.array(pressure_levels, dtype=jnp.float64), jnp.array(rate_constants, dtype=jnp.float64))
 
 
-def parse_falloff(rate_constant: Dict) -> Tuple[Array, Array, Array, int]:
+def parse_falloff(rate_constant: Dict) -> Tuple[Array, Array, Array, int, Dict]:
     lpl_coefficients = parse_arrhenius_parameters(rate_constant["rate-constant"]["lpl-coefficients"])
     hpl_coefficients = parse_arrhenius_parameters(rate_constant["rate-constant"]["hpl-coefficients"])
 
     if rate_constant["falloff-type"] == "lindemann":
-        return (hpl_coefficients, lpl_coefficients, jnp.empty(5), FittingType.lindemann.value)
+        return hpl_coefficients, lpl_coefficients, jnp.empty(5), FittingType.lindemann.value, {}
 
     params = rate_constant["rate-constant"]["falloff-coefficients"]
 
@@ -77,4 +77,7 @@ def parse_falloff(rate_constant: Dict) -> Tuple[Array, Array, Array, int]:
 
     type_value = FittingType[rate_constant["falloff-type"]].value
 
-    return (hpl_coefficients, lpl_coefficients, params, type_value)
+    if "efficiencies" in rate_constant:
+        return hpl_coefficients, lpl_coefficients, params, type_value, rate_constant["efficiencies"]
+    else:
+        return hpl_coefficients, lpl_coefficients, params, type_value, {}

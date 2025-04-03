@@ -2,7 +2,7 @@ from typing import Dict, Optional, Union
 
 import equinox as eqx
 import jax.numpy as jnp
-from jax import lax, vmap
+from jax import debug, lax, vmap
 from jaxtyping import Array, Float64
 
 from ..physical_constants import constants
@@ -16,6 +16,8 @@ class FallOff(eqx.Module):
     lpl: Arrhenius  # Low-pressure limit
     falloff_type: int  # 0: Lindemann, 1: Troe, 2: SRI
     falloff_params: Array
+    efficiencies: Dict
+    explicit_efficiencies: bool
     name: str
 
     def __init__(
@@ -25,22 +27,32 @@ class FallOff(eqx.Module):
         lpl_params: Optional[Array] = None,
         falloff_params: Optional[Array] = None,
         falloff_type: Optional[int] = None,
+        efficiencies: Optional[Dict] = None,
         name: Optional[str] = None,
     ) -> None:
-        """
-        Initialize FallOff reaction from dictionary or arrays.
-        """
+        """Initialize FallOff reaction from dictionary or arrays."""
         if isinstance(rate_dict, dict):
             self._init_from_dict(rate_dict)
-        elif all(x is not None for x in [name, hpl_params, lpl_params, falloff_type]):
-            self._init_from_array(name, hpl_params, lpl_params, falloff_params, falloff_type)
+        elif all(x is not None for x in [hpl_params, lpl_params, falloff_type, efficiencies]):
+            if name is not None:
+                self._init_from_array(name, hpl_params, lpl_params, falloff_params, falloff_type, efficiencies)
+            else:
+                self._init_from_array("unknown :(", hpl_params, lpl_params, falloff_params, falloff_type, efficiencies)
+
         else:
             raise ValueError("Either rate_dict or all required parameters must be provided")
 
     def _init_from_dict(self, rate_constant: Dict) -> None:
         """Initialize from a dictionary containing rate constant information."""
+        hpl_coeff, lpl_coeff, self.falloff_params, self.falloff_type, self.efficiencies = parse_rate_constant(
+            rate_constant
+        )
+
+        self.explicit_efficiencies = True
+        if self.efficiencies is {}:
+            self.explicit_efficiencies = False
+
         self.name = rate_constant["name"]
-        hpl_coeff, lpl_coeff, self.falloff_params, self.falloff_type = parse_rate_constant(rate_constant)
         self.hpl = Arrhenius(params=hpl_coeff, name=rate_constant["name"])
         self.lpl = Arrhenius(params=lpl_coeff, name=rate_constant["name"])
 
@@ -50,14 +62,19 @@ class FallOff(eqx.Module):
         hpl_params: Array,
         lpl_params: Array,
         falloff_params: Array,
-        falloff_type: int,
+        falloff_type: str,
+        efficiencies: Dict,
     ) -> None:
         """Initialize directly from arrays of parameters."""
         self.name = name
         self.falloff_params = falloff_params
-        self.falloff_type = falloff_type
+        self.falloff_type = self._convert_to_falloff_type(falloff_type)
         self.hpl = Arrhenius(params=hpl_params, name=name)
         self.lpl = Arrhenius(params=lpl_params, name=name)
+        self.efficiencies = efficiencies
+        self.explicit_efficiencies = True
+        if self.efficiencies is {}:
+            self.explicit_efficiencies = False
 
     def _calculate_concentration(self, P: Float64, T: Union[Float64, Array]) -> Union[Float64, Array]:
         """Calculate concentration [mol/L] from pressure [atm] and temperature [K]."""
@@ -112,4 +129,19 @@ class FallOff(eqx.Module):
                 self.falloff_params[3],
                 self.falloff_params[4],
             )
+        if self.explicit_efficiencies:
+            representation += "\n"
+            for key, value in self.efficiencies.items():
+                representation += "{} / {:.5f} /".format(key, value)
         return representation
+
+    @staticmethod
+    def _convert_to_falloff_type(falloff_type: str) -> int:
+        if falloff_type == "Lindemann":
+            return 0
+        elif falloff_type == "TROE":
+            return 1
+        elif falloff_type == "SRI":
+            return 2
+        else:
+            raise ValueError(f"Unknown falloff type {falloff_type}. Available are: Lindemann | TROE | SRI")
