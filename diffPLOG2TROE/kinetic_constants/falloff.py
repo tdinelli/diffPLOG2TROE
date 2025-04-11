@@ -27,19 +27,16 @@ class FallOff(eqx.Module):
         lpl_params: Optional[Array] = None,
         falloff_params: Optional[Array] = None,
         falloff_type: Optional[int] = None,
-        efficiencies: Optional[Dict] = None,
-        name: Optional[str] = None,
+        efficiencies: Optional[Dict] = {},
+        name: Optional[str] = "",
     ) -> None:
         """Initialize FallOff reaction from dictionary or arrays."""
         if isinstance(rate_dict, dict):
             self._init_from_dict(rate_dict)
-        elif all(x is not None for x in [hpl_params, lpl_params, falloff_type, efficiencies]):
-            if name is not None:
-                self._init_from_array(name, hpl_params, lpl_params, falloff_params, falloff_type, efficiencies)
-            else:
-                self._init_from_array("unknown :(", hpl_params, lpl_params, falloff_params, falloff_type, efficiencies)
+        elif all(x is not None for x in [hpl_params, lpl_params, falloff_type]):
+            self._init_from_array(name, hpl_params, lpl_params, falloff_params, falloff_type, efficiencies)
         else:
-            raise ValueError("Either rate_dict or all required parameters must be provided")
+            raise ValueError("Either rate_dict or array for parameters must be provided")
 
     def _init_from_dict(self, rate_constant: Dict) -> None:
         """Initialize from a dictionary containing rate constant information."""
@@ -140,11 +137,11 @@ class FallOff(eqx.Module):
 
     @staticmethod
     def _convert_to_falloff_type(falloff_type: str) -> int:
-        if falloff_type == "Lindemann":
+        if falloff_type == "lindemann":
             return 0
-        elif falloff_type == "TROE":
+        elif falloff_type == "troe":
             return 1
-        elif falloff_type == "SRI":
+        elif falloff_type == "sri":
             return 2
         else:
-            raise ValueError(f"Unknown falloff type {falloff_type}. Available are: Lindemann | TROE | SRI")
+            raise ValueError(f"Unknown falloff type {falloff_type}. Available are: lindemann | troe | sri")

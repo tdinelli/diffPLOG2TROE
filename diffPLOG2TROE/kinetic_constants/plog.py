@@ -21,13 +21,11 @@ class Plog(eqx.Module):
         self,
         rate_dict: Optional[Dict] = None,
         params: Optional[Array] = None,
-        name: Optional[str] = None,
+        name: Optional[str] = "unknown :(",
     ) -> None:
         if isinstance(rate_dict, dict):
             self._init_from_dict(rate_dict)
         elif params is not None:
-            if name is None:
-                raise ValueError("Reaction name must be provided when initializing with params")
             self._init_from_array(name, params)
         else:
             raise ValueError("Either rate_dict or params must be provided")
