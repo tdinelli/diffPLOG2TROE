@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jaxtyping import Array
 
 from ..physical_constants import constants
-from ..rate_constants import Plog, refit_arrhenius
+from ..kinetic_constants import Plog, refit_arrhenius
 
 
 class ParameterManager:

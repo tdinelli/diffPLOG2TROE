@@ -44,7 +44,9 @@ class Arrhenius(eqx.Module):
         self.EaR = params[2] / constants.R_cal_mol
 
     @classmethod
-    def from_data(cls, rates: Array, temps: Array, name: str, three_params: bool = True) -> "Arrhenius":
+    def from_data(
+        cls, rates: Array, temps: Array, three_params: bool = True, name: Optional[str] = "unknown :("
+    ) -> "Arrhenius":
         """Create an Arrhenius instance by fitting to experimental data."""
         lnA, n, EaR = refit_arrhenius(rates, temps, three_params)
         params = jnp.array([jnp.exp(lnA), n, EaR * constants.R_cal_mol])

@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import jax.numpy as jnp
 from jaxtyping import Float64
 
-from ..rate_constants import Plog
+from ..kinetic_constants import Plog
 from .falloff_models import ModelBuilder
 from .log_manager import log_initialization, setup_logging
 from .optimizer import PlogOptimizer
@@ -13,7 +13,7 @@ from .parameters_manager import ParameterManager
 class PlogRefitter:
     def __init__(
         self,
-        plog_dict: Dict[str, Any],
+        plog_dict: Dict[str, Any], # Think about fixing this it must be a plog object in my vision
         T_range: Tuple[Float64, Float64],
         P_range: Tuple[Float64, Float64],
         n_T: int = 100,
@@ -22,10 +22,12 @@ class PlogRefitter:
         fitting_mode: str = "single",
         primary_falloff_type: str = "troe",
         secondary_falloff_type: Optional[str] = "lindemann",
-        loss_name: str = "rmsle",
+        lossfunction_name: str = "rmsle",
         log_name: str = "refitter.log",
     ) -> None:
+        # ====================================================================
         # Set up logging
+        # ====================================================================
         self.logger = setup_logging(log_name)
         log_initialization(
             self.logger,
@@ -34,22 +36,28 @@ class PlogRefitter:
             secondary_falloff_type if fitting_mode == "duplicate" else None,
             T_range,
             P_range,
-            loss_name,
+            lossfunction_name,
         )
 
+        # ====================================================================
         # Generate training data from the PLOG expression
+        # ====================================================================
         self.plog = Plog(plog_dict)
         self.T_range = jnp.linspace(T_range[0], T_range[1], n_T)
         self.P_range = jnp.logspace(jnp.log10(P_range[0]), jnp.log10(P_range[1]), n_P)
         self.k_plog = self.plog.kinetic_constant(self.T_range, self.P_range)
 
+        # ====================================================================
         # Store configuration
+        # ====================================================================
         self.fitting_mode = fitting_mode
         self.primary_falloff_type = primary_falloff_type
         self.secondary_falloff_type = secondary_falloff_type
-        self.loss_name = loss_name
+        self.loss_name = lossfunction_name
 
+        # ====================================================================
         # Initialize parameter manager
+        # ====================================================================
         self.param_manager = ParameterManager(
             fitting_mode=fitting_mode,
             primary_falloff_type=primary_falloff_type,
@@ -62,7 +70,9 @@ class PlogRefitter:
             logger=self.logger,
         )
 
+        # ====================================================================
         # Initialize model builder
+        # ====================================================================
         self.model_builder = ModelBuilder(
             fitting_mode=fitting_mode,
             primary_falloff_type=primary_falloff_type,
@@ -70,10 +80,14 @@ class PlogRefitter:
             name=self.plog.name,
         )
 
+        # ====================================================================
         # Estimate initial parameters
+        # ====================================================================
         self.initial_params = self.param_manager.estimate_initial_params(self.plog)
 
+        # ====================================================================
         # Initialize optimizer
+        # ====================================================================
         self.optimizer = PlogOptimizer(
             model_builder=self.model_builder,
             param_names=self.param_manager.param_names,
@@ -82,7 +96,7 @@ class PlogRefitter:
             T_range=self.T_range,
             P_range=self.P_range,
             k_plog=self.k_plog,
-            loss_name=loss_name,
+            loss_name=lossfunction_name,
             logger=self.logger,
         )
 
@@ -94,7 +108,9 @@ class PlogRefitter:
         tol: float = 1e-6,
         learning_rate: float = 1e-3
     ) -> Dict[str, Any]:
-        # Calculate parameter bounds
+        # ====================================================================
+        # Compute parameter bounds
+        # ====================================================================
         lower_bounds, upper_bounds = self.param_manager.calculate_optimization_bounds(
             self.initial_params, uncertainty_factor, uncertainty_type
         )

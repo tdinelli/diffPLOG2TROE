@@ -41,6 +41,7 @@ class Plog(eqx.Module):
 
     def _init_from_array(self, name: str, params: Array) -> None:
         self.name = name
+        params = jnp.array(params)
         self.p_levels = params[:, 0]
         self.lnp_levels = jnp.log(self.p_levels)
         self.num_p_levels = len(self.p_levels)
@@ -85,7 +86,7 @@ class Plog(eqx.Module):
         return self._compute_k(T, self.num_p_levels - 1)
 
     @eqx.filter_jit
-    def _single_p_k(self, T: Union[Float64, Array], P: Float64) -> Union[Float64, Array]:
+    def _single_P_kinetic_constant(self, T: Union[Float64, Array], P: Float64) -> Union[Float64, Array]:
         p_index = lax.fori_loop(0, self.num_p_levels, lambda idx, i: self._find_index(idx, i, P), 0)
 
         return lax.cond(
@@ -100,14 +101,32 @@ class Plog(eqx.Module):
             None,
         )
 
+    # @eqx.filter_jit
+    # def kinetic_constant(self, T: Union[Float64, Array], P: Union[Float64, Array]) -> Union[Float64, Array]:
+    #     """Calculate rate constant for given temperature(s) and pressure(s)."""
+    #     if jnp.isscalar(P) or P.ndim == 0:
+    #         return self._single_p_k(T, P)
+    #     else:
+    #         vectorized_k = vmap(lambda p: self._single_p_k(T, p))
+    #         return vectorized_k(P)
     @eqx.filter_jit
     def kinetic_constant(self, T: Union[Float64, Array], P: Union[Float64, Array]) -> Union[Float64, Array]:
-        """Calculate rate constant for given temperature(s) and pressure(s)."""
-        if jnp.isscalar(P) or P.ndim == 0:
-            return self._single_p_k(T, P)
-        else:
-            vectorized_k = vmap(lambda p: self._single_p_k(T, p))
-            return vectorized_k(P)
+        """
+        Note for future development in principle we could precompute the vectorized functions in the constructor of the
+        class to make things even more fast.
+        """
+        if (jnp.isscalar(T) or T.ndim == 0) and (jnp.isscalar(P) or P.ndim == 0):  # Case 1: Both are scalars
+            return self._single_P_kinetic_constant(T, P)
+        elif not (jnp.isscalar(T) or T.ndim == 0) and (jnp.isscalar(P) or P.ndim == 0):  # Case 2: T is array, P is scalar
+            return vmap(lambda t: self._single_P_kinetic_constant(t, P))(T)
+        elif (jnp.isscalar(T) or T.ndim == 0) and not (jnp.isscalar(P) or P.ndim == 0):  # Case 3: P is array, T is scalar
+            return vmap(lambda p: self._single_P_kinetic_constant(T, p))(P)
+        else:  # Case 4: Both are arrays. Handle broadcasting based on array shapes
+            if T.shape == P.shape:
+                return vmap(lambda t, p: self._single_P_kinetic_constant(t, p))(T, P)
+            else:
+                # More complex broadcasting logic would be needed here. This is a simplified example
+                return vmap(vmap(self._single_P_kinetic_constant, in_axes=(0, None)), in_axes=(None, 0))(T, P)
 
     def __str__(self) -> str:
         """Return string representation in CHEMKIN format."""

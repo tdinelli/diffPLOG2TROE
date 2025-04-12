@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from jaxtyping import Array
 
 from ..physical_constants import constants
-from ..rate_constants import FallOff
+from ..kinetic_constants import FallOff
 
 
 class ModelBuilder:
