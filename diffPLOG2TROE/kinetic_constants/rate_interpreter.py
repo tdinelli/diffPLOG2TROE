@@ -47,10 +47,10 @@ def parse_arrhenius_parameters(parameters: List[Float64]) -> Array:
 def parse_plog(parameters: List[List[Float64]]) -> Tuple[Array, Array]:
     pressure_levels = []
     rate_constants = []
-    for p_level in parameters:
+    for i, p_level in enumerate(parameters):
         if len(p_level) != 4:
             raise ValueError(
-                "Plog definition require four parameters [P, A, n, E], got {len(parameters)} parameters at level {i+1}"
+                f"Plog definition require four parameters [P, A, n, E], got {len(parameters)} parameters at level {i+1}"
             )
         pressure_levels.append(p_level[0])
         rate_constants.append(p_level[1:])

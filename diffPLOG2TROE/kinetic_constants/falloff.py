@@ -2,7 +2,7 @@ from typing import Dict, Optional, Tuple, Union
 
 import equinox as eqx
 import jax.numpy as jnp
-from jax import debug, lax, vmap
+from jax import lax, vmap
 from jaxtyping import Array, Float64
 
 from ..physical_constants import constants
@@ -68,6 +68,8 @@ class FallOff(eqx.Module):
 
         if self.falloff_type == 1 or self.falloff_type == 2:  # Controlling correct length in falloff and sri params
             falloff_params = jnp.pad(jnp.array(falloff_params), (0, 5 - len(falloff_params)), constant_values=0.0)
+        else: # Lindemann
+            falloff_params = jnp.empty(5)
         self.falloff_params = falloff_params
 
         self.hpl = Arrhenius(params=hpl_params, name=name)
