@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 
-def setup_logging(log_name: str, console_output: bool = True) -> logging.Logger:
+def setup_logging(log_name: Optional[str], console_output: bool = True) -> logging.Logger:
     """
     Setup logging for PLOG refitting.
 
@@ -27,11 +27,12 @@ def setup_logging(log_name: str, console_output: bool = True) -> logging.Logger:
         logger.addHandler(console_handler)
 
     # File handler
-    log_path = Path.cwd()
-    log_path.mkdir(parents=True, exist_ok=True)
-    file_handler = logging.FileHandler(log_path / log_name, mode="w")
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
+    if log_name:
+        log_path = Path.cwd()
+        log_path.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(log_path / log_name, mode="w")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
 
     return logger
 

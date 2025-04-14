@@ -13,7 +13,7 @@ from .parameters_manager import ParameterManager
 class PlogRefitter:
     def __init__(
         self,
-        plog_dict: Dict[str, Any], # Think about fixing this it must be a plog object in my vision
+        plog_dict: Dict[str, Any],  # Think about fixing this it must be a plog object in my vision
         T_range: Tuple[Float64, Float64],
         P_range: Tuple[Float64, Float64],
         n_T: int = 100,
@@ -23,7 +23,7 @@ class PlogRefitter:
         primary_falloff_type: str = "troe",
         secondary_falloff_type: Optional[str] = "lindemann",
         lossfunction_name: str = "rmsle",
-        log_name: str = "refitter.log",
+        log_name: Optional[str] = None,
     ) -> None:
         # ====================================================================
         # Set up logging
@@ -106,7 +106,7 @@ class PlogRefitter:
         uncertainty_factor: float = 1.0,
         uncertainty_type: str = "symmetric",
         tol: float = 1e-6,
-        learning_rate: float = 1e-3
+        learning_rate: float = 1e-3,
     ) -> Dict[str, Any]:
         # ====================================================================
         # Compute parameter bounds
@@ -120,6 +120,6 @@ class PlogRefitter:
             upper_bounds=upper_bounds,
             max_iterations=max_iterations,
             tol=tol,
-            learning_rate=learning_rate
+            learning_rate=learning_rate,
         )
         return results

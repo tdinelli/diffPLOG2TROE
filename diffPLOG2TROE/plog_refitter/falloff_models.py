@@ -1,9 +1,10 @@
-from typing import Dict, Optional, Tuple, Union, List
+from typing import Dict, List, Optional, Tuple, Union
+
 import jax.numpy as jnp
 from jaxtyping import Array
 
-from ..physical_constants import constants
 from ..kinetic_constants import FallOff
+from ..physical_constants import constants
 
 
 class ModelBuilder:
@@ -30,12 +31,12 @@ class ModelBuilder:
         param_dict = {name: value for name, value in zip(param_names, params)}
         if self.fitting_mode == "single":
             falloff_model = self._build_falloff_model(param_dict)
-            k_values = falloff_model.kinetic_constant(T_eval, P_eval)
+            k_values = falloff_model.kinetic_constant(T_eval, P_eval)[0]
         else:  # duplicate mode
             primary_falloff, secondary_falloff = self._build_duplicate_falloff_models(param_dict)
 
-            k_primary = primary_falloff.kinetic_constant(T_eval, P_eval)
-            k_secondary = secondary_falloff.kinetic_constant(T_eval, P_eval)
+            k_primary = primary_falloff.kinetic_constant(T_eval, P_eval)[0]
+            k_secondary = secondary_falloff.kinetic_constant(T_eval, P_eval)[0]
             k_values = k_primary + k_secondary
 
         return k_values
@@ -56,24 +57,21 @@ class ModelBuilder:
 
         # Handle falloff parameters based on type
         if self.primary_falloff_type == "troe":
-            falloff_type = 1  # Troe type index
             falloff_params = jnp.array(
                 [param_dict["A"], param_dict["T3"], param_dict["T1"], param_dict.get("T2", 0.0), 0.0]
             )
         elif self.primary_falloff_type == "sri":
-            falloff_type = 2  # SRI type index
             falloff_params = jnp.array(
                 [param_dict["a"], param_dict["b"], param_dict["c"], param_dict.get("d", 1.0), param_dict.get("e", 0.0)]
             )
         else:  # lindemann
-            falloff_type = 0
             falloff_params = jnp.empty(5)
 
         return FallOff(
             hpl_params=hpl_params,
             lpl_params=lpl_params,
             falloff_params=falloff_params,
-            falloff_type=falloff_type,
+            falloff_type=self.primary_falloff_type,
             name=self.name,
         )
 
@@ -122,7 +120,6 @@ class ModelBuilder:
 
         # Secondary falloff parameters
         if self.secondary_falloff_type == "troe":
-            secondary_type = 1
             secondary_falloff_params = jnp.array(
                 [
                     param_dict["secondary_A"],
@@ -133,7 +130,6 @@ class ModelBuilder:
                 ]
             )
         elif self.secondary_falloff_type == "sri":
-            secondary_type = 2
             secondary_falloff_params = jnp.array(
                 [
                     param_dict["secondary_a"],
@@ -144,14 +140,13 @@ class ModelBuilder:
                 ]
             )
         else:  # lindemann
-            secondary_type = 0
             secondary_falloff_params = jnp.empty(5)
 
         primary_falloff = FallOff(
             hpl_params=primary_hpl,
             lpl_params=primary_lpl,
             falloff_params=primary_falloff_params,
-            falloff_type=primary_type,
+            falloff_type=self.primary_falloff_type,
             name=f"{self.name}_primary",
         )
 
@@ -159,7 +154,7 @@ class ModelBuilder:
             hpl_params=secondary_hpl,
             lpl_params=secondary_lpl,
             falloff_params=secondary_falloff_params,
-            falloff_type=secondary_type,
+            falloff_type=self.secondary_falloff_type,
             name=f"{self.name}_secondary",
         )
 

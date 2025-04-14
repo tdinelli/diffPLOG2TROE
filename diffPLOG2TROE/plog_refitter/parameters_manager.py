@@ -30,7 +30,9 @@ class ParameterManager:
         self.k_plog = k_plog
         self.logger = logger
 
+        # ====================================================================
         # Configure parameters
+        # ====================================================================
         self.param_names, self.param_mask, self.initial_values = self._configure_parameters(param_config)
 
     def _configure_parameters(self, param_config: Optional[Dict[str, Any]]):
@@ -56,12 +58,10 @@ class ParameterManager:
                     optimize = config.get("optimize", True)
                     mask_list.append(optimize)
                     initial_values.append(float(config["value"]) if "value" in config else None)
-                elif isinstance(config, bool):
-                    # Handle cases where config is just a boolean (optimize flag)
+                elif isinstance(config, bool): # Handle cases where config is just a boolean (optimize flag)
                     mask_list.append(config)
                     initial_values.append(None)
-                elif isinstance(config, (int, float)):
-                    # Assume config is a direct value to use
+                elif isinstance(config, (int, float)): # Assume config is a direct value to use
                     mask_list.append(False)  # Don't optimize
                     initial_values.append(float(config))
                 else:
@@ -69,7 +69,9 @@ class ParameterManager:
 
             param_mask = jnp.array(mask_list, dtype=bool)
 
+        # ====================================================================
         # Log parameter configuration if logger is available
+        # ====================================================================
         if self.logger:
             self._log_parameter_config(param_names, param_mask, initial_values)
 
@@ -107,7 +109,9 @@ class ParameterManager:
             value = initial_values[i]
             self._log_parameter_entry(name, mask, value)
 
+        # ====================================================================
         # Log secondary parameters if applicable
+        # ====================================================================
         if self.fitting_mode == "duplicate" and self.secondary_falloff_type:
             self.logger.info(f"\nSecondary reaction ({self.secondary_falloff_type}):")
             for i in range(primary_count, len(param_names)):
@@ -131,8 +135,19 @@ class ParameterManager:
 
         T_mean = jnp.mean(self.T_range)
 
-        # Extract high and low pressure limits from PLOG data
+        # ====================================================================
+        # Extract high and low pressure limits from PLOG data. Here for the
+        # high pressure limit we are using the last value provided in the plog
+        # keep in mind that this is not always the best estimate so it is
+        # maybe better to have a user defined one. The low pressure limit
+        # is estimated using the lowest pressure value divided by the total
+        # concentration.
+        # ====================================================================
+        # HPL
         lnA_high, n_high, EaR_high = plog_data.k_levels[-1].lnA, plog_data.k_levels[-1].n, plog_data.k_levels[-1].EaR
+
+        # ====================================================================
+        # LPL
         M = (plog_data.p_levels[0] / (constants.R_L_atm_K_mol * self.T_range)) * jnp.float64(0.001)
         low_k = self.k_plog[0] / M
         lnA_low, n_low, EaR_low = refit_arrhenius(low_k, self.T_range, True)

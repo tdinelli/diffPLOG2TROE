@@ -111,12 +111,8 @@ class FallOff(eqx.Module):
             return vmap(lambda t: self._single_P_kinetic_constant(t, P))(T)
         elif (jnp.isscalar(T) or T.ndim == 0) and not (jnp.isscalar(P) or P.ndim == 0):  # Case 3: P is array, T is scalar
             return vmap(lambda p: self._single_P_kinetic_constant(T, p))(P)
-        else:  # Case 4: Both are arrays. Handle broadcasting based on array shapes
-            if T.shape == P.shape:
-                return vmap(lambda t, p: self._single_P_kinetic_constant(t, p))(T, P)
-            else:
-                # More complex broadcasting logic would be needed here. This is a simplified example
-                return vmap(vmap(self._single_P_kinetic_constant, in_axes=(0, None)), in_axes=(None, 0))(T, P)
+        else:  # Case 4: Both are arrays.
+            return vmap(lambda p: self._single_P_kinetic_constant(T, p))(P)
 
     def __str__(self) -> str:
         """Return string representation in CHEMKIN format."""

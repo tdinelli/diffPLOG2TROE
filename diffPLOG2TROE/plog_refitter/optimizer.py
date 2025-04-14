@@ -168,7 +168,7 @@ class PlogOptimizer:
             param_history.append(active_params)
 
             # Log progress
-            if self.logger and (i % 10 == 0 or i == max_iterations):
+            if self.logger and (i % 50 == 0 or i == max_iterations):
                 self.logger.info(f"{i}\t{loss:.6e}")
 
             # Check for convergence
