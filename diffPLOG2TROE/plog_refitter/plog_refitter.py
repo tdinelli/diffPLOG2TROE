@@ -13,7 +13,7 @@ from .parameters_manager import ParameterManager
 class PlogRefitter:
     def __init__(
         self,
-        plog_dict: Dict[str, Any],  # Think about fixing this it must be a plog object in my vision
+        plog_dict: Dict[str, Any],  # Think about fixing this it must be a plog object directly in my vision
         T_range: Tuple[Float64, Float64],
         P_range: Tuple[Float64, Float64],
         n_T: int = 100,

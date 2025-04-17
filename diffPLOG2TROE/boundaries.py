@@ -3,8 +3,8 @@ from typing import Dict, Literal, Optional, Tuple, Union
 import jax.numpy as jnp
 from jaxtyping import Array, Float64
 
+from .kinetic_constants import Arrhenius, refit_arrhenius
 from .physical_constants import constants
-from .rate_constants import Arrhenius, refit_arrhenius
 
 
 class Boundaries:
@@ -84,4 +84,10 @@ class Boundaries:
         k_lb = lb_arrhenius.kinetic_constant(temperatures)
         k_ub = ub_arrhenius.kinetic_constant(temperatures)
 
-        return {"lower": k_lb, "upper": k_ub, "nominal": self.rate_constant}
+        return {
+            "lb_params": lb_params,
+            "ub_params": ub_params,
+            "lower": k_lb,
+            "upper": k_ub,
+            "nominal": self.rate_constant,
+        }

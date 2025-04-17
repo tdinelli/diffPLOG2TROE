@@ -8,7 +8,7 @@ from jaxtyping import Array, Float64
 from ..physical_constants import constants
 from .arrhenius import Arrhenius
 from .falloff_functions import lindemann, sri, troe
-from .rate_interpreter import parse_rate_constant
+from .rate_interpreter import FittingType, parse_rate_constant
 
 
 class FallOff(eqx.Module):
@@ -68,7 +68,7 @@ class FallOff(eqx.Module):
 
         if self.falloff_type == 1 or self.falloff_type == 2:  # Controlling correct length in falloff and sri params
             falloff_params = jnp.pad(jnp.array(falloff_params), (0, 5 - len(falloff_params)), constant_values=0.0)
-        else: # Lindemann
+        else:  # Lindemann
             falloff_params = jnp.empty(5)
         self.falloff_params = falloff_params
 
@@ -107,9 +107,13 @@ class FallOff(eqx.Module):
         """
         if (jnp.isscalar(T) or T.ndim == 0) and (jnp.isscalar(P) or P.ndim == 0):  # Case 1: Both are scalars
             return self._single_P_kinetic_constant(T, P)
-        elif not (jnp.isscalar(T) or T.ndim == 0) and (jnp.isscalar(P) or P.ndim == 0):  # Case 2: T is array, P is scalar
+        elif not (jnp.isscalar(T) or T.ndim == 0) and (
+            jnp.isscalar(P) or P.ndim == 0
+        ):  # Case 2: T is array, P is scalar
             return vmap(lambda t: self._single_P_kinetic_constant(t, P))(T)
-        elif (jnp.isscalar(T) or T.ndim == 0) and not (jnp.isscalar(P) or P.ndim == 0):  # Case 3: P is array, T is scalar
+        elif (jnp.isscalar(T) or T.ndim == 0) and not (
+            jnp.isscalar(P) or P.ndim == 0
+        ):  # Case 3: P is array, T is scalar
             return vmap(lambda p: self._single_P_kinetic_constant(T, p))(P)
         else:  # Case 4: Both are arrays.
             return vmap(lambda p: self._single_P_kinetic_constant(T, p))(P)
@@ -150,17 +154,13 @@ class FallOff(eqx.Module):
 
     @staticmethod
     def _convert_to_falloff_type(falloff_type: str) -> int:
-        if falloff_type == "lindemann":
-            return 0
-        elif falloff_type == "troe":
-            return 1
-        elif falloff_type == "sri":
-            return 2
-        else:
-            raise ValueError(f"Unknown falloff type {falloff_type}. Available are: lindemann | troe | sri")
-
-# if jnp.isscalar(P) or P.ndim == 0:
-#     return self._single_P_kinetic_constant(T, P)
-# else:
-#     vectorized_k = vmap(lambda p: self._single_P_kinetic_constant(T, p))
-#     return vectorized_k(P)
+        """Convert string representation to FalloffType enum."""
+        try:
+            return {
+                "lindemann": FittingType.lindemann,
+                "troe": FittingType.troe,
+                "sri": FittingType.sri,
+            }[falloff_type.lower()]
+        except KeyError:
+            available = ", ".join(f"'{k}'" for k in ["lindemann", "troe", "sri"])
+            raise ValueError(f"Unknown falloff type '{falloff_type}'. Available types: {available}")
