@@ -19,9 +19,7 @@ class PlogRefitter:
         n_T: int = 100,
         n_P: int = 100,
         param_config: Optional[Dict[str, Union[bool, float, Dict[str, Any]]]] = None,
-        fitting_mode: str = "single",
-        primary_falloff_type: str = "troe",
-        secondary_falloff_type: Optional[str] = "lindemann",
+        falloff_type: str = "troe",
         lossfunction_name: str = "rmsle",
         log_name: Optional[str] = None,
     ) -> None:
@@ -31,9 +29,7 @@ class PlogRefitter:
         self.logger = setup_logging(log_name)
         log_initialization(
             self.logger,
-            fitting_mode,
-            primary_falloff_type,
-            secondary_falloff_type if fitting_mode == "duplicate" else None,
+            falloff_type,
             T_range,
             P_range,
             lossfunction_name,
@@ -50,18 +46,14 @@ class PlogRefitter:
         # ====================================================================
         # Store configuration
         # ====================================================================
-        self.fitting_mode = fitting_mode
-        self.primary_falloff_type = primary_falloff_type
-        self.secondary_falloff_type = secondary_falloff_type
+        self.falloff_type = falloff_type
         self.loss_name = lossfunction_name
 
         # ====================================================================
         # Initialize parameter manager
         # ====================================================================
         self.param_manager = ParameterManager(
-            fitting_mode=fitting_mode,
-            primary_falloff_type=primary_falloff_type,
-            secondary_falloff_type=secondary_falloff_type,
+            falloff_type=falloff_type,
             T_range=self.T_range,
             P_range=self.P_range,
             plog=Plog(plog_dict),
@@ -74,9 +66,7 @@ class PlogRefitter:
         # Initialize model builder
         # ====================================================================
         self.model_builder = ModelBuilder(
-            fitting_mode=fitting_mode,
-            primary_falloff_type=primary_falloff_type,
-            secondary_falloff_type=secondary_falloff_type,
+            falloff_type=falloff_type,
             name=self.plog.name,
         )
 
@@ -105,13 +95,11 @@ class PlogRefitter:
         max_iterations: int = 100,
         uncertainty_factor: float = 1.0,
         uncertainty_type: str = "symmetric",
-        tol: float = 1e-6,
-        learning_rate: float = 1e-3,
     ) -> Dict[str, Any]:
         # ====================================================================
         # Compute parameter bounds
         # ====================================================================
-        lower_bounds, upper_bounds = self.param_manager.calculate_optimization_bounds(
+        lower_bounds, upper_bounds = self.param_manager.get_parameters_bounds(
             self.initial_params, uncertainty_factor, uncertainty_type
         )
 
@@ -119,7 +107,5 @@ class PlogRefitter:
             lower_bounds=lower_bounds,
             upper_bounds=upper_bounds,
             max_iterations=max_iterations,
-            tol=tol,
-            learning_rate=learning_rate,
         )
         return results

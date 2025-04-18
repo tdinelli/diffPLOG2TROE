@@ -39,9 +39,7 @@ def setup_logging(log_name: Optional[str], console_output: bool = True) -> loggi
 
 def log_initialization(
     logger: logging.Logger,
-    fitting_mode: str,
-    primary_falloff_type: str,
-    secondary_falloff_type: Optional[str],
+    falloff_type: str,
     T_range: tuple,
     P_range: tuple,
     loss_name: str,
@@ -60,10 +58,7 @@ def log_initialization(
     """
     logger.info("=" * 89)
 
-    if fitting_mode == "single":
-        logger.info(f"Plog to {primary_falloff_type} refitter")
-    else:
-        logger.info(f"Plog to Duplicate Reactions ({primary_falloff_type} + {secondary_falloff_type}) refitter")
+    logger.info(f"Plog to {falloff_type} refitter")
 
     logger.info(f" Temperature range [K]: {T_range}")
     logger.info(f" Pressure range [atm]: {P_range}")
