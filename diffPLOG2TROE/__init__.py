@@ -1,7 +1,11 @@
-# import jax
-#
-# from .__version__ import __version__
-#
-#
-# jax.config.update("jax_enable_x64", True)
-__module__ = ["plog_refitter", "kinetic_constants"]
+"""diffPLOG2TROE - A differentiable PLOG to TROE refitter"""
+
+from __future__ import annotations
+from ._version import version as __version__
+import jax
+
+
+jax.config.update("jax_enable_x64", True)
+
+
+__all__ = ["__version__"]
