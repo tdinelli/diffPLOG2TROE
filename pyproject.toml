@@ -52,8 +52,8 @@ docs = [
 [tool.setuptools]
 packages = ["diffPLOG2TROE"]
 
-[tool.setuptools.dynamic]
-version = {attr = "diffPLOG2TROE.__version__"}
+# [tool.setuptools.dynamic]
+# version = {attr = "diffPLOG2TROE.__version__"}
 
 [tool.setuptools.package-data]
 diffPLOG2TROE = ["py.typed"]
