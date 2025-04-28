@@ -4,4 +4,4 @@
 #
 #
 # jax.config.update("jax_enable_x64", True)
-# __all__ = ["__version__"]
+__module__ = ["plog_refitter", "kinetic_constants"]
