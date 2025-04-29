@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import jax.numpy as jnp
 from jaxtyping import Array
 
-from ..kinetic_constants import FallOff
+from ..parametrization import FallOff
 from ..physical_constants import constants
 
 

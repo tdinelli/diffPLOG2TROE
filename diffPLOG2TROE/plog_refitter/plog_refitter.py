@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import jax.numpy as jnp
 from jaxtyping import Float64
 
-from ..kinetic_constants import Plog
+from ..parametrization import Plog
 from .falloff_models import ModelBuilder
 from .log_manager import log_initialization, setup_logging
 from .optimizer import PlogOptimizer
