@@ -18,10 +18,10 @@ def parse_rate_constant(rate_constant: Dict):
         "arrhenius": lambda x: parse_arrhenius_parameters(x["rate-constant"]["coefficients"]),
         "plog": lambda x: parse_plog(x["rate-constant"]["coefficients"]),
         "falloff": parse_falloff,
+        "cabr": parse_cabr,
     }
 
     unsupported_types = {
-        "cabr": "CABR",
         "3body": "3BODY",
         "RPBR": "Reduced Pressure Based",
         "Extended-PLOG": "Extended PLOG",
@@ -81,3 +81,28 @@ def parse_falloff(rate_constant: Dict) -> Tuple[Array, Array, Array, int, Dict]:
         return hpl_coefficients, lpl_coefficients, params, type_value, rate_constant["efficiencies"]
     else:
         return hpl_coefficients, lpl_coefficients, params, type_value, {}
+
+
+def parse_cabr(rate_constant: Dict) -> Tuple[Array, Array, Array, int, Dict]:
+    lpl_coefficients = parse_arrhenius_parameters(rate_constant["rate-constant"]["lpl-coefficients"])
+    hpl_coefficients = parse_arrhenius_parameters(rate_constant["rate-constant"]["hpl-coefficients"])
+
+    if rate_constant["cabr-type"] == "lindemann":
+        return hpl_coefficients, lpl_coefficients, jnp.empty(5), FittingType.lindemann.value, {}
+
+    params = rate_constant["rate-constant"]["cabr-coefficients"]
+
+    valid_lengths = {"troe": {3, 4}, "sri": {3, 4, 5}}
+    if len(params) not in valid_lengths[rate_constant["cabr-type"]]:
+        raise ValueError(
+            "{} formalism requires {} parameters, got {}".format(
+                rate_constant["cabr-type"], valid_lengths[rate_constant["cabr-type"]], len(params)
+            )
+        )
+    params = jnp.pad(jnp.array(params), (0, 5 - len(params)), constant_values=0.0)
+
+    type_value = FittingType[rate_constant["cabr-type"]].value
+
+    efficiencies = rate_constant["efficiencies"] if "efficiencies" in rate_constant else {}
+
+    return hpl_coefficients, lpl_coefficients, params, type_value, efficiencies

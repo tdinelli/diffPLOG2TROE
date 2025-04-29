@@ -18,7 +18,7 @@ def troe(T: Union[Float64, Array], Pr: Union[Float64, Array], params: Array) -> 
     f1 = (d / (n - 0.14 * d)) ** 2
 
     result = jnp.where(
-        Pr > 1.0e-32,  # Edge case as handled by A.C. in OpenSMOKEpp
+        Pr > 1.0e-32,  # Edge case as handled by A.C. in OpenSMOKE++
         10.0 ** (logFcent / (1.0 + f1)),  # normal case
         10.0 ** (logFcent / (1.0 + (1.0 / 0.14) ** 2)),  # OpenSMOKE does this Asymptotic value for F when f --> -Inf
     )

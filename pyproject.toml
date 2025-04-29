@@ -1,24 +1,31 @@
 [project]
-name = "diffPLOG2TROE"
-dynamic = ["version"]
-description = "A differentiable PLOG to TROE refitter"
-readme = "README.md"
-requires-python = ">=3.10"
-license = {text = "MIT"}
-authors = [
-    {name = "Timoteo Dinelli", email = "timoteo.dinelli@polimi.it"},
-]
-dependencies = ["numpy", "matplotlib", "jax", "jaxtyping", "chex", "optax", "equinox"]
+  name = "diffPLOG2TROE"
+  dynamic = ["version"]
+  description = "A differentiable PLOG to TROE refitter"
+  readme = "README.md"
+  requires-python = ">=3.10"
+  license = {text = "MIT"}
+  authors = [{name = "Timoteo Dinelli", email = "timoteo.dinelli@polimi.it"}]
+  dependencies = ["numpy", "matplotlib", "jax", "jaxtyping", "chex", "optax", "equinox"]
+  keywords = ["chemistry", "reaction-kinetics", "differentiable"]
 
+[project.optional-dependencies]
+  dev = ["pytest", "mkdocs"]
+  docs = ["mkdocs", "mkdocs-material", "mkdocstrings[python]"]
+
+[project.urls]
+  "Homepage" = "https://github.com/tdinelli/diffPLOG2TROE"
+  "Bug Tracker" = "https://github.com/tdinelli/diffPLOG2TROE/issues"
+  "Documentation" = "https://tdinelli.github.io/diffPLOG2TROE"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+  requires = ["hatchling"]
+  build-backend = "hatchling.build"
 
 
 [tool.hatch.build]
-include = ["diffPLOG2TROE/*"]
+  include = ["diffPLOG2TROE/*"]
 
 
 [tool.hatch.version]
-path="diffPLOG2TROE/_version.py"
+  path="diffPLOG2TROE/_version.py"

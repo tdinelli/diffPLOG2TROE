@@ -66,10 +66,19 @@ class FallOff(eqx.Module):
         self.name = name
         self.falloff_type = self._convert_to_falloff_type(falloff_type)
 
-        if self.falloff_type == 1 or self.falloff_type == 2:  # Controlling correct length in falloff and sri params
-            falloff_params = jnp.pad(jnp.array(falloff_params), (0, 5 - len(falloff_params)), constant_values=0.0)
+        if self.falloff_type == 1:  # Troe
+            falloff_params = jnp.pad(
+                jnp.array(falloff_params, dtype=jnp.float64), (0, 5 - len(falloff_params)), constant_values=0.0
+            )
+        elif self.falloff_type == 2:  # SRI
+            falloff_params = jnp.pad(
+                jnp.array(falloff_params, dtype=jnp.float64), (0, 5 - len(falloff_params)), constant_values=0.0
+            )
+            if falloff_params[3] == 0.0:
+                falloff_params = falloff_params.at[3].set(1.0)
         else:  # Lindemann
-            falloff_params = jnp.empty(5)
+            falloff_params = jnp.zeros(5, dtype=jnp.float64)
+
         self.falloff_params = falloff_params
 
         self.hpl = Arrhenius(params=hpl_params, name=name)
@@ -105,18 +114,14 @@ class FallOff(eqx.Module):
         Note for future development in principle we could precompute the vectorized functions in the constructor of the
         class to make things even more fast.
         """
-        if (jnp.isscalar(T) or T.ndim == 0) and (jnp.isscalar(P) or P.ndim == 0):  # Case 1: Both are scalars
+        if (jnp.isscalar(T) or T.ndim == 0) and (jnp.isscalar(P) or P.ndim == 0):  # Both are scalars
             return self._single_P_kinetic_constant(T, P)
-        elif not (jnp.isscalar(T) or T.ndim == 0) and (
-            jnp.isscalar(P) or P.ndim == 0
-        ):  # Case 2: T is array, P is scalar
+        elif not (jnp.isscalar(T) or T.ndim == 0) and (jnp.isscalar(P) or P.ndim == 0):  # T is array, P is scalar
             return vmap(lambda t: self._single_P_kinetic_constant(t, P))(T)
-        elif (jnp.isscalar(T) or T.ndim == 0) and not (
-            jnp.isscalar(P) or P.ndim == 0
-        ):  # Case 3: P is array, T is scalar
+        elif (jnp.isscalar(T) or T.ndim == 0) and not (jnp.isscalar(P) or P.ndim == 0):  # P is array, T is scalar
             return vmap(lambda p: self._single_P_kinetic_constant(T, p))(P)
-        else:  # Case 4: Both are arrays.
-            return vmap(lambda p: self._single_P_kinetic_constant(T, p))(P)
+        else:  # Both are arrays
+            return vmap(lambda p: vmap(lambda t: self._single_P_kinetic_constant(t, p))(T))(P)
 
     def __str__(self) -> str:
         """Return string representation in CHEMKIN format."""

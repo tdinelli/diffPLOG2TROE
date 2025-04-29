@@ -65,6 +65,13 @@ class Arrhenius(eqx.Module):
         """Return a string representation in CHEMKIN format."""
         return "{}\t\t{:.5e} {:.5e} {:.5e}".format(self.name, jnp.exp(self.lnA), self.n, self.EaR * constants.R_cal_mol)
 
+    @staticmethod
+    def save_kinetic_constants_table(rate_constant: Array, temperatures: Array, output_file: str) -> None:
+        with open(output_file, "w") as f:
+            f.write("T;k\n")
+            for T, k in zip(temperatures, rate_constant):
+                f.write(f"{T:.3f};{k:10e}\n")
+
 
 @jit
 def refit_arrhenius(
