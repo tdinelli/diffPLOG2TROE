@@ -5,93 +5,67 @@ import jax.numpy as jnp
 from jax import lax, vmap
 from jaxtyping import Array, Float64
 
-from ..physical_constants import constants
+from ..utilities.physical_constants import constants
+from ..utilities.thermodynamic_utilities import calculate_concentration
 from .arrhenius import Arrhenius
-from .falloff_functions import lindemann, sri, troe
-from .rate_interpreter import FittingType, parse_rate_constant
+from .falloff_functions import (
+    convert_to_fitting_type,
+    lindemann,
+    sri,
+    troe,
+    validate_sri_parameters,
+    validate_troe_parameters,
+)
 
 
 class FallOff(eqx.Module):
     hpl: Arrhenius  # High-pressure limit
     lpl: Arrhenius  # Low-pressure limit
     falloff_type: int  # 0: Lindemann, 1: Troe, 2: SRI
-    falloff_params: Array
+    falloff_parameters: Array
     efficiencies: Dict
     explicit_efficiencies: bool
     name: str
 
     def __init__(
         self,
-        rate_dict: Optional[Dict] = None,
-        hpl_params: Optional[Array] = None,
-        lpl_params: Optional[Array] = None,
-        falloff_params: Optional[Array] = None,
-        falloff_type: Optional[str] = None,
+        hpl_params: Array,
+        lpl_params: Array,
+        falloff_parameters: Array,
+        falloff_type: str,
         efficiencies: Optional[Dict] = None,
-        name: Optional[str] = "unknown :(",
+        name: str = "",
     ) -> None:
-        """Initialize FallOff reaction from dictionary or arrays."""
         if efficiencies is None:
             efficiencies = {}
 
-        if isinstance(rate_dict, dict):
-            self._init_from_dict(rate_dict)
-        elif all(x is not None for x in [hpl_params, lpl_params, falloff_type]):
-            self._init_from_array(name, hpl_params, lpl_params, falloff_params, falloff_type, efficiencies)
-        else:
-            raise ValueError("Either rate_dict or array for parameters must be provided")
-
-    def _init_from_dict(self, rate_constant: Dict) -> None:
-        """Initialize from a dictionary containing rate constant information."""
-        hpl_coeff, lpl_coeff, self.falloff_params, self.falloff_type, self.efficiencies = parse_rate_constant(
-            rate_constant
-        )
-
-        self.explicit_efficiencies = False if self.efficiencies is {} else True
-
-        self.name = rate_constant["name"]
-        self.hpl = Arrhenius(params=hpl_coeff, name=rate_constant["name"])
-        self.lpl = Arrhenius(params=lpl_coeff, name=rate_constant["name"])
-
-    def _init_from_array(
-        self,
-        name: str,
-        hpl_params: Array,
-        lpl_params: Array,
-        falloff_params: Array,
-        falloff_type: str,
-        efficiencies: Dict,
-    ) -> None:
-        """Initialize directly from arrays of parameters."""
         self.name = name
-        self.falloff_type = self._convert_to_falloff_type(falloff_type)
+        self.falloff_type = convert_to_fitting_type(falloff_type)
 
         if self.falloff_type == 1:  # Troe
-            falloff_params = jnp.pad(
-                jnp.array(falloff_params, dtype=jnp.float64), (0, 5 - len(falloff_params)), constant_values=0.0
-            )
+            falloff_parameters = validate_troe_parameters(falloff_parameters)
         elif self.falloff_type == 2:  # SRI
-            falloff_params = jnp.pad(
-                jnp.array(falloff_params, dtype=jnp.float64), (0, 5 - len(falloff_params)), constant_values=0.0
-            )
-            if falloff_params[3] == 0.0:
-                falloff_params = falloff_params.at[3].set(1.0)
+            falloff_parameters = validate_sri_parameters(falloff_parameters)
         else:  # Lindemann
-            falloff_params = jnp.zeros(5, dtype=jnp.float64)
+            falloff_parameters = jnp.zeros(5, dtype=jnp.float64)
 
-        self.falloff_params = falloff_params
+        self.falloff_parameters = falloff_parameters
 
-        self.hpl = Arrhenius(params=hpl_params, name=name)
-        self.lpl = Arrhenius(params=lpl_params, name=name)
+        self.hpl = Arrhenius(parameters=hpl_params, name=name)
+        self.lpl = Arrhenius(parameters=lpl_params, name=name)
         self.efficiencies = efficiencies
         self.explicit_efficiencies = False if self.efficiencies is {} else True
 
     def _compute_falloff_factor(self, T: Union[Float64, Array], Pr: Union[Float64, Array]) -> Union[Float64, Array]:
         """Compute falloff factor based on falloff type and reduced pressure."""
-        operand = (T, Pr, self.falloff_params)
+        operand = (T, Pr, self.falloff_parameters)
         return lax.switch(
             self.falloff_type,
-            [lambda x: lindemann(*x), lambda x: troe(*x), lambda x: sri(*x)],
+            [
+                lambda x: lindemann(*x),
+                lambda x: troe(*x),
+                lambda x: sri(*x),
+            ],
             operand,
         )
 
@@ -101,7 +75,7 @@ class FallOff(eqx.Module):
     ) -> Tuple[Union[Float64, Array], Union[Float64, Array]]:
         k_hpl = self.hpl.kinetic_constant(T)
         k_lpl = self.lpl.kinetic_constant(T)
-        M = self._calculate_concentration(P, T)
+        M = calculate_concentration(T, P)
         Pr = (k_lpl * M) / k_hpl
         F = self._compute_falloff_factor(T, Pr)
         return (k_hpl * (Pr / (1 + Pr)) * F, M)
@@ -133,39 +107,21 @@ class FallOff(eqx.Module):
         )
         if self.falloff_type == 1:
             representation += " TROE / {:.5e} {:.5e} {:.5e} {:.5e} /".format(
-                self.falloff_params[0],
-                self.falloff_params[1],
-                self.falloff_params[2],
-                self.falloff_params[3],
+                self.falloff_parameters[0],
+                self.falloff_parameters[1],
+                self.falloff_parameters[2],
+                self.falloff_parameters[3],
             )
         elif self.falloff_type == 2:
             representation += " SRI / {:.5e} {:.5e} {:.5e} {:.5e} {:.5e} /".format(
-                self.falloff_params[0],
-                self.falloff_params[1],
-                self.falloff_params[2],
-                self.falloff_params[3],
-                self.falloff_params[4],
+                self.falloff_parameters[0],
+                self.falloff_parameters[1],
+                self.falloff_parameters[2],
+                self.falloff_parameters[3],
+                self.falloff_parameters[4],
             )
         if self.explicit_efficiencies:
             representation += "\n"
             for key, value in self.efficiencies.items():
                 representation += " {} / {:.5f} /".format(key, value)
         return representation
-
-    @staticmethod
-    def _calculate_concentration(P: Float64, T: Union[Float64, Array]) -> Union[Float64, Array]:
-        """Calculate concentration [mol/cm3] from pressure [atm] and temperature [K]."""
-        return (P / (constants.R_L_atm_K_mol * T)) * jnp.float64(0.001)
-
-    @staticmethod
-    def _convert_to_falloff_type(falloff_type: str) -> int:
-        """Convert string representation to FalloffType enum."""
-        try:
-            return {
-                "lindemann": FittingType.lindemann,
-                "troe": FittingType.troe,
-                "sri": FittingType.sri,
-            }[falloff_type.lower()]
-        except KeyError:
-            available = ", ".join(f"'{k}'" for k in ["lindemann", "troe", "sri"])
-            raise ValueError(f"Unknown falloff type '{falloff_type}'. Available types: {available}")

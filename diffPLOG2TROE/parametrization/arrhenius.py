@@ -1,12 +1,11 @@
-from typing import Dict, Optional, Tuple, Union
+from typing import Tuple, Union
 
 import equinox as eqx
 import jax.numpy as jnp
 from jax import jit, lax
 from jaxtyping import Array, Float64
 
-from ..physical_constants import constants
-from .rate_interpreter import parse_rate_constant
+from ..utilities.physical_constants import constants
 
 
 class Arrhenius(eqx.Module):
@@ -15,58 +14,55 @@ class Arrhenius(eqx.Module):
     EaR: Float64
     name: str
 
-    def __init__(
-        self,
-        rate_dict: Optional[Dict] = None,
-        params: Optional[Array] = None,
-        name: Optional[str] = "unknown :(",
-    ) -> None:
-        if isinstance(rate_dict, dict):
-            self._init_from_dict(rate_dict)
-        elif params is not None:
-            self._init_from_array(name, params)
-        else:
-            raise ValueError("Either rate_dict or params must be provided")
+    def __init__(self, parameters: Array, name: str = "") -> None:
+        self.name = name
 
-    def _init_from_dict(self, rate_const: Dict) -> None:
-        """Initialize from a dictionary containing rate constant information."""
-        self.name = rate_const["name"]
-        parameters = parse_rate_constant(rate_const)
+        self._validate_parameters(parameters)
+
+        # ==============================================================================
+        # Pre-exponential factor
         self.lnA = jnp.log(parameters[0])
+
+        # ==============================================================================
+        # Temperature exponent
         self.n = parameters[1]
+
+        # ==============================================================================
+        # Activation energy
         self.EaR = parameters[2] / constants.R_cal_mol
 
-    def _init_from_array(self, name: str, params: Array) -> None:
-        """Initialize from an array of [A, n, Ea] values."""
-        self.name = name
-        self.lnA = jnp.log(params[0])
-        self.n = params[1]
-        self.EaR = params[2] / constants.R_cal_mol
-
     @classmethod
-    def from_data(
-        cls, rates: Array, temps: Array, three_params: bool = True, name: Optional[str] = "unknown :("
-    ) -> "Arrhenius":
+    def from_data(cls, rates: Array, temps: Array, three_params: bool = True, name: str = "") -> "Arrhenius":
         """Create an Arrhenius instance by fitting to experimental data."""
         lnA, n, EaR = refit_arrhenius(rates, temps, three_params)
         params = jnp.array([jnp.exp(lnA), n, EaR * constants.R_cal_mol])
-        return cls(params=params, name=name)
+        return cls(parameters=params, name=name)
 
     @eqx.filter_jit
     def kinetic_constant(self, T: Union[Float64, Array]) -> Union[Float64, Array]:
         """Calculate rate constant at given temperature(s)."""
         return jnp.exp(self.lnA + self.n * jnp.log(T) - self.EaR / T)
 
-    def get_parameters(self) -> Tuple[Float64, Float64, Float64]:
-        """Return the Arrhenius parameters (A, n, Ea)."""
-        return jnp.exp(self.lnA), self.n, self.EaR * constants.R_cal_mol
-
     def __str__(self) -> str:
         """Return a string representation in CHEMKIN format."""
         return "{}\t\t{:.5e} {:.5e} {:.5e}".format(self.name, jnp.exp(self.lnA), self.n, self.EaR * constants.R_cal_mol)
 
     @staticmethod
+    def _validate_parameters(parameters: Array) -> None:
+        """
+        Validation method in order to ensure consistency in the calculations.
+
+        Note: Maybe in the future add consistent validation of the unit of measurements
+        """
+        A, n, Ea = parameters
+        if A == 0:
+            raise ValueError("Pre-exponential factor cannot be equal to 0")
+
+    @staticmethod
     def save_kinetic_constants_table(rate_constant: Array, temperatures: Array, output_file: str) -> None:
+        """
+        Note: Still to be implemented and tested
+        """
         with open(output_file, "w") as f:
             f.write("T;k\n")
             for T, k in zip(temperatures, rate_constant):

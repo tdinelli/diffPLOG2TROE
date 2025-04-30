@@ -1,13 +1,12 @@
-from typing import Dict, List, Optional, Union
+from typing import List, Union
 
 import equinox as eqx
 import jax.numpy as jnp
 from jax import lax, vmap
 from jaxtyping import Array, Float64
 
-from ..physical_constants import constants
+from ..utilities.physical_constants import constants
 from .arrhenius import Arrhenius
-from .rate_interpreter import parse_rate_constant
 
 
 class Plog(eqx.Module):
@@ -17,39 +16,26 @@ class Plog(eqx.Module):
     num_p_levels: int
     name: str
 
-    def __init__(
-        self,
-        rate_dict: Optional[Dict] = None,
-        params: Optional[Array] = None,
-        name: Optional[str] = "unknown :(",
-    ) -> None:
-        if isinstance(rate_dict, dict):
-            self._init_from_dict(rate_dict)
-        elif params is not None:
-            self._init_from_array(name, params)
-        else:
-            raise ValueError("Either rate_dict or params must be provided")
-
-    def _init_from_dict(self, rate_dict: Dict) -> None:
-        """Initialize from a dictionary containing rate constant information."""
-        self.name = rate_dict["name"]
-        self.p_levels, k_levels = parse_rate_constant(rate_dict)
-        self.lnp_levels = jnp.log(self.p_levels)
-
-        self.k_levels = [Arrhenius(params=level, name=rate_dict["name"]) for level in k_levels]
-        self.num_p_levels = len(self.p_levels)
-
-    def _init_from_array(self, name: str, params: Array) -> None:
+    def __init__(self, parameters: Array, name: str = "") -> None:
         self.name = name
-        params = jnp.array(params)
-        self.p_levels = params[:, 0]
+
+        # ==============================================================================
+        # Ensuring the pressure levels are sorted in ascending order correctly
+        parameters = jnp.sort(parameters, axis=0)
+
+        self.p_levels = parameters[:, 0]
         self.lnp_levels = jnp.log(self.p_levels)
         self.num_p_levels = len(self.p_levels)
-        self.k_levels = [Arrhenius(params=level, name=name) for level in params[:, 1:]]
+        self.k_levels = [Arrhenius(parameters=level, name=name) for level in parameters[:, 1:]]
 
     def _find_index(self, p_index: int, i: int, P: Float64) -> int:
         """Find index of pressure level for interpolation."""
-        return lax.cond(P <= self.p_levels[i], lambda _: i, lambda _: p_index, None)
+        return lax.cond(
+            P <= self.p_levels[i],
+            lambda _: i,
+            lambda _: p_index,
+            None,
+        )
 
     def _compute_k(self, T: Union[Float64, Array], idx: int) -> Union[Float64, Array]:
         """
@@ -112,16 +98,16 @@ class Plog(eqx.Module):
     @eqx.filter_jit
     def kinetic_constant(self, T: Union[Float64, Array], P: Union[Float64, Array]) -> Union[Float64, Array]:
         """
-        Note for future development in principle we could precompute the vectorized functions in the constructor of the
-        class to make things even more fast.
+        Note: for future development in principle we could precompute the vectorized functions in the constructor of the
+              class to make things even more fast.
         """
-        if (jnp.isscalar(T) or T.ndim == 0) and (jnp.isscalar(P) or P.ndim == 0):  # Case 1: Both are scalars
+        if (jnp.isscalar(T) or T.ndim == 0) and (jnp.isscalar(P) or P.ndim == 0):  # Both are scalars
             return self._single_P_kinetic_constant(T, P)
-        elif not (jnp.isscalar(T) or T.ndim == 0) and (jnp.isscalar(P) or P.ndim == 0):  # Case 2: T is array, P is scalar
+        elif not (jnp.isscalar(T) or T.ndim == 0) and (jnp.isscalar(P) or P.ndim == 0):  # T is array, P is scalar
             return vmap(lambda t: self._single_P_kinetic_constant(t, P))(T)
-        elif (jnp.isscalar(T) or T.ndim == 0) and not (jnp.isscalar(P) or P.ndim == 0):  # Case 3: P is array, T is scalar
+        elif (jnp.isscalar(T) or T.ndim == 0) and not (jnp.isscalar(P) or P.ndim == 0):  # P is array, T is scalar
             return vmap(lambda p: self._single_P_kinetic_constant(T, p))(P)
-        else:  # Case 4: Both are arrays. Handle broadcasting based on array shapes
+        else:  # Both are arrays. Handle broadcasting based on array shapes
             return vmap(lambda p: self._single_P_kinetic_constant(T, p))(P)
 
     def __str__(self) -> str:

@@ -5,10 +5,17 @@ import jax.numpy as jnp
 from jax import lax, vmap
 from jaxtyping import Array, Float64
 
-from ..physical_constants import constants
+from ..utilities.physical_constants import constants
+from ..utilities.thermodynamic_utilities import calculate_concentration
 from .arrhenius import Arrhenius
-from .falloff_functions import lindemann, sri, troe
-from .rate_interpreter import FittingType, parse_rate_constant
+from .falloff_functions import (
+    convert_to_fitting_type,
+    lindemann,
+    sri,
+    troe,
+    validate_sri_parameters,
+    validate_troe_parameters,
+)
 
 
 class CABR(eqx.Module):
@@ -22,64 +29,29 @@ class CABR(eqx.Module):
 
     def __init__(
         self,
-        rate_dict: Optional[Dict] = None,
-        hpl_params: Optional[Array] = None,
-        lpl_params: Optional[Array] = None,
-        cabr_params: Optional[Array] = None,
-        cabr_type: Optional[str] = None,
-        efficiencies: Optional[Dict] = None,
-        name: Optional[str] = "unknown :(",
-    ) -> None:
-        """Initialize FallOff reaction from dictionary or arrays."""
-        if efficiencies is None:
-            efficiencies = {}
-
-        if isinstance(rate_dict, dict):
-            self._init_from_dict(rate_dict)
-        elif all(x is not None for x in [hpl_params, lpl_params, cabr_type]):
-            self._init_from_array(name, hpl_params, lpl_params, cabr_params, cabr_type, efficiencies)
-        else:
-            raise ValueError("Either rate_dict or array for parameters must be provided")
-
-    def _init_from_dict(self, rate_constant: Dict) -> None:
-        """Initialize from a dictionary containing rate constant information."""
-        hpl_coeff, lpl_coeff, self.cabr_params, self.cabr_type, self.efficiencies = parse_rate_constant(rate_constant)
-
-        self.explicit_efficiencies = False if self.efficiencies is {} else True
-
-        self.name = rate_constant["name"]
-        self.hpl = Arrhenius(params=hpl_coeff, name=rate_constant["name"])
-        self.lpl = Arrhenius(params=lpl_coeff, name=rate_constant["name"])
-
-    def _init_from_array(
-        self,
-        name: str,
         hpl_params: Array,
         lpl_params: Array,
         cabr_params: Array,
         cabr_type: str,
-        efficiencies: Dict,
+        efficiencies: Optional[Dict] = None,
+        name: str = "",
     ) -> None:
-        """Initialize directly from arrays of parameters."""
+        if efficiencies is None:
+            efficiencies = {}
+
         self.name = name
-        self.cabr_type = self._convert_to_cabr_type(cabr_type)
+        self.cabr_type = convert_to_fitting_type(cabr_type)
 
         if self.cabr_type == 1:  # Troe
-            cabr_params = jnp.pad(
-                jnp.array(cabr_params, dtype=jnp.float64), (0, 5 - len(cabr_params)), constant_values=0.0
-            )
+            cabr_params = validate_troe_parameters(cabr_params)
         elif self.cabr_type == 2:  # SRI
-            cabr_params = jnp.pad(
-                jnp.array(cabr_params, dtype=jnp.float64), (0, 5 - len(cabr_params)), constant_values=0.0
-            )
-            if cabr_params[3] == 0.0:
-                cabr_params = cabr_params.at[3].set(1.0)
+            cabr_params = validate_sri_parameters(cabr_params)
         else:  # Lindemann
             cabr_params = jnp.zeros(5, dtype=jnp.float64)
         self.cabr_params = cabr_params
 
-        self.hpl = Arrhenius(params=hpl_params, name=name)
-        self.lpl = Arrhenius(params=lpl_params, name=name)
+        self.hpl = Arrhenius(parameters=hpl_params, name=name)
+        self.lpl = Arrhenius(parameters=lpl_params, name=name)
         self.efficiencies = efficiencies
         self.explicit_efficiencies = False if self.efficiencies is {} else True
 
@@ -88,7 +60,11 @@ class CABR(eqx.Module):
         operand = (T, Pr, self.cabr_params)
         return lax.switch(
             self.cabr_type,
-            [lambda x: lindemann(*x), lambda x: troe(*x), lambda x: sri(*x)],
+            [
+                lambda x: lindemann(*x),
+                lambda x: troe(*x),
+                lambda x: sri(*x),
+            ],
             operand,
         )
 
@@ -98,14 +74,16 @@ class CABR(eqx.Module):
     ) -> Tuple[Union[Float64, Array], Union[Float64, Array]]:
         k_hpl = self.hpl.kinetic_constant(T)
         k_lpl = self.lpl.kinetic_constant(T)
-        M = self._calculate_concentration(P, T)
+        M = calculate_concentration(T, P)
         Pr = (k_lpl * M) / k_hpl
         F = self._compute_blending_function(T, Pr)
         return (k_lpl * (1 / (1 + Pr)) * F, M)
 
     @eqx.filter_jit
     def kinetic_constant(
-        self, T: Union[Float64, Array], P: Union[Float64, Array]
+        self,
+        T: Union[Float64, Array],
+        P: Union[Float64, Array],
     ) -> Tuple[Union[Float64, Array], Union[Float64, Array]]:
         """
         Note for future development in principle we could precompute the vectorized functions in the constructor of the
@@ -148,21 +126,3 @@ class CABR(eqx.Module):
             for key, value in self.efficiencies.items():
                 representation += " {} / {:.5f} /".format(key, value)
         return representation
-
-    @staticmethod
-    def _calculate_concentration(P: Float64, T: Union[Float64, Array]) -> Union[Float64, Array]:
-        """Calculate concentration [mol/cm3] from pressure [atm] and temperature [K]."""
-        return (P / (constants.R_L_atm_K_mol * T)) * jnp.float64(0.001)
-
-    @staticmethod
-    def _convert_to_cabr_type(cabr_type: str) -> int:
-        """Convert string representation to FalloffType enum."""
-        try:
-            return {
-                "lindemann": FittingType.lindemann,
-                "troe": FittingType.troe,
-                "sri": FittingType.sri,
-            }[cabr_type.lower()]
-        except KeyError:
-            available = ", ".join(f"'{k}'" for k in ["lindemann", "troe", "sri"])
-            raise ValueError(f"Unknown blending function type '{cabr_type}'. Available types: {available}")

@@ -1,5 +1,3 @@
-from typing import Dict
-
 import jax.numpy as jnp
 from jaxtyping import Float64
 
@@ -50,18 +48,6 @@ class PhysicalConstants:
     def R_L_atm_K_mol(self) -> Float64:
         """Ideal gas constant [L·atm/K/mol]"""
         return jnp.float64(0.082057366080960)  # CODATA 2018 value
-
-    def as_dict(self) -> Dict[str, Float64]:
-        """Return all constants as a dictionary."""
-        return {
-            "R_J_mol": self.R_J_mol,
-            "R_cal_mol": self.R_cal_mol,
-            "R_kcal_mol": self.R_kcal_mol,
-            "R_eV_mol": self.R_eV_mol,
-            "R_J_kmol": self.R_J_kmol,
-            "R_cal_kmol": self.R_cal_kmol,
-            "R_L_atm_K_mol": self.R_L_atm_K_mol,
-        }
 
 
 constants = PhysicalConstants()
