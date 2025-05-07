@@ -1,0 +1,97 @@
+phases:
+- name: gas
+  thermo: ideal-gas
+  kinetics: bulk
+  species:
+  - {gri30.yaml/species: [O2, H, AR, N2, H2O, HO2, H2, O, OH, H2O2, NO]}
+  - {nasa_gas.yaml/species: [He]}
+  - {example_data/ammonia-CO-H2-Alzueta-2023.yaml/species: [HONO]}
+  state: {T: 300, P: 1 atm, X: {O2: 1.0, H: 1.0e-5, AR: 4.4, HE: 2.0, N2: 4.0, H2O: 0.1}}
+reactions:
+- units: {length: cm, time: s, quantity: mol, activation-energy: cal/mol}
+- equation: H2 + O <=> H + OH  # Reaction 1
+  rate-constant: {A: 5.08e+04, b: 2.67, Ea: 6292.0}
+  note: SUTHERLAND ET AL., 21ST SYMPOSIUM, P. 929 (1986)
+- equation: H2O2 (+M) <=> OH + OH (+M)  # Reaction 2
+  type: falloff
+  low-P-rate-constant: {A: 2.49e+24, b: -2.3, Ea: 4.8749e+04}
+  high-P-rate-constant: {A: 2.0e+12, b: 0.9, Ea: 4.8749e+04}
+  Troe: {A: 0.43, T3: 1.0e-30, T1: 1.0e+30}
+  efficiencies: {H2O: 7.65, N2: 1.5, O2: 1.2, HE: 0.65, H2O2: 7.7, H2: 3.7}
+  note: TROE, COMBUST. FLAME, 158:594-601 (2011)
+- equation: OH + NO <=> HONO  # Reaction 3
+  type: pressure-dependent-Arrhenius
+  rate-constants:
+  - {P: 0.01 atm, A: 5.02e+21, b: -4.24, Ea: 898.9}
+  - {P: 0.1 atm, A: 5.31e+22, b: -4.24, Ea: 1184.0}
+  - {P: 0.316 atm, A: 1.38e+23, b: -4.22, Ea: 1376.0}
+  - {P: 1.0 atm, A: 3.09e+23, b: -4.17, Ea: 1621.0}
+  - {P: 3.16 atm, A: 5.45e+23, b: -4.09, Ea: 1911.0}
+  - {P: 10.0 atm, A: 6.35e+23, b: -3.97, Ea: 2222.0}
+  - {P: 31.6 atm, A: 3.68e+23, b: -3.75, Ea: 2501.0}
+  - {P: 100.0 atm, A: 7.29e+22, b: -3.41, Ea: 2660.0}
+  note: Chen, X., Fuller, M. E., & Goldsmith, C. F. Reac Chem Eng, 4(2), 323-333 (2019).
+
+# - equation: H + O2 (+M) <=> HO2 (+M)
+#   type: linear-Burke
+#   duplicate: true
+#   colliders:
+#   - name: M
+#     type: falloff
+#     low-P-rate-constant: [1.737e+019, -1.230, 0.0]
+#     high-P-rate-constant: [4.650e+012, 0.440, 0.0]
+#     Troe: {A: 6.700e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
+#   - name: AR
+#     type: falloff
+#     low-P-rate-constant: [6.810e+018, -1.200, 0.0]
+#     high-P-rate-constant: [4.650e+012, 0.440, 0.0]
+#     Troe: {A: 7.000e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
+#     efficiency: {A: 1, b: 0, Ea: 0}
+#   - name: He
+#     type: falloff
+#     low-P-rate-constant: [9.192e+018, -1.200, 0.0]
+#     high-P-rate-constant: [4.650e+012, 0.440, 0.0]
+#     Troe: {A: 5.900e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
+#     efficiency: {A: 1, b: 0, Ea: 0}
+#   - name: H2
+#     efficiency: {A: 1.3, b: 0, Ea: 0}
+#   - name: H2O
+#     efficiency: {A: 10.0, b: 0, Ea: 0}
+# - equation: H + O2 (+M) <=> HO2 (+M)
+#   type: falloff
+#   duplicate: true
+#   low-P-rate-constant: [1.737e+019, -1.230, 0.0]
+#   high-P-rate-constant: [4.650e+012, 0.440, 0.0]
+#   Troe: {A: 6.700e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
+#   efficiencies: {AR: 0, He: 0, H2: 1.3, H2O: 10.0}
+# - equation: H + O2 (+AR) <=> HO2 (+AR)
+#   type: falloff
+#   duplicate: true
+#   low-P-rate-constant: [6.810e+018, -1.200, 0.0]
+#   high-P-rate-constant: [4.650e+012, 0.440, 0.0]
+#   Troe: {A: 7.000e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
+# - equation: H + O2 (+He) <=> HO2 (+He)
+#   type: falloff
+#   duplicate: true
+#   low-P-rate-constant: [9.192e+018, -1.200, 0.0]
+#   high-P-rate-constant: [4.650e+012, 0.440, 0.0]
+#   Troe: {A: 5.900e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
+# - equation: H + O2 (+M) <=> HO2 (+M)
+#   type: falloff
+#   duplicate: true
+#   low-P-rate-constant: [1.737e+019, -1.230, 0.0]
+#   high-P-rate-constant: [4.650e+012, 0.440, 0.0]
+#   Troe: {A: 6.700e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
+#   efficiencies: {H2: 1.3, H2O: 10.0}
+# - equation: H + O2 (+M) <=> HO2 (+M)
+#   type: falloff
+#   duplicate: true
+#   low-P-rate-constant: [6.810e+018, -1.200, 0.0]
+#   high-P-rate-constant: [4.650e+012, 0.440, 0.0]
+#   Troe: {A: 7.000e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
+# - equation: H + O2 (+M) <=> HO2 (+M)
+#   type: falloff
+#   duplicate: true
+#   low-P-rate-constant: [9.192e+018, -1.200, 0.0]
+#   high-P-rate-constant: [4.650e+012, 0.440, 0.0]
+#   Troe: {A: 5.900e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
