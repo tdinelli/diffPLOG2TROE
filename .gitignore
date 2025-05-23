@@ -160,6 +160,7 @@ tests/jax_try/
 PLOG_replaced.CKI
 _old_example/
 .DS_Store
+tests/ciao.py
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
