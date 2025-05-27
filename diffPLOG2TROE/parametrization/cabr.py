@@ -37,7 +37,12 @@ class CABR(eqx.Module):
         name: str = "",
     ) -> None:
         if efficiencies is None:
-            efficiencies = {}
+            self.efficiencies = {}
+            self.explicit_efficiencies = False
+        else:
+            validate_efficiencies(efficiencies)
+            self.efficiencies = efficiencies
+            self.explicit_efficiencies = True
 
         self.name = name
         self.cabr_type = convert_to_fitting_type(cabr_type)
@@ -52,8 +57,6 @@ class CABR(eqx.Module):
 
         self.hpl = Arrhenius(parameters=hpl_params, name=name)
         self.lpl = Arrhenius(parameters=lpl_params, name=name)
-        self.efficiencies = efficiencies
-        self.explicit_efficiencies = False if self.efficiencies is {} else True
 
     def _compute_blending_function(self, T: Union[Float64, Array], Pr: Union[Float64, Array]) -> Union[Float64, Array]:
         """Compute blending factor based on fitting type and reduced pressure."""

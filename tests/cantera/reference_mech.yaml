@@ -9,17 +9,17 @@ phases:
   state: {T: 300, P: 1 atm, X: {O2: 1.0, H: 1.0e-5, AR: 4.4, HE: 2.0, N2: 4.0, H2O: 0.1}}
 reactions:
 - units: {length: cm, time: s, quantity: mol, activation-energy: cal/mol}
-- equation: H2 + O <=> H + OH  # Reaction 1
+- equation: H2 + O <=> H + OH  # Reaction 1 (Modified arrhenius)
   rate-constant: {A: 5.08e+04, b: 2.67, Ea: 6292.0}
   note: SUTHERLAND ET AL., 21ST SYMPOSIUM, P. 929 (1986)
-- equation: H2O2 (+M) <=> OH + OH (+M)  # Reaction 2
+- equation: H2O2 (+M) <=> OH + OH (+M)  # Reaction 2 (FallOff TROE)
   type: falloff
   low-P-rate-constant: {A: 2.49e+24, b: -2.3, Ea: 4.8749e+04}
   high-P-rate-constant: {A: 2.0e+12, b: 0.9, Ea: 4.8749e+04}
   Troe: {A: 0.43, T3: 1.0e-30, T1: 1.0e+30}
   efficiencies: {H2O: 7.65, N2: 1.5, O2: 1.2, HE: 0.65, H2O2: 7.7, H2: 3.7}
   note: TROE, COMBUST. FLAME, 158:594-601 (2011)
-- equation: OH + NO <=> HONO  # Reaction 3
+- equation: OH + NO <=> HONO  # Reaction 3 (PLOG)
   type: pressure-dependent-Arrhenius
   rate-constants:
   - {P: 0.01 atm, A: 5.02e+21, b: -4.24, Ea: 898.9}

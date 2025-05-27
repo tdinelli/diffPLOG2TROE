@@ -1,10 +1,11 @@
-from typing import Tuple, Union
+from typing import Tuple
 
 import equinox as eqx
 import jax.numpy as jnp
 from jax import jit, lax
-from jaxtyping import Array, Float64
+from jaxtyping import Float64
 
+from ..utilities.custom_types import Array64f, Array64f_3, ScalarOrVector
 from ..utilities.physical_constants import constants
 
 
@@ -45,7 +46,7 @@ class Arrhenius(eqx.Module):
     EaR: Float64
     name: str
 
-    def __init__(self, parameters: Array, name: str = "") -> None:
+    def __init__(self, parameters: Array64f_3, name: str = "") -> None:
         """
         Initialize an Arrhenius instance with given parameters.
 
@@ -77,7 +78,7 @@ class Arrhenius(eqx.Module):
         self.EaR = parameters[2] / constants.R_cal_mol
 
     @classmethod
-    def from_data(cls, rates: Array, temps: Array, three_params: bool = True, name: str = "") -> "Arrhenius":
+    def from_data(cls, rates: Array64f, temps: Array64f, three_params: bool = True, name: str = "") -> "Arrhenius":
         """
         Create an Arrhenius instance by fitting to experimental data.
 
@@ -107,7 +108,7 @@ class Arrhenius(eqx.Module):
         return cls(parameters=params, name=name)
 
     @eqx.filter_jit
-    def kinetic_constant(self, T: Union[Float64, Array]) -> Union[Float64, Array]:
+    def kinetic_constant(self, T: ScalarOrVector) -> ScalarOrVector:
         """
         Calculate rate constant at given temperature(s).
 
@@ -146,7 +147,7 @@ class Arrhenius(eqx.Module):
         return "{}\t\t{:.5e} {:.5e} {:.5e}".format(self.name, jnp.exp(self.lnA), self.n, self.EaR * constants.R_cal_mol)
 
     @staticmethod
-    def _validate_parameters(parameters: Array) -> None:
+    def _validate_parameters(parameters: Array64f_3) -> None:
         """
         Validate Arrhenius parameters to ensure consistency in calculations.
 
@@ -165,7 +166,11 @@ class Arrhenius(eqx.Module):
             raise ValueError("Pre-exponential factor cannot be equal to 0")
 
     @staticmethod
-    def save_kinetic_constants_table(rate_constant: Array, temperatures: Array, output_file: str) -> None:
+    def save_kinetic_constants_table(
+        rate_constant: ScalarOrVector,
+        temperatures: ScalarOrVector,
+        output_file: str,
+    ) -> None:
         """
         Save rate constants at different temperatures to a CSV file.
 
@@ -194,8 +199,8 @@ class Arrhenius(eqx.Module):
 
 @jit
 def refit_arrhenius(
-    rate_constant: Array,
-    temperature: Array,
+    rate_constant: ScalarOrVector,
+    temperature: ScalarOrVector,
     three_params: bool = False,
 ) -> Tuple[Float64, Float64, Float64]:
     """

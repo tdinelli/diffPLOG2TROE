@@ -1,121 +1,104 @@
-from typing import List, Union
+from typing import List
 
 import equinox as eqx
 import jax.numpy as jnp
 from jax import lax, vmap
-from jaxtyping import Array, Float64
+from jaxtyping import Float64
 
+from ..utilities.custom_types import Array64f, Matrix64f, ScalarOrVector
 from ..utilities.physical_constants import constants
 from .arrhenius import Arrhenius
 
 
 class Plog(eqx.Module):
     k_levels: List[Arrhenius]
-    p_levels: Array
-    lnp_levels: Array
+    p_levels: Array64f
+    lnp_levels: Array64f
     num_p_levels: int
     name: str
 
-    def __init__(self, parameters: Array, name: str = "") -> None:
+    def __init__(self, parameters: Matrix64f, name: str = "") -> None:
         self.name = name
 
         # ==============================================================================
-        # Ensuring the pressure levels are sorted in ascending order correctly
-        parameters = jnp.sort(parameters, axis=0)
+        # Sort pressure levels in ascending order
+        parameters = parameters[jnp.argsort(parameters[:, 0])]
 
         self.p_levels = parameters[:, 0]
         self.lnp_levels = jnp.log(self.p_levels)
         self.num_p_levels = len(self.p_levels)
-        self.k_levels = [Arrhenius(parameters=level, name=name) for level in parameters[:, 1:]]
 
-    def _find_index(self, p_index: int, i: int, P: Float64) -> int:
-        """Find index of pressure level for interpolation."""
-        return lax.cond(
-            P <= self.p_levels[i],
-            lambda _: i,
-            lambda _: p_index,
-            None,
-        )
-
-    def _compute_k(self, T: Union[Float64, Array], idx: int) -> Union[Float64, Array]:
-        """
-        Compute kinetic constant for a specific pressure level index.
-        Uses JAX's lax.switch for efficient branch handling.
-        """
-        branches = [lambda i=i: self.k_levels[i].kinetic_constant(T) for i in range(self.num_p_levels)]
-        return lax.switch(idx, branches)
-
-    def _interpolate_k(self, p_index: int, T: Union[Float64, Array], P: Float64) -> Union[Float64, Array]:
-        """
-        Interpolate rate constant between two pressure levels in log-log space.
-        Used when pressure is between two tabulated pressure levels.
-        """
-        k1 = self._compute_k(T, p_index - 1)
-        k2 = self._compute_k(T, p_index)
-        log_k1 = jnp.log(k1)
-        log_k2 = jnp.log(k2)
-
-        # Log-log interpolation
-        return jnp.exp(
-            log_k1
-            + (log_k2 - log_k1)
-            * (jnp.log(P) - self.lnp_levels[p_index - 1])
-            / (self.lnp_levels[p_index] - self.lnp_levels[p_index - 1])
-        )
-
-    def _low_p_k(self, T: Union[Float64, Array]) -> Union[Float64, Array]:
-        """Return rate constant for pressure below lowest tabulated level."""
-        return self._compute_k(T, 0)
-
-    def _high_p_k(self, T: Union[Float64, Array]) -> Union[Float64, Array]:
-        """Return rate constant for pressure above highest tabulated level."""
-        return self._compute_k(T, self.num_p_levels - 1)
+        self.k_levels = [Arrhenius(parameters=i) for i in parameters[:, 1:]]
 
     @eqx.filter_jit
-    def _single_P_kinetic_constant(self, T: Union[Float64, Array], P: Float64) -> Union[Float64, Array]:
-        p_index = lax.fori_loop(0, self.num_p_levels, lambda idx, i: self._find_index(idx, i, P), 0)
+    def kinetic_constant(self, T: ScalarOrVector, P: ScalarOrVector) -> ScalarOrVector:
+        """Compute kinetic constant for given temperature and pressure."""
+        if jnp.isscalar(P) or P.ndim == 0:  # P is scalar
+            return self._single_P_kinetic_constant(T, P)
+        else:  # P is array
+            vec_func = vmap(lambda p: self._single_P_kinetic_constant(T, p))
+            return vec_func(P)
 
-        return lax.cond(
-            P <= self.p_levels[0],
-            lambda _: self._low_p_k(T),
+    def _single_P_kinetic_constant(self, T: ScalarOrVector, P: Float64) -> ScalarOrVector:
+        all_lnk = jnp.log(jnp.array([k_level.kinetic_constant(T) for k_level in self.k_levels]))
+
+        # ==============================================================================
+        # Identify the region of the table
+        is_below_min = P <= self.p_levels[0]
+        is_above_max = P >= self.p_levels[-1]
+
+        k = lax.cond(
+            is_below_min,
+            lambda _: all_lnk[0],
             lambda _: lax.cond(
-                P >= self.p_levels[-1],
-                lambda _: self._high_p_k(T),
-                lambda _: self._interpolate_k(p_index, T, P),
+                is_above_max,
+                lambda _: all_lnk[-1],
+                lambda _: self._interpolated_constant(all_lnk, P),
                 None,
             ),
             None,
         )
+        return jnp.exp(k)
 
-    # @eqx.filter_jit
-    # def kinetic_constant(self, T: Union[Float64, Array], P: Union[Float64, Array]) -> Union[Float64, Array]:
-    #     """Calculate rate constant for given temperature(s) and pressure(s)."""
-    #     if jnp.isscalar(P) or P.ndim == 0:
-    #         return self._single_p_k(T, P)
-    #     else:
-    #         vectorized_k = vmap(lambda p: self._single_p_k(T, p))
-    #         return vectorized_k(P)
-    @eqx.filter_jit
-    def kinetic_constant(self, T: Union[Float64, Array], P: Union[Float64, Array]) -> Union[Float64, Array]:
-        """
-        Note: for future development in principle we could precompute the vectorized functions in the constructor of the
-              class to make things even more fast.
-        """
-        if (jnp.isscalar(T) or T.ndim == 0) and (jnp.isscalar(P) or P.ndim == 0):  # Both are scalars
-            return self._single_P_kinetic_constant(T, P)
-        elif not (jnp.isscalar(T) or T.ndim == 0) and (jnp.isscalar(P) or P.ndim == 0):  # T is array, P is scalar
-            return vmap(lambda t: self._single_P_kinetic_constant(t, P))(T)
-        elif (jnp.isscalar(T) or T.ndim == 0) and not (jnp.isscalar(P) or P.ndim == 0):  # P is array, T is scalar
-            return vmap(lambda p: self._single_P_kinetic_constant(T, p))(P)
-        else:  # Both are arrays. Handle broadcasting based on array shapes
-            return vmap(lambda p: self._single_P_kinetic_constant(T, p))(P)
+    def _interpolated_constant(self, all_lnk: ScalarOrVector, P: Float64) -> ScalarOrVector:
+        # ==============================================================================
+        # Log-log interpolation for pressures within range
+        upper_idx = self._find_index(P)  # Position of the current pressure value in the pressure levels of the plog
+        lower_idx = upper_idx - 1
+
+        upper_lnp = self.lnp_levels[upper_idx]
+        lower_lnp = self.lnp_levels[lower_idx]
+
+        upper_lnk = all_lnk[upper_idx]
+        lower_lnk = all_lnk[lower_idx]
+
+        return self._log_log_interpolation(lower_lnk, upper_lnk, lower_lnp, upper_lnp, P)
+
+    def _find_index(self, P: ScalarOrVector) -> Array64f:
+        # ==============================================================================
+        # Get the first insertion point where P <= p_levels[i]
+        indices = jnp.searchsorted(self.p_levels, P, side="left")
+
+        # ==============================================================================
+        # If P is greater than all values in p_levels, set index to the last element
+        indices = jnp.where(indices == self.num_p_levels, self.num_p_levels - 1, indices)
+
+        return indices
+
+    @staticmethod
+    def _log_log_interpolation(
+        log_k1: ScalarOrVector,
+        log_k2: ScalarOrVector,
+        log_P1: ScalarOrVector,
+        log_P2: ScalarOrVector,
+        P: Float64,
+    ) -> ScalarOrVector:
+        return log_k1 + (log_k2 - log_k1) * (jnp.log(P) - log_P1) / (log_P2 - log_P1)
 
     def __str__(self) -> str:
         """Return string representation in CHEMKIN format."""
-        str_obj = "{}\t\t{:.5e} {:.5f} {:.5e}\n".format(self.name, 0.0, 0.0, 0.0)
+        str_obj = f"{self.name}\t\t{0.0:.5e} {0.0:.5f} {0.0:.5e}\n"
         for i in range(self.num_p_levels):
             arrhenius = self.k_levels[i]
-            str_obj += " PLOG / {:.5e}\t{:.5e} {:.5f} {:.5e} /\n".format(
-                self.p_levels[i], jnp.exp(arrhenius.lnA), arrhenius.n, arrhenius.EaR * constants.R_cal_mol
-            )
+            str_obj += f" PLOG / {self.p_levels[i]:.5e}\t{jnp.exp(arrhenius.lnA):.5e} {arrhenius.n:.5f} {arrhenius.EaR * constants.R_cal_mol:.5e} /\n"
         return str_obj

@@ -1,18 +1,21 @@
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional
 
 import equinox as eqx
 import jax.numpy as jnp
 from jax import lax, vmap
-from jaxtyping import Array, Float64
+from jaxtyping import Float64
 
+from ..utilities.custom_types import Array64f, Array64f_3, Array64f_5, ScalarOrVector
 from ..utilities.physical_constants import constants
-from ..utilities.thermodynamic_utilities import calculate_concentration
+from ..utilities.thermodynamic_utilities import calculate_effective_concentration
 from .arrhenius import Arrhenius
 from .falloff_functions import (
+    convert_to_fitting_name,
     convert_to_fitting_type,
     lindemann,
     sri,
     troe,
+    validate_efficiencies,
     validate_sri_parameters,
     validate_troe_parameters,
 )
@@ -22,42 +25,76 @@ class FallOff(eqx.Module):
     hpl: Arrhenius  # High-pressure limit
     lpl: Arrhenius  # Low-pressure limit
     falloff_type: int  # 0: Lindemann, 1: Troe, 2: SRI
-    falloff_parameters: Array
-    efficiencies: Dict
+    falloff_parameters: Array64f_5
+    efficiencies: Dict[str, Float64]
     explicit_efficiencies: bool
     name: str
 
     def __init__(
         self,
-        hpl_params: Array,
-        lpl_params: Array,
-        falloff_parameters: Array,
+        hpl_parameters: Array64f_3,
+        lpl_parameters: Array64f_3,
         falloff_type: str,
-        efficiencies: Optional[Dict] = None,
+        falloff_parameters: Optional[Array64f] = None,
+        efficiencies: Optional[Dict[str, Float64]] = None,
         name: str = "",
     ) -> None:
+        self.hpl = Arrhenius(parameters=hpl_parameters, name=name)
+        self.lpl = Arrhenius(parameters=lpl_parameters, name=name)
+
         if efficiencies is None:
-            efficiencies = {}
+            self.efficiencies = {}
+            self.explicit_efficiencies = False
+        else:
+            validate_efficiencies(efficiencies)
+            self.efficiencies = efficiencies
+            self.explicit_efficiencies = True
 
         self.name = name
         self.falloff_type = convert_to_fitting_type(falloff_type)
 
-        if self.falloff_type == 1:  # Troe
+        if self.falloff_type == 0:  # Lindemann
+            falloff_parameters = jnp.empty(5, dtype=jnp.float64)
+        elif self.falloff_type == 1 and falloff_parameters is not None:  # Troe
             falloff_parameters = validate_troe_parameters(falloff_parameters)
-        elif self.falloff_type == 2:  # SRI
+        elif self.falloff_type == 2 and falloff_parameters is not None:  # SRI
             falloff_parameters = validate_sri_parameters(falloff_parameters)
-        else:  # Lindemann
-            falloff_parameters = jnp.zeros(5, dtype=jnp.float64)
-
+        else:
+            raise ValueError(f"Unknown falloff type {falloff_type} or incorrect falloff parameters.")
         self.falloff_parameters = falloff_parameters
 
-        self.hpl = Arrhenius(parameters=hpl_params, name=name)
-        self.lpl = Arrhenius(parameters=lpl_params, name=name)
-        self.efficiencies = efficiencies
-        self.explicit_efficiencies = False if self.efficiencies is {} else True
+    @eqx.filter_jit
+    def kinetic_constant(
+        self,
+        T: ScalarOrVector,
+        P: ScalarOrVector,
+        composition: Optional[Dict[str, Float64]] = None,
+    ) -> ScalarOrVector:
+        k_hpl = self.hpl.kinetic_constant(T)  # [cm3/mol/s]
+        k_lpl = self.lpl.kinetic_constant(T)  # [cm3/mol/s]
 
-    def _compute_falloff_factor(self, T: Union[Float64, Array], Pr: Union[Float64, Array]) -> Union[Float64, Array]:
-        """Compute falloff factor based on falloff type and reduced pressure."""
+        if jnp.isscalar(P) or P.ndim == 0:  # P is scalar
+            return self._single_P_kinetic_constant(T, P, k_lpl, k_hpl, composition)
+        else:  # P is array
+            vec_func = vmap(lambda p: self._single_P_kinetic_constant(T, p, k_lpl, k_hpl, composition))
+            return vec_func(P)
+
+    def _single_P_kinetic_constant(
+        self,
+        T: ScalarOrVector,
+        P: Float64,
+        lpl: ScalarOrVector,
+        hpl: ScalarOrVector,
+        composition: Optional[Dict[str, Float64]] = None,
+    ) -> ScalarOrVector:
+        M = calculate_effective_concentration(T, P, composition, self.efficiencies)  # [mol/cm3]
+        Pr = (lpl * M) / hpl
+        F = self._compute_falloff_factor(T, Pr)
+
+        return hpl * (Pr / (1 + Pr)) * F
+
+    def _compute_falloff_factor(self, T: ScalarOrVector, Pr: ScalarOrVector) -> ScalarOrVector:
+        """Compute falloff factor (F) based on falloff type and reduced pressure."""
         operand = (T, Pr, self.falloff_parameters)
         return lax.switch(
             self.falloff_type,
@@ -68,34 +105,6 @@ class FallOff(eqx.Module):
             ],
             operand,
         )
-
-    @eqx.filter_jit
-    def _single_P_kinetic_constant(
-        self, T: Union[Float64, Array], P: Float64
-    ) -> Tuple[Union[Float64, Array], Union[Float64, Array]]:
-        k_hpl = self.hpl.kinetic_constant(T)
-        k_lpl = self.lpl.kinetic_constant(T)
-        M = calculate_concentration(T, P)
-        Pr = (k_lpl * M) / k_hpl
-        F = self._compute_falloff_factor(T, Pr)
-        return (k_hpl * (Pr / (1 + Pr)) * F, M)
-
-    @eqx.filter_jit
-    def kinetic_constant(
-        self, T: Union[Float64, Array], P: Union[Float64, Array]
-    ) -> Tuple[Union[Float64, Array], Union[Float64, Array]]:
-        """
-        Note for future development in principle we could precompute the vectorized functions in the constructor of the
-        class to make things even more fast.
-        """
-        if (jnp.isscalar(T) or T.ndim == 0) and (jnp.isscalar(P) or P.ndim == 0):  # Both are scalars
-            return self._single_P_kinetic_constant(T, P)
-        elif not (jnp.isscalar(T) or T.ndim == 0) and (jnp.isscalar(P) or P.ndim == 0):  # T is array, P is scalar
-            return vmap(lambda t: self._single_P_kinetic_constant(t, P))(T)
-        elif (jnp.isscalar(T) or T.ndim == 0) and not (jnp.isscalar(P) or P.ndim == 0):  # P is array, T is scalar
-            return vmap(lambda p: self._single_P_kinetic_constant(T, p))(P)
-        else:  # Both are arrays
-            return vmap(lambda p: vmap(lambda t: self._single_P_kinetic_constant(t, p))(T))(P)
 
     def __str__(self) -> str:
         """Return string representation in CHEMKIN format."""
@@ -125,3 +134,6 @@ class FallOff(eqx.Module):
             for key, value in self.efficiencies.items():
                 representation += " {} / {:.5f} /".format(key, value)
         return representation
+
+    def __repr__(self) -> str:
+        return f"<FallOff ({convert_to_fitting_name(self.falloff_type)}): {self.name}>"

@@ -1,7 +1,6 @@
 from typing import Dict, Optional, Tuple, Union
 
 import equinox as eqx
-import jax.numpy as jnp
 from jaxtyping import Array, Float64
 
 from .parametrization.arrhenius import Arrhenius
