@@ -1,31 +1,87 @@
 [project]
-  name = "diffPLOG2TROE"
-  dynamic = ["version"]
-  description = "A differentiable PLOG to TROE refitter"
-  readme = "README.md"
-  requires-python = ">=3.10"
-  license = {text = "MIT"}
-  authors = [{name = "Timoteo Dinelli", email = "timoteo.dinelli@polimi.it"}]
-  dependencies = ["numpy", "matplotlib", "jax", "jaxtyping", "chex", "optax", "equinox"]
-  keywords = ["chemistry", "reaction-kinetics", "differentiable"]
+name = "diffPLOG2TROE"
+dynamic = ["version"]
+description = "A differentiable PLOG to TROE refitter"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Timoteo Dinelli", email = "timoteo.dinelli@polimi.it"}]
+dependencies = [
+    "numpy",
+    "matplotlib", 
+    "jax",
+    "jaxtyping",
+    "chex",
+    "optax",
+    "equinox"
+]
+keywords = ["chemistry", "reaction-kinetics", "differentiable"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12", 
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Physics",
+]
 
 [project.optional-dependencies]
-  dev = ["pytest", "mkdocs"]
-  docs = ["mkdocs", "mkdocs-material", "mkdocstrings[python]"]
+dev = ["pytest", "mkdocs"]
+docs = ["mkdocs", "mkdocs-material", "mkdocstrings[python]"]
+test = ["pytest >=6", "pytest-cov >=3"]
+all = ["pytest", "mkdocs", "mkdocs-material", "mkdocstrings[python]", "pytest-cov"]
 
 [project.urls]
-  "Homepage" = "https://github.com/tdinelli/diffPLOG2TROE"
-  "Bug Tracker" = "https://github.com/tdinelli/diffPLOG2TROE/issues"
-  "Documentation" = "https://tdinelli.github.io/diffPLOG2TROE"
+"Homepage" = "https://github.com/tdinelli/diffPLOG2TROE"
+"Bug Tracker" = "https://github.com/tdinelli/diffPLOG2TROE/issues"
+"Documentation" = "https://tdinelli.github.io/diffPLOG2TROE"
+"Repository" = "https://github.com/tdinelli/diffPLOG2TROE"
 
 [build-system]
-  requires = ["hatchling"]
-  build-backend = "hatchling.build"
-
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.hatch.build]
-  include = ["diffPLOG2TROE/*"]
-
+include = ["diffPLOG2TROE/*"]
 
 [tool.hatch.version]
-  path="diffPLOG2TROE/_version.py"
+path = "diffPLOG2TROE/_version.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--verbose",
+]
+filterwarnings = [
+    "error",
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["diffPLOG2TROE"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+]

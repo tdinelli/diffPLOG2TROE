@@ -15,6 +15,14 @@ class TestFallOff(unittest.TestCase):
             hpl_parameters=jnp.array([2.0e12, 0.9, 4.8749e04]),
             lpl_parameters=jnp.array([2.49e24, -2.3, 4.8749e04]),
             falloff_parameters=jnp.array([0.43, 1.0e-30, 1.0e30]),
+            efficiencies={
+                "H2O": 7.65,
+                "N2": 1.5,
+                "O2": 1.2,
+                "HE": 0.65,
+                "H2O2": 7.7,
+                "H2": 3.7,
+            },
             falloff_type="troe",
             name="H2O2(+M)=OH+OH(+M)",
         )
@@ -23,17 +31,42 @@ class TestFallOff(unittest.TestCase):
         # Dataloader
         current_file_path = os.path.abspath(__file__)
         current_dir = os.path.dirname(current_file_path)
-        data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.1.0", "falloff_troe.csv")
+        data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.1.0", "falloff_troe_ar.csv")
         data = np.loadtxt(data_file, delimiter=";")
-        self.expected_rate = jnp.array(data)
+        self.expected_rate_ar = jnp.array(data)
 
-    def test_kinetic_constant(self):
-        calculated_rates = self.rate_constant.kinetic_constant(self.T_range, self.P_range)
+        data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.1.0", "falloff_troe_ar_h2o.csv")
+        data = np.loadtxt(data_file, delimiter=";")
+        self.expected_rate_arh2o = jnp.array(data)
+
+    def test_kinetic_constant_ar(self):
+        calculated_rates = self.rate_constant.kinetic_constant(
+            self.T_range,
+            self.P_range,
+            {"AR": 1},
+        )
         for i, calculated_rate in enumerate(calculated_rates):
             self.assertTrue(
                 jnp.allclose(
                     calculated_rate,
-                    self.expected_rate[i],
+                    self.expected_rate_ar[i],
+                    atol=1e-10,
+                    rtol=1e-8,
+                ),
+                "",
+            )
+
+    def test_kinetic_constant_arh2o(self):
+        calculated_rates = self.rate_constant.kinetic_constant(
+            self.T_range,
+            self.P_range,
+            {"AR": 0.5, "H2O": 0.5},
+        )
+        for i, calculated_rate in enumerate(calculated_rates):
+            self.assertTrue(
+                jnp.allclose(
+                    calculated_rate,
+                    self.expected_rate_arh2o[i],
                     atol=1e-10,
                     rtol=1e-8,
                 ),
