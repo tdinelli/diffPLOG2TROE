@@ -10,7 +10,6 @@ from ..utilities.physical_constants import constants
 from ..utilities.thermodynamic_utilities import calculate_effective_concentration
 from .arrhenius import Arrhenius
 from .falloff_functions import (
-    convert_to_fitting_name,
     convert_to_fitting_type,
     lindemann,
     sri,
@@ -18,6 +17,7 @@ from .falloff_functions import (
     validate_efficiencies,
     validate_sri_parameters,
     validate_troe_parameters,
+    validate_tsang_parameters,
 )
 
 
@@ -59,6 +59,8 @@ class FallOff(eqx.Module):
             falloff_parameters = validate_troe_parameters(falloff_parameters)
         elif self.falloff_type == 2 and falloff_parameters is not None:  # SRI
             falloff_parameters = validate_sri_parameters(falloff_parameters)
+        elif self.falloff_type == 3 and falloff_parameters is not None:  # Tsang
+            falloff_parameters = validate_tsang_parameters(falloff_parameters)
         else:
             raise ValueError(f"Unknown falloff type {falloff_type} or incorrect falloff parameters.")
         self.falloff_parameters = falloff_parameters
@@ -134,6 +136,3 @@ class FallOff(eqx.Module):
             for key, value in self.efficiencies.items():
                 representation += " {} / {:.5f} /".format(key, value)
         return representation
-
-    def __repr__(self) -> str:
-        return f"<FallOff ({convert_to_fitting_name(self.falloff_type)}): {self.name}>"

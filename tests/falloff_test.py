@@ -39,11 +39,15 @@ class TestFallOff(unittest.TestCase):
         data = np.loadtxt(data_file, delimiter=";")
         self.expected_rate_arh2o = jnp.array(data)
 
+        data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.1.0", "falloff_troe_ar_o2_h2o.csv")
+        data = np.loadtxt(data_file, delimiter=";")
+        self.expected_rate_aro2h2o = jnp.array(data)
+
     def test_kinetic_constant_ar(self):
         calculated_rates = self.rate_constant.kinetic_constant(
-            self.T_range,
-            self.P_range,
-            {"AR": 1},
+            T=self.T_range,
+            P=self.P_range,
+            composition={"AR": 1},
         )
         for i, calculated_rate in enumerate(calculated_rates):
             self.assertTrue(
@@ -58,15 +62,32 @@ class TestFallOff(unittest.TestCase):
 
     def test_kinetic_constant_arh2o(self):
         calculated_rates = self.rate_constant.kinetic_constant(
-            self.T_range,
-            self.P_range,
-            {"AR": 0.5, "H2O": 0.5},
+            T=self.T_range,
+            P=self.P_range,
+            composition={"AR": 0.5, "H2O": 0.5},
         )
         for i, calculated_rate in enumerate(calculated_rates):
             self.assertTrue(
                 jnp.allclose(
                     calculated_rate,
                     self.expected_rate_arh2o[i],
+                    atol=1e-10,
+                    rtol=1e-8,
+                ),
+                "",
+            )
+
+    def test_kinetic_constant_aro2h2o(self):
+        calculated_rates = self.rate_constant.kinetic_constant(
+            T=self.T_range,
+            P=self.P_range,
+            composition={"AR": 0.2, "O2": 0.3, "H2O": 0.5},
+        )
+        for i, calculated_rate in enumerate(calculated_rates):
+            self.assertTrue(
+                jnp.allclose(
+                    calculated_rate,
+                    self.expected_rate_aro2h2o[i],
                     atol=1e-10,
                     rtol=1e-8,
                 ),

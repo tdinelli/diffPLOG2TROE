@@ -29,6 +29,18 @@ def troe(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> Scala
     return 10.0 ** (logFcent / (1.0 + f1))
 
 
+def tsang(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> ScalarOrVector:
+    A, B, _, _, _ = parameters
+
+    logFcent = jnp.log10(A + B * T)
+    c = -0.4 - 0.67 * logFcent
+    n = 0.75 - 1.27 * logFcent
+    d = jnp.log10(Pr) + c
+    f1 = (d / (n - 0.14 * d)) ** 2
+
+    return 10.0 ** (logFcent / (1.0 + f1))
+
+
 def sri(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> ScalarOrVector:
     a, b, c, d, e = parameters
 
@@ -99,11 +111,11 @@ def validate_sri_parameters(parameters: Array64f) -> Array64f_5:
         ValueError: If parameters have incorrect shape or invalid values
     """
 
-    def three_params(p: Array) -> Array:
+    def three_params(p: Float64[Array, "3"]) -> Array64f_5:
         a, b, c = p
         return jnp.array([a, b, c, 1.0, 0.0])
 
-    def five_params(p: Array) -> Array:
+    def five_params(p: Float64[Array, "5"]) -> Array64f_5:
         a, b, c, d, e = p
         return jnp.array([a, b, c, d, e])
 
@@ -125,6 +137,35 @@ def validate_sri_parameters(parameters: Array64f) -> Array64f_5:
     return result
 
 
+def validate_tsang_parameters(parameters: Float64[Array, "2"]) -> Array64f_5:
+    """
+    Validates TSANG parameters and returns a padded array of length 5.
+
+    Parameters:
+        parameters: Array of SRI parameters [A, B]
+
+    Returns:
+        A padded array [A, B, 0, 0, 0]
+
+    Raises:
+        ValueError: If parameters have incorrect shape or invalid values
+    """
+
+    number_of_parameters = len(parameters)
+    if number_of_parameters != 2:
+        raise ValueError(f"Invalid number of TSANG parameters: expected 2, but received {number_of_parameters}.")
+
+    A, B = parameters
+
+    if A == 0:
+        raise ValueError(f"Parameter A (={A}) must be different from 0.")
+
+    if B == 0:
+        raise ValueError(f"Parameter B (={B}) must be different from 0.")
+
+    return jnp.array([A, B, 0, 0, 0], dtype=jnp.float64)
+
+
 def validate_efficiencies(efficiencies: Dict[str, Float64]) -> None:
     for species, efficiency in efficiencies.items():
         if efficiency < 0:
@@ -135,6 +176,7 @@ class FittingType(IntEnum):
     lindemann = 0
     troe = 1
     sri = 2
+    tsang = 3
 
 
 def convert_to_fitting_type(fitting_type: str) -> int:
@@ -144,19 +186,8 @@ def convert_to_fitting_type(fitting_type: str) -> int:
             "lindemann": FittingType.lindemann,
             "troe": FittingType.troe,
             "sri": FittingType.sri,
+            "tsang": FittingType.tsang,
         }[fitting_type.lower()]
     except KeyError:
-        available = ", ".join(f"'{k}'" for k in ["lindemann", "troe", "sri"])
+        available = ", ".join(f"'{k}'" for k in ["lindemann", "troe", "sri", "tsang"])
         raise ValueError(f"Unknown fitting type '{fitting_type}'. Available types: {available}")
-
-
-def convert_to_fitting_name(fitting_type: int) -> str:
-    """"""
-    if fitting_type is FittingType.lindemann:
-        return "lindemann"
-    elif fitting_type is FittingType.troe:
-        return "troe"
-    elif fitting_type is FittingType.sri:
-        return "sri"
-    else:
-        raise ValueError(f"Unknown fitting type {fitting_type}")
