@@ -77,6 +77,34 @@ class Arrhenius(eqx.Module):
         # Activation energy
         self.EaR = parameters[2] / constants.R_cal_mol
 
+    @eqx.filter_jit
+    def kinetic_constant(self, T: ScalarOrVector) -> ScalarOrVector:
+        """
+        Calculate rate constant at given temperature(s).
+
+        Parameters
+        ----------
+        T : Union[Float64, Array]
+            Temperature or array of temperatures in [K].
+
+        Returns
+        -------
+        Union[Float64, Array]
+            Rate constant(s) calculated using the Arrhenius equation.
+            Units depend on the reaction order:
+            - For first-order reactions: [1/s]
+            - For second-order reactions: [cm3/mol/s]
+            - For third-order reactions: [cm6/mol2/s]
+
+        Notes
+        -----
+        The calculation uses the Arrhenius equation in the form:
+        k = exp(lnA + n*ln(T) - EaR/T)
+
+        This method is JIT-compiled for performance.
+        """
+        return jnp.exp(self.lnA + self.n * jnp.log(T) - self.EaR / T)
+
     @classmethod
     def from_data(cls, rates: Array64f, temps: Array64f, three_params: bool = True, name: str = "") -> "Arrhenius":
         """
@@ -107,34 +135,6 @@ class Arrhenius(eqx.Module):
         params = jnp.array([jnp.exp(lnA), n, EaR * constants.R_cal_mol])
         return cls(parameters=params, name=name)
 
-    @eqx.filter_jit
-    def kinetic_constant(self, T: ScalarOrVector) -> ScalarOrVector:
-        """
-        Calculate rate constant at given temperature(s).
-
-        Parameters
-        ----------
-        T : Union[Float64, Array]
-            Temperature or array of temperatures in [K].
-
-        Returns
-        -------
-        Union[Float64, Array]
-            Rate constant(s) calculated using the Arrhenius equation.
-            Units depend on the reaction order:
-            - For first-order reactions: [1/s]
-            - For second-order reactions: [cm3/mol/s]
-            - For third-order reactions: [cm6/mol2/s]
-
-        Notes
-        -----
-        The calculation uses the Arrhenius equation in the form:
-        k = exp(lnA + n*ln(T) - EaR/T)
-
-        This method is JIT-compiled for performance.
-        """
-        return jnp.exp(self.lnA + self.n * jnp.log(T) - self.EaR / T)
-
     def __str__(self) -> str:
         """
         Return a string representation in CHEMKIN format.
@@ -153,7 +153,7 @@ class Arrhenius(eqx.Module):
 
         Parameters
         ----------
-        parameters : Array
+        parameters : Float64[Array, "3"]
             Array of [A, n, Ea] Arrhenius parameters.
 
         Raises
@@ -199,8 +199,8 @@ class Arrhenius(eqx.Module):
 
 @jit
 def refit_arrhenius(
-    rate_constant: ScalarOrVector,
-    temperature: ScalarOrVector,
+    rate_constant: Array64f,
+    temperature: Array64f,
     three_params: bool = False,
 ) -> Tuple[Float64, Float64, Float64]:
     """
@@ -208,9 +208,9 @@ def refit_arrhenius(
 
     Parameters
     ----------
-    rate_constant : Array
+    rate_constant : Float64[Array, "dim"]
         Array of measured rate constants.
-    temperature : Array
+    temperature : Float64[Array, "dim"]
         Array of temperatures corresponding to the measured rate constants.
     three_params : bool, optional
         If True, fits a three-parameter Arrhenius model (A, n, Ea).

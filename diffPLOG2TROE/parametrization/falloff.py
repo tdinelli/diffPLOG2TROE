@@ -22,9 +22,9 @@ from .falloff_functions import (
 
 
 class FallOff(eqx.Module):
-    hpl: Arrhenius  # High-pressure limit
-    lpl: Arrhenius  # Low-pressure limit
-    falloff_type: int  # 0: Lindemann, 1: Troe, 2: SRI
+    hpl: Arrhenius     # High-pressure limit
+    lpl: Arrhenius     # Low-pressure limit
+    falloff_type: int  # 0: Lindemann, 1: Troe, 2: SRI, 3: Tsang
     falloff_parameters: Array64f_5
     efficiencies: Dict[str, Float64]
     explicit_efficiencies: bool
@@ -81,6 +81,7 @@ class FallOff(eqx.Module):
             vec_func = vmap(lambda p: self._single_P_kinetic_constant(T, p, k_lpl, k_hpl, composition))
             return vec_func(P)
 
+    @eqx.filter_jit
     def _single_P_kinetic_constant(
         self,
         T: ScalarOrVector,
@@ -130,6 +131,11 @@ class FallOff(eqx.Module):
                 self.falloff_parameters[2],
                 self.falloff_parameters[3],
                 self.falloff_parameters[4],
+            )
+        elif self.falloff_type == 3:
+            representation += " TSANG / {:.5e} {:.5e} /".format(
+                self.falloff_parameters[0],
+                self.falloff_parameters[1],
             )
         if self.explicit_efficiencies:
             representation += "\n"

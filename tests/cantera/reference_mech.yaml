@@ -3,7 +3,7 @@ phases:
   thermo: ideal-gas
   kinetics: bulk
   species:
-  - {gri30.yaml/species: [O2, H, AR, N2, H2O, HO2, H2, O, OH, H2O2, NO]}
+  - {gri30.yaml/species: [O2, H, AR, N2, H2O, HO2, H2, O, OH, H2O2, NO, CH3, CH4]}
   - {nasa_gas.yaml/species: [He]}
   - {example_data/ammonia-CO-H2-Alzueta-2023.yaml/species: [HONO]}
   state: {T: 300, P: 1 atm, X: {O2: 1.0, H: 1.0e-5, AR: 4.4, HE: 2.0, N2: 4.0, H2O: 0.1}}
@@ -31,6 +31,17 @@ reactions:
   - {P: 31.6 atm, A: 3.68e+23, b: -3.75, Ea: 2501.0}
   - {P: 100.0 atm, A: 7.29e+22, b: -3.41, Ea: 2660.0}
   note: Chen, X., Fuller, M. E., & Goldsmith, C. F. Reac Chem Eng, 4(2), 323-333 (2019).
+- equation: CH4 <=> CH3 + H # Reaction 4 (Chebyshev)
+  type: Chebyshev
+  temperature-range: [290, 3000]
+  pressure-range: [0.0098692326671601278 atm, 98.692326671601279 atm]
+  data: [[-1.44280e+01,  2.59970e-01, -2.24320e-02, -2.78700e-03],
+         [ 2.20630e+01,  4.88090e-01, -3.96430e-02, -5.48110e-03],
+         [-2.32940e-01,  4.01900e-01, -2.60730e-02, -5.04860e-03],
+         [-2.93660e-01,  2.85680e-01, -9.33730e-03, -4.01020e-03],
+         [-2.26210e-01,  1.69190e-01,  4.85810e-03, -2.38030e-03],
+         [-1.43220e-01,  7.71110e-02,  1.27080e-02, -6.41540e-04]]
+  note: Taken from CANTERA example
 
 # - equation: H + O2 (+M) <=> HO2 (+M)
 #   type: linear-Burke

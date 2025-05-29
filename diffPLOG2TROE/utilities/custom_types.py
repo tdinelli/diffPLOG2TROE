@@ -14,17 +14,10 @@ Rate Parametrization Types:
     - AnyRate: Union of all supported rate parametrization classes
 """
 
-from typing import Dict, TypeAlias, Union
+from typing import TypeAlias, Union
 
 from jaxtyping import Array, Float64
 
-# from ..parametrization.arrhenius import Arrhenius
-# from ..parametrization.cabr import CABR
-# from ..parametrization.falloff import FallOff
-# from ..parametrization.plog import Plog
-
-
-# from ..parametrization.chebyshev import Chebyshev  # TODO: Implement Chebyshev
 
 # ============================================================================
 # Array Type Aliases
@@ -45,17 +38,3 @@ Tensor64f: TypeAlias = Float64[Array, "batch height width"]
 # ============================================================================
 #: Either a scalar Float64 or 1D Float64 array - useful for flexible function inputs
 ScalarOrVector: TypeAlias = Union[Float64, Float64[Array, "dim"]]
-
-# ============================================================================
-# Chemical Kinetics Type Aliases
-# ============================================================================
-#: Union of all supported base reaction rate parametrization classes
-#:
-#: Supported parametrizations:
-#:   - Arrhenius: Modified Arrhenius form.
-#:   - Plog: Pressure-dependent logarithmic interpolation
-#:   - FallOff: Pressure-dependent falloff (Troe, SRI, etc.)
-#:   - CABR: Chemically Activated Bimolecular Reaction
-# AnyRate: TypeAlias = Union[Arrhenius, Plog, FallOff, CABR]
-#
-# RateDictionary: TypeAlias = Dict[str, AnyRate]

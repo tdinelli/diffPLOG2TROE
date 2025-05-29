@@ -24,7 +24,7 @@ from .falloff_functions import (
 class CABR(eqx.Module):
     hpl: Arrhenius  # High-pressure limit
     lpl: Arrhenius  # Low-pressure limit
-    cabr_type: int  # 0: Lindemann, 1: Troe, 2: SRI
+    cabr_type: int  # 0: Lindemann, 1: Troe, 2: SRI, 3: Tsang
     cabr_params: Array64f_5
     efficiencies: Dict[str, Float64]
     explicit_efficiencies: bool
@@ -130,6 +130,11 @@ class CABR(eqx.Module):
                 self.cabr_params[2],
                 self.cabr_params[3],
                 self.cabr_params[4],
+            )
+        elif self.cabr_type == 3:
+            representation += " TSANG / {:.5e} {:.5e} /".format(
+                self.cabr_params[0],
+                self.cabr_params[1],
             )
         if self.explicit_efficiencies:
             representation += "\n"
