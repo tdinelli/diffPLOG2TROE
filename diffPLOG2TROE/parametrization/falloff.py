@@ -9,11 +9,9 @@ from ..utilities.custom_types import Array64f, Array64f_3, Array64f_5, ScalarOrV
 from ..utilities.physical_constants import constants
 from ..utilities.thermodynamic_utilities import calculate_effective_concentration
 from .arrhenius import Arrhenius
-from .falloff_functions import (
+from .broadening_functions import lindemann, sri, troe, tsang
+from .parametrization_utils import (
     convert_to_fitting_type,
-    lindemann,
-    sri,
-    troe,
     validate_efficiencies,
     validate_sri_parameters,
     validate_troe_parameters,
@@ -22,8 +20,8 @@ from .falloff_functions import (
 
 
 class FallOff(eqx.Module):
-    hpl: Arrhenius     # High-pressure limit
-    lpl: Arrhenius     # Low-pressure limit
+    hpl: Arrhenius  # High-pressure limit
+    lpl: Arrhenius  # Low-pressure limit
     falloff_type: int  # 0: Lindemann, 1: Troe, 2: SRI, 3: Tsang
     falloff_parameters: Array64f_5
     efficiencies: Dict[str, Float64]
@@ -105,6 +103,7 @@ class FallOff(eqx.Module):
                 lambda x: lindemann(*x),
                 lambda x: troe(*x),
                 lambda x: sri(*x),
+                lambda x: tsang(*x),
             ],
             operand,
         )

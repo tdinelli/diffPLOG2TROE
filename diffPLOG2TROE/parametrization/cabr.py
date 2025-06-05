@@ -9,11 +9,9 @@ from ..utilities.custom_types import Array64f, Array64f_3, Array64f_5, ScalarOrV
 from ..utilities.physical_constants import constants
 from ..utilities.thermodynamic_utilities import calculate_effective_concentration
 from .arrhenius import Arrhenius
-from .falloff_functions import (
+from .broadening_functions import lindemann, sri, troe, tsang
+from .parametrization_utils import (
     convert_to_fitting_type,
-    lindemann,
-    sri,
-    troe,
     validate_efficiencies,
     validate_sri_parameters,
     validate_troe_parameters,
@@ -104,6 +102,7 @@ class CABR(eqx.Module):
                 lambda x: lindemann(*x),
                 lambda x: troe(*x),
                 lambda x: sri(*x),
+                lambda x: tsang(*x),
             ],
             operand,
         )

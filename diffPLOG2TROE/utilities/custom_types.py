@@ -14,7 +14,7 @@ Rate Parametrization Types:
     - AnyRate: Union of all supported rate parametrization classes
 """
 
-from typing import TypeAlias, Union
+from typing import TypeAlias, Union, Dict
 
 from jaxtyping import Array, Float64
 
@@ -38,3 +38,7 @@ Tensor64f: TypeAlias = Float64[Array, "batch height width"]
 # ============================================================================
 #: Either a scalar Float64 or 1D Float64 array - useful for flexible function inputs
 ScalarOrVector: TypeAlias = Union[Float64, Float64[Array, "dim"]]
+
+# ============================================================================
+#:
+ArrheniusFitResult: TypeAlias = Dict[str, Float64]

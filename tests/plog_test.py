@@ -7,7 +7,7 @@ import numpy as np
 from diffPLOG2TROE.parametrization import Plog
 
 
-class TestArrhenius(unittest.TestCase):
+class TestPlog(unittest.TestCase):
     def setUp(self):
         self.T_range = jnp.linspace(300, 3000, 300)
         self.P_range = jnp.logspace(jnp.log10(0.01), jnp.log10(100), 300)

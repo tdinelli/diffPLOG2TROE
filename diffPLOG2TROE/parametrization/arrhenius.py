@@ -1,10 +1,10 @@
-from typing import Tuple
+from typing import Dict, Optional, Tuple
 
 import equinox as eqx
 import jax.numpy as jnp
-from jax import jit, lax
 from jaxtyping import Float64
 
+from .refitting_utilities import refit_arrhenius, validate_fitting_data
 from ..utilities.custom_types import Array64f, Array64f_3, ScalarOrVector
 from ..utilities.physical_constants import constants
 
@@ -106,7 +106,14 @@ class Arrhenius(eqx.Module):
         return jnp.exp(self.lnA + self.n * jnp.log(T) - self.EaR / T)
 
     @classmethod
-    def from_data(cls, rates: Array64f, temps: Array64f, three_params: bool = True, name: str = "") -> "Arrhenius":
+    def from_data(
+        cls,
+        rate_constant: Array64f,
+        temperature: Array64f,
+        weights: Optional[Array64f] = None,
+        three_params: bool = True,
+        name: str = "",
+    ) -> Tuple["Arrhenius", Dict[str, Float64]]:
         """
         Create an Arrhenius instance by fitting to experimental data.
 
@@ -119,6 +126,8 @@ class Arrhenius(eqx.Module):
         three_params : bool, optional
             If True, fits a three-parameter Arrhenius model (A, n, Ea).
             If False, fits a two-parameter model (A, Ea) with n=0, by default True.
+        weights : Optional[Array], optional
+            Optional weights for data points. If provided, weighted least squares is used.
         name : str, optional
             Optional identifier for the reaction, by default "".
 
@@ -127,13 +136,38 @@ class Arrhenius(eqx.Module):
         Arrhenius
             An Arrhenius instance with parameters fitted to the provided data.
 
+        Raises
+        ------
+        ValueError
+            If input data validation fails.
+
         Notes
         -----
         Uses least squares regression to fit the Arrhenius parameters.
+        Includes uncertainty estimation based on covariance matrix.
         """
-        lnA, n, EaR = refit_arrhenius(rates, temps, three_params)
-        params = jnp.array([jnp.exp(lnA), n, EaR * constants.R_cal_mol])
-        return cls(parameters=params, name=name)
+        # ==============================================================================
+        # Validate input data
+        validate_fitting_data(rate_constant, temperature, weights, three_params)
+
+        # ==============================================================================
+        # Perform fitting with uncertainty estimation
+        fit_result = refit_arrhenius(rate_constant, temperature, weights, three_params)
+
+        # ==============================================================================
+        # Convert back to physical parameters
+        params = jnp.array([jnp.exp(fit_result["lnA"]), fit_result["n"], fit_result["EaR"] * constants.R_cal_mol])
+
+        return (
+            cls(parameters=params, name=name),
+            {
+                "lnA_uncertainty": fit_result["lnA_uncertainty"],
+                "n_uncertainty": fit_result["n_uncertainty"],
+                "EaR_uncertainty": fit_result["EaR_uncertainty"],
+                "RSS": fit_result["RSS"],
+                "DoF": fit_result["DoF"],
+            },
+        )
 
     def __str__(self) -> str:
         """
@@ -159,89 +193,14 @@ class Arrhenius(eqx.Module):
         Raises
         ------
         ValueError
-            If the pre-exponential factor A equals 0.
+            If parameters are invalid.
         """
         A, n, Ea = parameters
-        if A == 0:
-            raise ValueError("Pre-exponential factor cannot be equal to 0")
-
-    @staticmethod
-    def save_kinetic_constants_table(
-        rate_constant: ScalarOrVector,
-        temperatures: ScalarOrVector,
-        output_file: str,
-    ) -> None:
-        """
-        Save rate constants at different temperatures to a CSV file.
-
-        Parameters
-        ----------
-        rate_constant : Array
-            Array of calculated rate constants.
-        temperatures : Array
-            Array of temperatures corresponding to the rate constants.
-        output_file : str
-            Path to the output file.
-
-        Notes
-        -----
-        Outputs a CSV file with temperature and rate constant columns.
-
-        Warning
-        -------
-        This method is still to be implemented and tested.
-        """
-        with open(output_file, "w") as f:
-            f.write("T;k\n")
-            for T, k in zip(temperatures, rate_constant):
-                f.write(f"{T:.3f};{k:10e}\n")
-
-
-@jit
-def refit_arrhenius(
-    rate_constant: Array64f,
-    temperature: Array64f,
-    three_params: bool = False,
-) -> Tuple[Float64, Float64, Float64]:
-    """
-    Refit Arrhenius parameters from rate constant data using least squares regression.
-
-    Parameters
-    ----------
-    rate_constant : Float64[Array, "dim"]
-        Array of measured rate constants.
-    temperature : Float64[Array, "dim"]
-        Array of temperatures corresponding to the measured rate constants.
-    three_params : bool, optional
-        If True, fits a three-parameter Arrhenius model (A, n, Ea).
-        If False, fits a two-parameter model (A, Ea) with n=0, by default False.
-
-    Returns
-    -------
-    Tuple[Float64, Float64, Float64]
-        Tuple of (ln(A), n, Ea/R), where:
-        - ln(A) is the natural logarithm of the pre-exponential factor
-        - n is the temperature exponent (0 for two-parameter model)
-        - Ea/R is the activation energy divided by the gas constant
-
-    Notes
-    -----
-    The function uses linear least squares regression on the logarithmic form of the
-    Arrhenius equation:
-
-    ln(k) = ln(A) + n*ln(T) - Ea/(R*T)
-
-    This function is JIT-compiled for performance.
-    """
-    log_k = jnp.log(rate_constant)
-    inv_T = 1.0 / temperature
-    X = lax.cond(
-        three_params,
-        lambda _: jnp.vstack([jnp.ones_like(inv_T), jnp.log(temperature), -inv_T]).T,
-        lambda _: jnp.vstack([jnp.ones_like(inv_T), jnp.zeros_like(inv_T), -inv_T]).T,
-        None,
-    )
-    beta = jnp.linalg.lstsq(X, log_k, rcond=None)[0]
-
-    # Return ln(A), n, Ea/R with n=0 for two-parameter model
-    return beta[0], beta[1], beta[-1]
+        if A <= 0:
+            raise ValueError("Pre-exponential factor must be positive")
+        if not jnp.isfinite(A):
+            raise ValueError("Pre-exponential factor must be finite")
+        if not jnp.isfinite(n):
+            raise ValueError("Temperature exponent must be finite")
+        if not jnp.isfinite(Ea):
+            raise ValueError("Activation energy must be finite")

@@ -7,10 +7,10 @@ import numpy as np
 from diffPLOG2TROE.parametrization import Chebyshev
 
 
-class TestArrhenius(unittest.TestCase):
+class TestChebyshev(unittest.TestCase):
     def setUp(self):
-        self.T_range = jnp.linspace(300, 2500, 10)
-        self.P_range = jnp.logspace(jnp.log10(0.1), jnp.log10(50), 10)
+        self.T_range = jnp.linspace(300, 2500, 300)
+        self.P_range = jnp.logspace(jnp.log10(0.1), jnp.log10(50), 300)
         self.rate_constant = Chebyshev(
             T_limits=(290, 3000),
             P_limits=(0.0098692326671601278, 98.692326671601279),

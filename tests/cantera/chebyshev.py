@@ -10,8 +10,8 @@ current_dir = os.path.dirname(current_file_path)
 
 gas = ct.Solution(os.path.join(current_dir, "reference_mech.yaml"))
 
-T_range = np.linspace(300, 2500, 10)
-P_range = np.logspace(np.log10(0.1), np.log10(50), 10)
+T_range = np.linspace(300, 2500, 300)
+P_range = np.logspace(np.log10(0.1), np.log10(50), 300)
 
 k_matrix = np.zeros((len(P_range), len(T_range)))
 

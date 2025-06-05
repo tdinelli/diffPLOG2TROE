@@ -2,53 +2,9 @@ from enum import IntEnum
 from typing import Dict
 
 import jax.numpy as jnp
-from jax import lax
 from jaxtyping import Array, Float64
 
-from ..utilities.custom_types import Array64f, Array64f_5, ScalarOrVector
-
-
-def lindemann(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> ScalarOrVector:
-    return jnp.ones_like(T, dtype=jnp.float64)
-
-
-def troe(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> ScalarOrVector:
-    alpha, T3, T1, T2, _ = parameters
-
-    logFcent = lax.cond(
-        T2 != 0.0,
-        lambda _: jnp.log10((1 - alpha) * jnp.exp(-T / T3) + alpha * jnp.exp(-T / T1) + jnp.exp(-T2 / T)),
-        lambda _: jnp.log10((1 - alpha) * jnp.exp(-T / T3) + alpha * jnp.exp(-T / T1)),
-        None,
-    )
-    c = -0.4 - 0.67 * logFcent
-    n = 0.75 - 1.27 * logFcent
-    d = jnp.log10(Pr) + c
-    f1 = (d / (n - 0.14 * d)) ** 2
-
-    return 10.0 ** (logFcent / (1.0 + f1))
-
-
-def tsang(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> ScalarOrVector:
-    A, B, _, _, _ = parameters
-
-    logFcent = jnp.log10(A + B * T)
-    c = -0.4 - 0.67 * logFcent
-    n = 0.75 - 1.27 * logFcent
-    d = jnp.log10(Pr) + c
-    f1 = (d / (n - 0.14 * d)) ** 2
-
-    return 10.0 ** (logFcent / (1.0 + f1))
-
-
-def sri(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> ScalarOrVector:
-    a, b, c, d, e = parameters
-
-    logPr = jnp.log10(Pr)
-    X = 1.0 / (1.0 + logPr * logPr)
-
-    base = a * jnp.exp(-b / T) + jnp.exp(-T / c)
-    return d * (base**X) * (T**e)
+from ..utilities.custom_types import Array64f, Array64f_5
 
 
 def validate_troe_parameters(parameters: Array64f) -> Array64f_5:
