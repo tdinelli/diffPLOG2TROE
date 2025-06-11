@@ -10,7 +10,7 @@ from .arrhenius import Arrhenius
 from .cabr import CABR
 from .chebyshev import Chebyshev
 from .falloff import FallOff
-from .falloff_functions import validate_efficiencies
+from .parametrization_utils import validate_efficiencies
 from .plog import Plog
 
 
@@ -18,7 +18,7 @@ from .plog import Plog
 # Chemical Kinetics Type Aliases
 # ============================================================================
 #: Union of all supported base reaction rate parametrization classes
-AnyRate: TypeAlias = Union[Plog, FallOff, CABR, Chebyshev]
+AnyRate: TypeAlias = Union[Arrhenius, Plog, FallOff, CABR, Chebyshev]
 
 
 class LinearMixtureRule(eqx.Module):

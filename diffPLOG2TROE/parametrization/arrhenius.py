@@ -1,12 +1,10 @@
-from typing import Dict, Optional, Tuple
-
 import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Float64
 
-from .refitting_utilities import refit_arrhenius, validate_fitting_data
-from ..utilities.custom_types import Array64f, Array64f_3, ScalarOrVector
+from ..utilities.custom_types import Array64f_3, ScalarOrVector
 from ..utilities.physical_constants import constants
+from .parametrization_utils import validate_arrhenius_parameters
 
 
 class Arrhenius(eqx.Module):
@@ -63,16 +61,19 @@ class Arrhenius(eqx.Module):
         Raises
         ------
         ValueError
-            If the pre-exponential factor A equals 0.
+            If the pre-exponential factor A equals 0, or some of the parameters are not finite.
         """
         self.name = name
-        self._validate_parameters(parameters)
+        validate_arrhenius_parameters(parameters)
+
         # ==============================================================================
         # Pre-exponential factor
         self.lnA = jnp.log(parameters[0])
+
         # ==============================================================================
         # Temperature exponent
         self.n = parameters[1]
+
         # ==============================================================================
         # Activation energy
         self.EaR = parameters[2] / constants.R_cal_mol
@@ -105,70 +106,6 @@ class Arrhenius(eqx.Module):
         """
         return jnp.exp(self.lnA + self.n * jnp.log(T) - self.EaR / T)
 
-    @classmethod
-    def from_data(
-        cls,
-        rate_constant: Array64f,
-        temperature: Array64f,
-        weights: Optional[Array64f] = None,
-        three_params: bool = True,
-        name: str = "",
-    ) -> Tuple["Arrhenius", Dict[str, Float64]]:
-        """
-        Create an Arrhenius instance by fitting to experimental data.
-
-        Parameters
-        ----------
-        rates : Array
-            Array of measured rate constants.
-        temps : Array
-            Array of temperatures corresponding to the measured rate constants.
-        three_params : bool, optional
-            If True, fits a three-parameter Arrhenius model (A, n, Ea).
-            If False, fits a two-parameter model (A, Ea) with n=0, by default True.
-        weights : Optional[Array], optional
-            Optional weights for data points. If provided, weighted least squares is used.
-        name : str, optional
-            Optional identifier for the reaction, by default "".
-
-        Returns
-        -------
-        Arrhenius
-            An Arrhenius instance with parameters fitted to the provided data.
-
-        Raises
-        ------
-        ValueError
-            If input data validation fails.
-
-        Notes
-        -----
-        Uses least squares regression to fit the Arrhenius parameters.
-        Includes uncertainty estimation based on covariance matrix.
-        """
-        # ==============================================================================
-        # Validate input data
-        validate_fitting_data(rate_constant, temperature, weights, three_params)
-
-        # ==============================================================================
-        # Perform fitting with uncertainty estimation
-        fit_result = refit_arrhenius(rate_constant, temperature, weights, three_params)
-
-        # ==============================================================================
-        # Convert back to physical parameters
-        params = jnp.array([jnp.exp(fit_result["lnA"]), fit_result["n"], fit_result["EaR"] * constants.R_cal_mol])
-
-        return (
-            cls(parameters=params, name=name),
-            {
-                "lnA_uncertainty": fit_result["lnA_uncertainty"],
-                "n_uncertainty": fit_result["n_uncertainty"],
-                "EaR_uncertainty": fit_result["EaR_uncertainty"],
-                "RSS": fit_result["RSS"],
-                "DoF": fit_result["DoF"],
-            },
-        )
-
     def __str__(self) -> str:
         """
         Return a string representation in CHEMKIN format.
@@ -179,28 +116,3 @@ class Arrhenius(eqx.Module):
             String representation of the Arrhenius parameters in CHEMKIN format.
         """
         return "{}\t\t{:.5e} {:.5e} {:.5e}".format(self.name, jnp.exp(self.lnA), self.n, self.EaR * constants.R_cal_mol)
-
-    @staticmethod
-    def _validate_parameters(parameters: Array64f_3) -> None:
-        """
-        Validate Arrhenius parameters to ensure consistency in calculations.
-
-        Parameters
-        ----------
-        parameters : Float64[Array, "3"]
-            Array of [A, n, Ea] Arrhenius parameters.
-
-        Raises
-        ------
-        ValueError
-            If parameters are invalid.
-        """
-        A, n, Ea = parameters
-        if A <= 0:
-            raise ValueError("Pre-exponential factor must be positive")
-        if not jnp.isfinite(A):
-            raise ValueError("Pre-exponential factor must be finite")
-        if not jnp.isfinite(n):
-            raise ValueError("Temperature exponent must be finite")
-        if not jnp.isfinite(Ea):
-            raise ValueError("Activation energy must be finite")

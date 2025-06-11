@@ -38,7 +38,3 @@ Tensor64f: TypeAlias = Float64[Array, "batch height width"]
 # ============================================================================
 #: Either a scalar Float64 or 1D Float64 array - useful for flexible function inputs
 ScalarOrVector: TypeAlias = Union[Float64, Float64[Array, "dim"]]
-
-# ============================================================================
-#:
-ArrheniusFitResult: TypeAlias = Dict[str, Float64]

@@ -1,4 +1,4 @@
-from .arrhenius import Arrhenius, refit_arrhenius
+from .arrhenius import Arrhenius
 from .plog import Plog
 from .falloff import FallOff
 from .cabr import CABR

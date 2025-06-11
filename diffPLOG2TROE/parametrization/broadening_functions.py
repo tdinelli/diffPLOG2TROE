@@ -65,7 +65,7 @@ def troe(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> Scala
     Notes
     -----
     The centering factor is:
-    Fcent = (1-α)exp(-T/T***) + α*exp(-T/T*) + exp(-T**/T)
+    Fcent = (1-\\alpha)exp(-T/T***) + \\alpha*exp(-T/T*) + exp(-T**/T)
 
     The broadening factor F is calculated using:
     log F = log Fcent / (1 + f1²)
@@ -74,7 +74,10 @@ def troe(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> Scala
 
     References
     ----------
-    Gilbert, R. G., Luther, K., & Troe, J. (1983). Ber. Bunsenges. Phys. Chem., 87, 169. (TODO: CHECK)
+    Gilbert, R.G., Luther, K. and Troe, J. (1983), Theory of Thermal
+    Unimolecular Reactions in the Fall-off Range. II. Weak Collision Rate
+    Constants. Berichte der Bunsengesellschaft für physikalische Chemie, 87:
+    169-177. DOI: 10.1002/bbpc.19830870218
     """
     alpha, T3, T1, T2, _ = parameters
 
@@ -132,7 +135,9 @@ def tsang(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> Scal
 
     References
     ----------
-    Tsang, W. (1991). J. Phys. Chem. Ref. Data, 20, 221. (TODO: CHECK)
+    Wing Tsang, John T. Herron; Chemical Kinetic Data Base for Propellant
+    Combustion I. Reactions Involving NO, NO2, HNO, HNO2, HCN and N2O. J. Phys.
+    Chem. Ref. Data 1 July 1991; 20 (4): 609–663. DOI: 10.1063/1.555890
     """
     A, B, _, _, _ = parameters
 
@@ -188,7 +193,13 @@ def sri(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> Scalar
 
     References
     ----------
-    Stewart, P. H., Larson, C. W., & Golden, D. M. (1989). Combust. Flame, 75, 25. (TODO: CHECK)
+    [1] Stewart, P. H., Larson, C. W., & Golden, D. M. (1989). Combust. Flame, 75, 25.
+        P.H. Stewart, C.W. Larson, D.M. Golden, Pressure and temperature dependence
+        of reactions proceeding via a bound complex. 2. Application to 2CH3 → C2H5
+        + H, Combustion and Flame, Volume 75, Issue 1, 1989, Pages 25-31, DOI:
+        10.1016/0010-2180(89)90084-9.
+    [2] Kee, R. J., et al. "Chemkin-II: A Fortran chemical kinetics package for the
+        analysis of gas-phase chemical kinetics." , Sep. 1989. DOI: 10.2172/5681118
     """
     a, b, c, d, e = parameters
 

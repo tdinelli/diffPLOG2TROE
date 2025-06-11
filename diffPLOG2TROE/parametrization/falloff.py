@@ -20,8 +20,8 @@ from .parametrization_utils import (
 
 
 class FallOff(eqx.Module):
-    hpl: Arrhenius  # High-pressure limit
-    lpl: Arrhenius  # Low-pressure limit
+    hpl: Arrhenius     # High-pressure limit
+    lpl: Arrhenius     # Low-pressure limit
     falloff_type: int  # 0: Lindemann, 1: Troe, 2: SRI, 3: Tsang
     falloff_parameters: Array64f_5
     efficiencies: Dict[str, Float64]

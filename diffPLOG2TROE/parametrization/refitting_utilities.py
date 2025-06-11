@@ -1,9 +1,10 @@
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import jax.numpy as jnp
 from jax import jit, lax
+from jaxtyping import Float64
 
-from ..utilities.custom_types import Array64f, ArrheniusFitResult, Matrix64f
+from ..utilities.custom_types import Array64f, Matrix64f
 
 
 @jit
@@ -12,34 +13,7 @@ def refit_arrhenius(
     temperature: Array64f,
     weights: Optional[Array64f] = None,
     three_params: bool = False,
-) -> ArrheniusFitResult:
-    """
-    Refit Arrhenius parameters with uncertainty estimation using weighted least squares.
-
-    Parameters
-    ----------
-    rate_constant : Array
-        Array of measured rate constants.
-    temperature : Array
-        Array of temperatures corresponding to the measured rate constants.
-    three_params : bool, optional
-        If True, fits a three-parameter Arrhenius model (A, n, Ea).
-        If False, fits a two-parameter model (A, Ea) with n=0, by default False.
-    weights : Optional[Array], optional
-        Optional weights for weighted least squares fitting.
-
-    Returns
-    -------
-    ArrheniusFitResult: Dict
-        Fitted parameters with uncertainty estimates.
-
-    Notes
-    -----
-    Uses weighted linear least squares regression on the logarithmic form of the
-    Arrhenius equation: ln(k) = ln(A) + n*ln(T) - Ea/(R*T)
-
-    Uncertainty estimation is based on the covariance matrix of the fit.
-    """
+) -> Dict[str, Float64]:
     log_k = jnp.log(rate_constant)
     inv_T = 1.0 / temperature
 
@@ -118,23 +92,6 @@ def refit_arrhenius(
 
 @jit
 def apply_weights(X: Matrix64f, y: Array64f, weights: Array64f) -> Tuple[Matrix64f, Array64f]:
-    """
-    Apply weights to design matrix and response vector.
-
-    Parameters
-    ----------
-    X : Array
-        Design matrix.
-    y : Array
-        Response vector.
-    weights : Array
-        Weight vector.
-
-    Returns
-    -------
-    Tuple[Array, Array]
-        Weighted design matrix and response vector.
-    """
     sqrt_weights = jnp.sqrt(weights)
     X_weighted = X * sqrt_weights[:, None]
     y_weighted = y * sqrt_weights
@@ -142,25 +99,6 @@ def apply_weights(X: Matrix64f, y: Array64f, weights: Array64f) -> Tuple[Matrix6
 
 
 def validate_fitting_data(rates: Array64f, temps: Array64f, weights: Optional[Array64f], three_params: bool) -> None:
-    """
-    Validate input data for Arrhenius fitting.
-
-    Parameters
-    ----------
-    rates : Array
-        Array of measured rate constants.
-    temps : Array
-        Array of temperatures.
-    weights : Optional[Array]
-        Optional weights array.
-    three_params : bool
-        Whether fitting three parameters.
-
-    Raises
-    ------
-    ValueError
-        If validation fails.
-    """
     if len(rates) != len(temps):
         raise ValueError("Rate constants and temperatures must have the same length")
 

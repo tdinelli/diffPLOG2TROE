@@ -4,7 +4,7 @@ from typing import Dict
 import jax.numpy as jnp
 from jaxtyping import Array, Float64
 
-from ..utilities.custom_types import Array64f, Array64f_5
+from ..utilities.custom_types import Array64f, Array64f_3, Array64f_5
 
 
 def validate_troe_parameters(parameters: Array64f) -> Array64f_5:
@@ -147,3 +147,28 @@ def convert_to_fitting_type(fitting_type: str) -> int:
     except KeyError:
         available = ", ".join(f"'{k}'" for k in ["lindemann", "troe", "sri", "tsang"])
         raise ValueError(f"Unknown fitting type '{fitting_type}'. Available types: {available}")
+
+
+def validate_arrhenius_parameters(parameters: Array64f_3) -> None:
+    """
+    Validate Arrhenius parameters to ensure consistency in calculations.
+
+    Parameters
+    ----------
+    parameters : Float64[Array, "3"]
+        Array of [A, n, Ea] Arrhenius parameters.
+
+    Raises
+    ------
+    ValueError
+        If parameters are invalid.
+    """
+    A, n, Ea = parameters
+    if A <= 0:
+        raise ValueError("Pre-exponential factor must be positive")
+    if not jnp.isfinite(A):
+        raise ValueError("Pre-exponential factor must be finite")
+    if not jnp.isfinite(n):
+        raise ValueError("Temperature exponent must be finite")
+    if not jnp.isfinite(Ea):
+        raise ValueError("Activation energy must be finite")
