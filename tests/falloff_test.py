@@ -12,9 +12,9 @@ class TestFallOff(unittest.TestCase):
         self.T_range = jnp.linspace(300, 3000, 300)
         self.P_range = jnp.logspace(jnp.log10(0.01), jnp.log10(100), 300)
         self.rate_constant = FallOff(
-            hpl_parameters=jnp.array([2.0e12, 0.9, 4.8749e04]),
-            lpl_parameters=jnp.array([2.49e24, -2.3, 4.8749e04]),
-            falloff_parameters=jnp.array([0.43, 1.0e-30, 1.0e30]),
+            hpl_parameters={"A": 2.0e12, "n": 0.9, "Ea": 4.8749e04},
+            lpl_parameters={"A": 2.49e24, "n": -2.3, "Ea": 4.8749e04},
+            falloff_parameters={"A": 0.43, "T3": 1.0e-30, "T1": 1.0e30, "T2": 0.0},
             efficiencies={
                 "H2O": 7.65,
                 "N2": 1.5,
@@ -44,7 +44,7 @@ class TestFallOff(unittest.TestCase):
         self.expected_rate_aro2h2o = jnp.array(data)
 
     def test_kinetic_constant_ar(self):
-        calculated_rates = self.rate_constant.kinetic_constant(
+        calculated_rates = self.rate_constant.rate_constant(
             T=self.T_range,
             P=self.P_range,
             composition={"AR": 1},
@@ -61,7 +61,7 @@ class TestFallOff(unittest.TestCase):
             )
 
     def test_kinetic_constant_arh2o(self):
-        calculated_rates = self.rate_constant.kinetic_constant(
+        calculated_rates = self.rate_constant.rate_constant(
             T=self.T_range,
             P=self.P_range,
             composition={"AR": 0.5, "H2O": 0.5},
@@ -78,7 +78,7 @@ class TestFallOff(unittest.TestCase):
             )
 
     def test_kinetic_constant_aro2h2o(self):
-        calculated_rates = self.rate_constant.kinetic_constant(
+        calculated_rates = self.rate_constant.rate_constant(
             T=self.T_range,
             P=self.P_range,
             composition={"AR": 0.2, "O2": 0.3, "H2O": 0.5},

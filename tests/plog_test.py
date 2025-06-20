@@ -12,17 +12,17 @@ class TestPlog(unittest.TestCase):
         self.T_range = jnp.linspace(300, 3000, 300)
         self.P_range = jnp.logspace(jnp.log10(0.01), jnp.log10(100), 300)
         self.rate_constant = Plog(
-            parameters=jnp.array([
-                [0.01, 5.02e+21, -4.24, 898.9],
-                [0.1, 5.31e+22, -4.24, 1184.0],
-                [0.316, 1.38e+23, -4.22, 1376.0],
-                [1.0, 3.09e+23, -4.17, 1621.0],
-                [3.16, 5.45e+23, -4.09, 1911.0],
-                [10.0, 6.35e+23, -3.97, 2222.0],
-                [31.6, 3.68e+23, -3.75, 2501.0],
-                [100.0, 7.29e+22, -3.41, 2660.0],
-            ]),
-            name="OH+NO=HONO"
+            parameters={
+                0.01: {"A": 5.02e21, "n": -4.24, "Ea": 898.9},
+                0.1: {"A": 5.31e22, "n": -4.24, "Ea": 1184.0},
+                0.316: {"A": 1.38e23, "n": -4.22, "Ea": 1376.0},
+                1.0: {"A": 3.09e23, "n": -4.17, "Ea": 1621.0},
+                3.16: {"A": 5.45e23, "n": -4.09, "Ea": 1911.0},
+                10.0: {"A": 6.35e23, "n": -3.97, "Ea": 2222.0},
+                31.6: {"A": 3.68e23, "n": -3.75, "Ea": 2501.0},
+                100.0: {"A": 7.29e22, "n": -3.41, "Ea": 2660.0},
+            },
+            name="OH+NO=HONO",
         )
 
         # ==============================================================================
@@ -36,7 +36,7 @@ class TestPlog(unittest.TestCase):
         self.expected_rate = data
 
     def test_kinetic_constant(self):
-        calculated_rates = self.rate_constant.kinetic_constant(self.T_range, self.P_range) / 1000
+        calculated_rates = self.rate_constant.rate_constant(self.T_range, self.P_range) / 1000
         for i, calculated_rate in enumerate(calculated_rates):
             self.assertTrue(
                 jnp.allclose(

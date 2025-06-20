@@ -1,15 +1,13 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import equinox as eqx
 import jax.numpy as jnp
 from jax import lax, vmap
-from jaxtyping import Float64
-
-from ..utilities.custom_types import Matrix64f, ScalarOrVector
+from jaxtyping import Array, Float64
 
 
 class Chebyshev(eqx.Module):
-    chebyshev_coefficients: Matrix64f
+    chebyshev_coefficients: Float64[Array, "rows cols"]
     name: str
     log10P_min: Float64
     log10P_max: Float64
@@ -22,7 +20,7 @@ class Chebyshev(eqx.Module):
         self,
         order_T: int,
         order_P: int,
-        chebyshev_coefficients: Matrix64f,
+        chebyshev_coefficients: Float64[Array, "rows cols"],
         T_limits: Optional[Tuple[Float64, Float64]] = None,
         P_limits: Optional[Tuple[Float64, Float64]] = None,
         name: str = "",
@@ -44,12 +42,12 @@ class Chebyshev(eqx.Module):
         self.name = name
 
     @eqx.filter_jit
-    def kinetic_constant(
+    def rate_constant(
         self,
-        T: ScalarOrVector,
-        P: ScalarOrVector,
+        T: Union[Float64, Float64[Array, "dim"]],
+        P: Union[Float64, Float64[Array, "dim"]],
         is_violation_allowed: bool = False,
-    ) -> ScalarOrVector:
+    ) -> Union[Float64, Float64[Array, "dim"]]:
         Tc, Pc = lax.cond(
             is_violation_allowed,
             lambda operands: (
@@ -64,14 +62,17 @@ class Chebyshev(eqx.Module):
         P_tilde = (2.0 * jnp.log10(Pc) - self.log10P_min - self.log10P_max) / (self.log10P_max - self.log10P_min)
 
         if jnp.isscalar(P) or P.ndim == 0:  # P is scalar
-            return self._single_P_kinetic_constant(T_tilde, P_tilde)
+            return self._single_P_rate_constant(T_tilde, P_tilde)
         else:  # P is array
-            vec_func = vmap(lambda p: self._single_P_kinetic_constant(T_tilde, p))
+            vec_func = vmap(lambda p: self._single_P_rate_constant(T_tilde, p))
             return vec_func(P_tilde)
 
-
     @eqx.filter_jit
-    def _single_P_kinetic_constant(self, T_tilde: ScalarOrVector, P_tilde: Float64) -> ScalarOrVector:
+    def _single_P_rate_constant(
+        self,
+        T_tilde: Union[Float64, Float64[Array, "dim"]],
+        P_tilde: Float64,
+    ) -> Union[Float64, Float64[Array, "dim"]]:
         N, M = self.chebyshev_coefficients.shape
 
         # ====================================================================
@@ -112,7 +113,7 @@ class Chebyshev(eqx.Module):
         return jnp.cos(n * jnp.arccos(x_clipped))
 
     @staticmethod
-    def _validate_limits(limits: Tuple[float, float]) -> None:
+    def _validate_limits(limits: Tuple[Float64, Float64]) -> None:
         """Validate that lower_limit ≤ upper_limit."""
         lower_limit, upper_limit = limits
         if lower_limit > upper_limit:
@@ -134,7 +135,7 @@ class Chebyshev(eqx.Module):
         flattened = self.chebyshev_coefficients.flatten()
 
         for i, chunk_start in enumerate(range(0, len(flattened), 5)):
-            chunk = flattened[chunk_start:chunk_start + 5]
+            chunk = flattened[chunk_start : chunk_start + 5]
 
             # First line includes dimensions, subsequent lines don't
             prefix = f" CHEB / {N} {M}" if i == 0 else " CHEB /"

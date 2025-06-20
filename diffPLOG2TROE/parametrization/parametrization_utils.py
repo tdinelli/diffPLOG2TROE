@@ -1,42 +1,63 @@
+import warnings
 from enum import IntEnum
-from typing import Dict
+from typing import Dict, Optional, Tuple, Union
 
 import jax.numpy as jnp
-from jaxtyping import Array, Float64
-
-from ..utilities.custom_types import Array64f, Array64f_3, Array64f_5
+from jaxtyping import Float64
 
 
-def validate_troe_parameters(parameters: Array64f) -> Array64f_5:
-    """
-    Validates Troe falloff parameters and returns a padded array of length 5.
+class BroadeningFunctionType(IntEnum):
+    lindemann = 0
+    troe = 1
+    sri = 2
+    tsang = 3
 
-    Parameters:
-        parameters: Array of TROE parameters [A, T3, T1] or [A, T3, T1, T2]
 
-    Returns:
-        A padded array [A, T3, T1, T2, 0.0] with T2=0 if not provided
+def _convert_to_broadening_type(broadening_type: str) -> int:
+    """Convert string representation to BroadeningFunctionType enum."""
+    try:
+        return {
+            "lindemann": BroadeningFunctionType.lindemann,
+            "troe": BroadeningFunctionType.troe,
+            "sri": BroadeningFunctionType.sri,
+            "tsang": BroadeningFunctionType.tsang,
+        }[broadening_type.lower()]
+    except KeyError:
+        available = ", ".join(f"'{k}'" for k in ["lindemann", "troe", "sri", "tsang"])
+        raise ValueError(f"Unknown broadening function type '{broadening_type}'. Available types are: {available}")
 
-    Raises:
-        ValueError: If parameters have incorrect shape or invalid values
-    """
 
-    def three_params(p: Float64[Array, "3"]) -> Array64f_5:
-        A, T3, T1 = p
-        return jnp.array([A, T3, T1, 0.0, 0.0])
+def validate_broadening_parameters(
+    broadening_type: str,
+    parameters: Optional[Dict[str, Float64]],
+) -> Union[None, Dict[str, Float64]]:
+    broadening_type_int = _convert_to_broadening_type(broadening_type)
 
-    def four_params(p: Float64[Array, "4"]) -> Array64f_5:
-        A, T3, T1, T2 = p
-        return jnp.array([A, T3, T1, T2, 0.0])
+    if broadening_type_int == 0:
+        pass
 
-    number_of_parameters = len(parameters)
-    valid_shape = (number_of_parameters == 3) | (number_of_parameters == 4)
-    if not valid_shape:
-        raise ValueError(f"Invalid number of TROE parameters: expected 3 or 4, but received {number_of_parameters}.")
+    if broadening_type_int == 1 and parameters is not None:
+        _validate_troe_parameters(parameters)
 
-    result = three_params(parameters) if number_of_parameters == 3 else four_params(parameters)
+    if broadening_type_int == 2 and parameters is not None:
+        _validate_sri_parameters(parameters)
 
-    A, T3, T1, T2 = result[:4]
+    if broadening_type_int == 3 and parameters is not None:
+        _validate_tsang_parameters(parameters)
+
+    return parameters
+
+
+def _validate_troe_parameters(parameters: Dict[str, Float64]) -> None:
+    required_keys = {"A", "T3", "T1", "T2"}
+    missing_keys = required_keys - parameters.keys()
+    if missing_keys:
+        raise ValueError(f"Missing required parameters: {missing_keys}")
+
+    A = parameters["A"]
+    T3 = parameters["T3"]
+    T1 = parameters["T1"]
+    T2 = parameters["T2"]
 
     if A <= 0 or A > 1:
         raise ValueError(f"Parameter A (={A}) is out of valid range: must satisfy 0 < A ≤ 1.")
@@ -50,39 +71,20 @@ def validate_troe_parameters(parameters: Array64f) -> Array64f_5:
     if T2 < 0:
         raise ValueError(f"Parameter T2 (={T2}) cannot be negative: T2 ≥ 0.")
 
-    return result
 
+def _validate_sri_parameters(parameters: Dict[str, Float64]) -> None:
+    """ """
 
-def validate_sri_parameters(parameters: Array64f) -> Array64f_5:
-    """
-    Validates SRI parameters and returns a padded array of length 5.
+    required_keys = {"a", "b", "c", "d", "e"}
+    missing_keys = required_keys - parameters.keys()
+    if missing_keys:
+        raise ValueError(f"Missing required parameters: {missing_keys}")
 
-    Parameters:
-        parameters: Array of SRI parameters [a, b, c] or [a, b, c, d, e]
-
-    Returns:
-        A padded array [a, b, c, d, e] with d=1 and e=0 if not provided
-
-    Raises:
-        ValueError: If parameters have incorrect shape or invalid values
-    """
-
-    def three_params(p: Float64[Array, "3"]) -> Array64f_5:
-        a, b, c = p
-        return jnp.array([a, b, c, 1.0, 0.0])
-
-    def five_params(p: Float64[Array, "5"]) -> Array64f_5:
-        a, b, c, d, e = p
-        return jnp.array([a, b, c, d, e])
-
-    number_of_parameters = len(parameters)
-    valid_shape = (number_of_parameters == 3) | (number_of_parameters == 5)
-    if not valid_shape:
-        raise ValueError(f"Invalid number of SRI parameters: expected 3 or 5, but received {number_of_parameters}.")
-
-    result = three_params(parameters) if number_of_parameters == 3 else five_params(parameters)
-
-    a, b, c, d, e = result
+    a = parameters["a"]
+    b = parameters["b"]
+    c = parameters["c"]
+    d = parameters["d"]
+    e = parameters["e"]
 
     if c == 0:
         raise ValueError(f"Parameter c (={c}) must be different from 0.")
@@ -90,28 +92,17 @@ def validate_sri_parameters(parameters: Array64f) -> Array64f_5:
     if d == 0:
         raise ValueError(f"Parameter d (={d}) must be different from 0.")
 
-    return result
 
+def _validate_tsang_parameters(parameters: Dict[str, Float64]) -> None:
+    """ """
 
-def validate_tsang_parameters(parameters: Float64[Array, "2"]) -> Array64f_5:
-    """
-    Validates TSANG parameters and returns a padded array of length 5.
+    required_keys = {"A", "B"}
+    missing_keys = required_keys - parameters.keys()
+    if missing_keys:
+        raise ValueError(f"Missing required parameters: {missing_keys}")
 
-    Parameters:
-        parameters: Array of SRI parameters [A, B]
-
-    Returns:
-        A padded array [A, B, 0, 0, 0]
-
-    Raises:
-        ValueError: If parameters have incorrect shape or invalid values
-    """
-
-    number_of_parameters = len(parameters)
-    if number_of_parameters != 2:
-        raise ValueError(f"Invalid number of TSANG parameters: expected 2, but received {number_of_parameters}.")
-
-    A, B = parameters
+    A = parameters["A"]
+    B = parameters["B"]
 
     if A == 0:
         raise ValueError(f"Parameter A (={A}) must be different from 0.")
@@ -119,56 +110,75 @@ def validate_tsang_parameters(parameters: Float64[Array, "2"]) -> Array64f_5:
     if B == 0:
         raise ValueError(f"Parameter B (={B}) must be different from 0.")
 
-    return jnp.array([A, B, 0, 0, 0], dtype=jnp.float64)
+
+def validate_arrhenius_parameters(parameters: Dict[str, Float64]) -> None:
+    """
+    Validate Arrhenius parameters to ensure they are physically meaningful and
+    computationally stable.
+
+    This function performs comprehensive validation of the three Arrhenius parameters:
+    pre-exponential factor (A), temperature exponent (n), and activation energy (Ea).
+    It checks for mathematical validity, physical reasonableness, and computational
+    stability.
+
+    Parameters
+    ----------
+    parameters : Dict[str, Float64]
+        Dictionary containing Arrhenius parameters with keys:
+        - "A" : Pre-exponential factor, must be positive
+        - "n" : Temperature exponent, typically in range [-2, 4]
+        - "Ea" : Activation energy in cal/mol
+
+    Raises
+    ------
+    ValueError
+        If any parameter is missing, not finite, or outside reasonable bounds.
+        Specific conditions checked:
+        - Missing required keys ("A", "n", "Ea")
+        - Any parameter is infinite or NaN
+    """
+    # ==============================================================================
+    # Check for required keys
+    required_keys = {"A", "n", "Ea"}
+    missing_keys = required_keys - parameters.keys()
+    if missing_keys:
+        raise ValueError(f"Missing required parameters: {missing_keys}")
+
+    # ==============================================================================
+    # Extract parameters for validation
+    A = parameters["A"]
+    n = parameters["n"]
+    Ea = parameters["Ea"]
+
+    # ==============================================================================
+    # Validate pre-exponential factor
+    if A <= 0:
+        warnings.warn(f"Pre-exponential factor A is usually positive be careful, got {A}", UserWarning, stacklevel=2)
+
+    if not jnp.isfinite(A):
+        raise ValueError(f"Pre-exponential factor A must be finite, got {A}")
+
+    # ==============================================================================
+    # Validate temperature exponent
+    if not jnp.isfinite(n):
+        raise ValueError(f"Temperature exponent n must be finite, got {n}")
+
+    # ==============================================================================
+    if abs(n) > 10:
+        warnings.warn(
+            f"Temperature exponent n = {n} is unusually large. "
+            f"Typical values are in range [-2, 4]. Please verify your input.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    # ==============================================================================
+    # Validate activation energy
+    if not jnp.isfinite(Ea):
+        raise ValueError(f"Activation energy Ea must be finite, got {Ea}")
 
 
 def validate_efficiencies(efficiencies: Dict[str, Float64]) -> None:
     for species, efficiency in efficiencies.items():
         if efficiency < 0:
             raise ValueError(f"Collision efficiency must be positive. {species} given {efficiency}")
-
-
-class FittingType(IntEnum):
-    lindemann = 0
-    troe = 1
-    sri = 2
-    tsang = 3
-
-
-def convert_to_fitting_type(fitting_type: str) -> int:
-    """Convert string representation to FittingType enum."""
-    try:
-        return {
-            "lindemann": FittingType.lindemann,
-            "troe": FittingType.troe,
-            "sri": FittingType.sri,
-            "tsang": FittingType.tsang,
-        }[fitting_type.lower()]
-    except KeyError:
-        available = ", ".join(f"'{k}'" for k in ["lindemann", "troe", "sri", "tsang"])
-        raise ValueError(f"Unknown fitting type '{fitting_type}'. Available types: {available}")
-
-
-def validate_arrhenius_parameters(parameters: Array64f_3) -> None:
-    """
-    Validate Arrhenius parameters to ensure consistency in calculations.
-
-    Parameters
-    ----------
-    parameters : Float64[Array, "3"]
-        Array of [A, n, Ea] Arrhenius parameters.
-
-    Raises
-    ------
-    ValueError
-        If parameters are invalid.
-    """
-    A, n, Ea = parameters
-    if A <= 0:
-        raise ValueError("Pre-exponential factor must be positive")
-    if not jnp.isfinite(A):
-        raise ValueError("Pre-exponential factor must be finite")
-    if not jnp.isfinite(n):
-        raise ValueError("Temperature exponent must be finite")
-    if not jnp.isfinite(Ea):
-        raise ValueError("Activation energy must be finite")

@@ -10,7 +10,7 @@ from diffPLOG2TROE.parametrization import Arrhenius
 class TestArrhenius(unittest.TestCase):
     def setUp(self):
         self.T_range = jnp.linspace(300, 3000, 300)
-        self.rate_constant = Arrhenius(parameters=jnp.array([5.08e04, 2.67, 6292]), name="H2+O=H+OH")
+        self.rate_constant = Arrhenius(parameters={"A": 5.08e04, "n": 2.67, "Ea": 6292}, name="H2+O=H+OH")
 
         # ==============================================================================
         # Dataloader
@@ -23,7 +23,7 @@ class TestArrhenius(unittest.TestCase):
         self.expected_rate = data[:, 1]
 
     def test_kinetic_constant(self):
-        calculated_rates = self.rate_constant.kinetic_constant(self.T_range) / 1000
+        calculated_rates = self.rate_constant.rate_constant(self.T_range) / 1000
         self.assertTrue(
             jnp.allclose(
                 calculated_rates,

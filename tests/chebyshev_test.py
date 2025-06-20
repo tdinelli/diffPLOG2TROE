@@ -38,7 +38,7 @@ class TestChebyshev(unittest.TestCase):
         self.expected_rate = data
 
     def test_kinetic_constant(self):
-        calculated_rates = self.rate_constant.kinetic_constant(self.T_range, self.P_range)
+        calculated_rates = self.rate_constant.rate_constant(self.T_range, self.P_range)
 
         for i, calculated_rate in enumerate(calculated_rates):
             self.assertTrue(

@@ -1,39 +1,32 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 import equinox as eqx
 import jax.numpy as jnp
-from jax import lax, vmap
-from jaxtyping import Float64
+from jax import vmap
+from jaxtyping import Array, Float64
 
-from ..utilities.custom_types import Array64f, Array64f_3, Array64f_5, ScalarOrVector
 from ..utilities.physical_constants import constants
 from ..utilities.thermodynamic_utilities import calculate_effective_concentration
 from .arrhenius import Arrhenius
-from .broadening_functions import lindemann, sri, troe, tsang
-from .parametrization_utils import (
-    convert_to_fitting_type,
-    validate_efficiencies,
-    validate_sri_parameters,
-    validate_troe_parameters,
-    validate_tsang_parameters,
-)
+from .broadening_functions import compute_broadening_factor
+from .parametrization_utils import validate_broadening_parameters  # , validate_efficiencies
 
 
 class FallOff(eqx.Module):
-    hpl: Arrhenius     # High-pressure limit
-    lpl: Arrhenius     # Low-pressure limit
-    falloff_type: int  # 0: Lindemann, 1: Troe, 2: SRI, 3: Tsang
-    falloff_parameters: Array64f_5
+    hpl: Arrhenius
+    lpl: Arrhenius
+    falloff_type: str
+    falloff_parameters: Union[Dict[str, Float64], None]
     efficiencies: Dict[str, Float64]
     explicit_efficiencies: bool
     name: str
 
     def __init__(
         self,
-        hpl_parameters: Array64f_3,
-        lpl_parameters: Array64f_3,
+        hpl_parameters: Dict[str, Float64],
+        lpl_parameters: Dict[str, Float64],
         falloff_type: str,
-        falloff_parameters: Optional[Array64f] = None,
+        falloff_parameters: Optional[Dict[str, Float64]] = None,
         efficiencies: Optional[Dict[str, Float64]] = None,
         name: str = "",
     ) -> None:
@@ -44,69 +37,44 @@ class FallOff(eqx.Module):
             self.efficiencies = {}
             self.explicit_efficiencies = False
         else:
-            validate_efficiencies(efficiencies)
+            # validate_efficiencies(efficiencies)
             self.efficiencies = efficiencies
             self.explicit_efficiencies = True
 
         self.name = name
-        self.falloff_type = convert_to_fitting_type(falloff_type)
-
-        if self.falloff_type == 0:  # Lindemann
-            falloff_parameters = jnp.empty(5, dtype=jnp.float64)
-        elif self.falloff_type == 1 and falloff_parameters is not None:  # Troe
-            falloff_parameters = validate_troe_parameters(falloff_parameters)
-        elif self.falloff_type == 2 and falloff_parameters is not None:  # SRI
-            falloff_parameters = validate_sri_parameters(falloff_parameters)
-        elif self.falloff_type == 3 and falloff_parameters is not None:  # Tsang
-            falloff_parameters = validate_tsang_parameters(falloff_parameters)
-        else:
-            raise ValueError(f"Unknown falloff type {falloff_type} or incorrect falloff parameters.")
-        self.falloff_parameters = falloff_parameters
+        self.falloff_parameters = validate_broadening_parameters(falloff_type, falloff_parameters)
+        self.falloff_type = falloff_type
 
     @eqx.filter_jit
-    def kinetic_constant(
+    def rate_constant(
         self,
-        T: ScalarOrVector,
-        P: ScalarOrVector,
+        T: Union[Float64, Float64[Array, "dim"]],
+        P: Union[Float64, Float64[Array, "dim"]],
         composition: Optional[Dict[str, Float64]] = None,
-    ) -> ScalarOrVector:
-        k_hpl = self.hpl.kinetic_constant(T)  # [cm3/mol/s]
-        k_lpl = self.lpl.kinetic_constant(T)  # [cm3/mol/s]
+    ) -> Union[Float64, Float64[Array, "dim"]]:
+        k_hpl = self.hpl.rate_constant(T)  # [cm3/mol/s]
+        k_lpl = self.lpl.rate_constant(T)  # [cm3/mol/s] TODO: Check this unit just for the comment and doc
 
         if jnp.isscalar(P) or P.ndim == 0:  # P is scalar
-            return self._single_P_kinetic_constant(T, P, k_lpl, k_hpl, composition)
+            return self._single_P_rate_constant(T, P, k_lpl, k_hpl, composition)
         else:  # P is array
-            vec_func = vmap(lambda p: self._single_P_kinetic_constant(T, p, k_lpl, k_hpl, composition))
+            vec_func = vmap(lambda p: self._single_P_rate_constant(T, p, k_lpl, k_hpl, composition))
             return vec_func(P)
 
     @eqx.filter_jit
-    def _single_P_kinetic_constant(
+    def _single_P_rate_constant(
         self,
-        T: ScalarOrVector,
+        T: Union[Float64, Float64[Array, "dim"]],
         P: Float64,
-        lpl: ScalarOrVector,
-        hpl: ScalarOrVector,
+        lpl: Union[Float64, Float64[Array, "dim"]],
+        hpl: Union[Float64, Float64[Array, "dim"]],
         composition: Optional[Dict[str, Float64]] = None,
-    ) -> ScalarOrVector:
+    ) -> Union[Float64, Float64[Array, "dim"]]:
         M = calculate_effective_concentration(T, P, composition, self.efficiencies)  # [mol/cm3]
         Pr = (lpl * M) / hpl
-        F = self._compute_falloff_factor(T, Pr)
+        F = compute_broadening_factor(self.falloff_type, T, Pr, self.falloff_parameters)
 
         return hpl * (Pr / (1 + Pr)) * F
-
-    def _compute_falloff_factor(self, T: ScalarOrVector, Pr: ScalarOrVector) -> ScalarOrVector:
-        """Compute falloff factor (F) based on falloff type and reduced pressure."""
-        operand = (T, Pr, self.falloff_parameters)
-        return lax.switch(
-            self.falloff_type,
-            [
-                lambda x: lindemann(*x),
-                lambda x: troe(*x),
-                lambda x: sri(*x),
-                lambda x: tsang(*x),
-            ],
-            operand,
-        )
 
     def __str__(self) -> str:
         """Return string representation in CHEMKIN format."""
@@ -116,25 +84,25 @@ class FallOff(eqx.Module):
         representation += " LOW / \t\t{:.5e} {:.5f} {:.5e} /\n".format(
             jnp.exp(self.lpl.lnA), self.lpl.n, self.lpl.EaR * constants.R_cal_mol
         )
-        if self.falloff_type == 1:
+        if self.falloff_type == 1 and self.falloff_parameters is not None:
             representation += " TROE / {:.5e} {:.5e} {:.5e} {:.5e} /".format(
-                self.falloff_parameters[0],
-                self.falloff_parameters[1],
-                self.falloff_parameters[2],
-                self.falloff_parameters[3],
+                self.falloff_parameters["A"],
+                self.falloff_parameters["T3"],
+                self.falloff_parameters["T1"],
+                self.falloff_parameters["T2"],
             )
-        elif self.falloff_type == 2:
+        elif self.falloff_type == 2 and self.falloff_parameters is not None:
             representation += " SRI / {:.5e} {:.5e} {:.5e} {:.5e} {:.5e} /".format(
-                self.falloff_parameters[0],
-                self.falloff_parameters[1],
-                self.falloff_parameters[2],
-                self.falloff_parameters[3],
-                self.falloff_parameters[4],
+                self.falloff_parameters["a"],
+                self.falloff_parameters["b"],
+                self.falloff_parameters["c"],
+                self.falloff_parameters["d"],
+                self.falloff_parameters["e"],
             )
-        elif self.falloff_type == 3:
+        elif self.falloff_type == 3 and self.falloff_parameters is not None:
             representation += " TSANG / {:.5e} {:.5e} /".format(
-                self.falloff_parameters[0],
-                self.falloff_parameters[1],
+                self.falloff_parameters["A"],
+                self.falloff_parameters["B"],
             )
         if self.explicit_efficiencies:
             representation += "\n"

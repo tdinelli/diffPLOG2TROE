@@ -1,46 +1,53 @@
-from typing import List
+from typing import Dict, List, Union
 
 import equinox as eqx
 import jax.numpy as jnp
 from jax import lax, vmap
-from jaxtyping import Float64
+from jaxtyping import Array, Float64
 
-from ..utilities.custom_types import Array64f, Matrix64f, ScalarOrVector
 from ..utilities.physical_constants import constants
 from .arrhenius import Arrhenius
 
 
 class Plog(eqx.Module):
     k_levels: List[Arrhenius]
-    p_levels: Array64f
-    lnp_levels: Array64f
+    p_levels: Float64[Array, "dim"]
+    lnp_levels: Float64[Array, "dim"]
     num_p_levels: int
     name: str
 
-    def __init__(self, parameters: Matrix64f, name: str = "") -> None:
+    def __init__(self, parameters: Dict[Float64, Dict[str, Float64]], name: str = "") -> None:
         self.name = name
 
         # ==============================================================================
         # Sort pressure levels in ascending order
-        parameters = parameters[jnp.argsort(parameters[:, 0])]
+        parameters = dict(sorted(parameters.items()))
 
-        self.p_levels = parameters[:, 0]
+        self.p_levels = jnp.array(list(parameters.keys()))
         self.lnp_levels = jnp.log(self.p_levels)
         self.num_p_levels = len(self.p_levels)
 
-        self.k_levels = [Arrhenius(parameters=i) for i in parameters[:, 1:]]
+        self.k_levels = [Arrhenius(parameters=i) for i in parameters.values()]
 
     @eqx.filter_jit
-    def kinetic_constant(self, T: ScalarOrVector, P: ScalarOrVector) -> ScalarOrVector:
+    def rate_constant(
+        self,
+        T: Union[Float64, Float64[Array, "dim"]],
+        P: Union[Float64, Float64[Array, "dim"]],
+    ) -> Union[Float64, Float64[Array, "dim"]]:
         """Compute kinetic constant for given temperature and pressure."""
         if jnp.isscalar(P) or P.ndim == 0:  # P is scalar
-            return self._single_P_kinetic_constant(T, P)
+            return self._single_P_rate_constant(T, P)
         else:  # P is array
-            vec_func = vmap(lambda p: self._single_P_kinetic_constant(T, p))
+            vec_func = vmap(lambda p: self._single_P_rate_constant(T, p))
             return vec_func(P)
 
-    def _single_P_kinetic_constant(self, T: ScalarOrVector, P: Float64) -> ScalarOrVector:
-        all_lnk = jnp.log(jnp.array([k_level.kinetic_constant(T) for k_level in self.k_levels]))
+    def _single_P_rate_constant(
+        self,
+        T: Union[Float64, Float64[Array, "dim"]],
+        P: Float64,
+    ) -> Union[Float64, Float64[Array, "dim"]]:
+        all_lnk = jnp.log(jnp.array([k_level.rate_constant(T) for k_level in self.k_levels]))
 
         # ==============================================================================
         # Identify the region of the table
@@ -60,7 +67,11 @@ class Plog(eqx.Module):
         )
         return jnp.exp(k)
 
-    def _interpolated_constant(self, all_lnk: ScalarOrVector, P: Float64) -> ScalarOrVector:
+    def _interpolated_constant(
+        self,
+        all_lnk: Union[Float64, Float64[Array, "dim"]],
+        P: Float64,
+    ) -> Union[Float64, Float64[Array, "dim"]]:
         # ==============================================================================
         # Log-log interpolation for pressures within range
         upper_idx = self._find_index(P)  # Position of the current pressure value in the pressure levels of the plog
@@ -74,7 +85,7 @@ class Plog(eqx.Module):
 
         return self._log_log_interpolation(lower_lnk, upper_lnk, lower_lnp, upper_lnp, P)
 
-    def _find_index(self, P: ScalarOrVector) -> Array64f:
+    def _find_index(self, P: Union[Float64, Float64[Array, "dim"]]) -> Float64[Array, "dim"]:
         # ==============================================================================
         # Get the first insertion point where P <= p_levels[i]
         indices = jnp.searchsorted(self.p_levels, P, side="left")
@@ -87,12 +98,12 @@ class Plog(eqx.Module):
 
     @staticmethod
     def _log_log_interpolation(
-        log_k1: ScalarOrVector,
-        log_k2: ScalarOrVector,
-        log_P1: ScalarOrVector,
-        log_P2: ScalarOrVector,
+        log_k1: Union[Float64, Float64[Array, "dim"]],
+        log_k2: Union[Float64, Float64[Array, "dim"]],
+        log_P1: Union[Float64, Float64[Array, "dim"]],
+        log_P2: Union[Float64, Float64[Array, "dim"]],
         P: Float64,
-    ) -> ScalarOrVector:
+    ) -> Union[Float64, Float64[Array, "dim"]]:
         return log_k1 + (log_k2 - log_k1) * (jnp.log(P) - log_P1) / (log_P2 - log_P1)
 
     def __str__(self) -> str:

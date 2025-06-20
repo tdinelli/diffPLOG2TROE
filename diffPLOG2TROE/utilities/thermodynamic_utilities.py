@@ -1,22 +1,21 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
-from jax import jit
 import jax.numpy as jnp
-from jaxtyping import Float64
+from jax import jit
+from jaxtyping import Array, Float64
 
 from .physical_constants import constants
-from .custom_types import ScalarOrVector
 
 
 @jit
 def calculate_effective_concentration(
-    T: ScalarOrVector,
-    P: ScalarOrVector,
+    T: Union[Float64, Float64[Array, "dim"]],
+    P: Union[Float64, Float64[Array, "dim"]],
     composition: Optional[Dict[str, Float64]] = None,
     efficiencies: Optional[Dict[str, Float64]] = None,
-) -> ScalarOrVector:
+) -> Union[Float64, Float64[Array, "dim"]]:
     """Calculate concentration with collision efficiencies applied (if provided)."""
-    M = calculate_concentration(T, P) # [mol/cm3]
+    M = calculate_concentration(T, P)  # [mol/cm3]
 
     if efficiencies is None or efficiencies is {} or composition is None:
         return M
@@ -35,7 +34,10 @@ def calculate_effective_concentration(
     return eff_M
 
 
-def calculate_concentration(T: ScalarOrVector, P: ScalarOrVector) -> ScalarOrVector:
+def calculate_concentration(
+    T: Union[Float64, Float64[Array, "dim"]],
+    P: Union[Float64, Float64[Array, "dim"]],
+) -> Union[Float64, Float64[Array, "dim"]]:
     """
     Calculate molar concentration from pressure and temperature using the ideal gas law.
 
@@ -59,8 +61,8 @@ def calculate_concentration(T: ScalarOrVector, P: ScalarOrVector) -> ScalarOrVec
         - If one is scalar and one is array: returns an array matching the non-scalar input
         - If both are arrays: returns a 2D meshgrid where result[i,j] corresponds to T[i], P[j]
     """
-    P = P * jnp.float64(101325.0)         # [Pa] which is [J/m3]
-    R = constants.R_J_mol_K               # [J/mol/K]
+    P = P * jnp.float64(101325.0)  # [Pa] which is [J/m3]
+    R = constants.R_J_mol_K  # [J/mol/K]
     conversion_factor = jnp.float64(1e6)  # from [m3] to [cm3]
 
     if not (jnp.isscalar(T) or T.ndim == 0) and not (jnp.isscalar(P) or P.ndim == 0):

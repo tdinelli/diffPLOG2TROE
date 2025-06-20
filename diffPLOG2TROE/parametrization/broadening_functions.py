@@ -1,11 +1,29 @@
+from functools import partial
+from typing import Dict, Optional, Union
+
 import jax.numpy as jnp
-from jax import lax, jit
+from jax import jit, lax
+from jaxtyping import Array, Float64
 
-from ..utilities.custom_types import Array64f_5, ScalarOrVector
+
+@partial(jit, static_argnums=(0,))
+def compute_broadening_factor(
+    broadening_type: str,
+    T: Union[Float64, Float64[Array, "dim"]],
+    Pr: Union[Float64, Float64[Array, "dim"]],
+    parameters: Optional[Dict[str, Float64]],
+) -> Union[Float64, Float64[Array, "dim"]]:
+    if broadening_type == "lindemann":
+        return lindemann(T)
+    elif broadening_type == "troe" and parameters is not None:
+        return troe(T, Pr, parameters)
+    elif broadening_type == "sri" and parameters is not None:
+        return sri(T, Pr, parameters)
+    elif broadening_type == "tsang" and parameters is not None:
+        return tsang(T, Pr, parameters)
 
 
-@jit
-def lindemann(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> ScalarOrVector:
+def lindemann(T: Union[Float64, Float64[Array, "dim"]]) -> Union[Float64, Float64[Array, "dim"]]:
     """
     Lindemann falloff function.
 
@@ -15,16 +33,16 @@ def lindemann(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> 
 
     Parameters
     ----------
-    T : ScalarOrVector
+    T : Union[Float64, Float64[Array, "dim"]]
         Temperature in Kelvin
-    Pr : ScalarOrVector
+    Pr : Union[Float64, Float64[Array, "dim"]]
         Reduced pressure (Pr = k0[M]/k_{\\infty})
     parameters : Array64f_5
         Unused - required for JAX lax.switch compatibility
 
     Returns
     -------
-    ScalarOrVector
+    Union[Float64, Float64[Array, "dim"]]
         Falloff correction factor F = 1.0
 
     Notes
@@ -35,8 +53,11 @@ def lindemann(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> 
     return jnp.ones_like(T, dtype=jnp.float64)
 
 
-@jit
-def troe(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> ScalarOrVector:
+def troe(
+    T: Union[Float64, Float64[Array, "dim"]],
+    Pr: Float64,
+    parameters: Dict[str, Float64],
+) -> Union[Float64, Float64[Array, "dim"]]:
     """
     Troe falloff function with broadening factor.
 
@@ -45,11 +66,11 @@ def troe(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> Scala
 
     Parameters
     ----------
-    T : ScalarOrVector
+    T : Union[Float64, Float64[Array, "dim"]]
         Temperature in Kelvin
-    Pr : ScalarOrVector
+    Pr : Union[Float64, Float64[Array, "dim"]]
         Reduced pressure (Pr = k0[M]/k_{\\infty})
-    parameters : Array64f_5
+    parameters : TODO
         [alpha, T***, T*, T**, unused]
         - alpha: Troe parameter (0 < alpha < 1)
         - T***: Temperature parameter (K)
@@ -59,7 +80,7 @@ def troe(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> Scala
 
     Returns
     -------
-    ScalarOrVector
+    Union[Float64, Float64[Array, "dim"]]
         Falloff correction factor F
 
     Notes
@@ -79,7 +100,7 @@ def troe(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> Scala
     Constants. Berichte der Bunsengesellschaft für physikalische Chemie, 87:
     169-177. DOI: 10.1002/bbpc.19830870218
     """
-    alpha, T3, T1, T2, _ = parameters
+    alpha, T3, T1, T2 = parameters["A"], parameters["T3"], parameters["T1"], parameters["T2"]
 
     # ==============================================================================
     # Calculate centering factor Fcent
@@ -103,63 +124,11 @@ def troe(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> Scala
     return 10.0 ** (logFcent / (1.0 + f1))
 
 
-@jit
-def tsang(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> ScalarOrVector:
-    """
-    Tsang falloff function (simplified Troe form).
-
-    The Tsang form is a simplified version of the Troe falloff where the
-    centering factor is a linear function of temperature.
-
-    Parameters
-    ----------
-    T : ScalarOrVector
-        Temperature in Kelvin
-    Pr : ScalarOrVector
-        Reduced pressure (Pr = k0[M]/k_{\\infty})
-    parameters : Array64f_5
-        [A, B, unused, unused, unused]
-        - A: Tsang parameter
-        - B: Tsang parameter (K^{-1})
-        - unused: Required for JAX compatibility
-
-    Returns
-    -------
-    ScalarOrVector
-        Falloff correction factor F
-
-    Notes
-    -----
-    The centering factor is simplified to: Fcent = A + B*T
-    The broadening calculation follows the same form as Troe.
-
-    References
-    ----------
-    Wing Tsang, John T. Herron; Chemical Kinetic Data Base for Propellant
-    Combustion I. Reactions Involving NO, NO2, HNO, HNO2, HCN and N2O. J. Phys.
-    Chem. Ref. Data 1 July 1991; 20 (4): 609–663. DOI: 10.1063/1.555890
-    """
-    A, B, _, _, _ = parameters
-
-    # ==============================================================================
-    # Simplified centering factor
-    logFcent = jnp.log10(A + B * T)
-
-    # ==============================================================================
-    # Broadening parameters (same as Troe)
-    c = -0.4 - 0.67 * logFcent
-    n = 0.75 - 1.27 * logFcent
-
-    # ==============================================================================
-    # Calculate broadening factor
-    d = jnp.log10(Pr) + c
-    f1 = (d / (n - 0.14 * d)) ** 2
-
-    return 10.0 ** (logFcent / (1.0 + f1))
-
-
-@jit
-def sri(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> ScalarOrVector:
+def sri(
+    T: Union[Float64, Float64[Array, "dim"]],
+    Pr: Float64,
+    parameters: Dict[str, Float64],
+) -> Union[Float64, Float64[Array, "dim"]]:
     """
     SRI (Stanford Research Institute) falloff function.
 
@@ -168,9 +137,9 @@ def sri(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> Scalar
 
     Parameters
     ----------
-    T : ScalarOrVector
+    T : Union[Float64, Float64[Array, "dim"]]
         Temperature in Kelvin
-    Pr : ScalarOrVector
+    Pr : Union[Float64, Float64[Array, "dim"]]
         Reduced pressure (Pr = k0[M]/k_{\\infty})
     parameters : Array64f_5
         [a, b, c, d, e] - All five SRI parameters
@@ -182,7 +151,7 @@ def sri(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> Scalar
 
     Returns
     -------
-    ScalarOrVector
+    Union[Float64, Float64[Array, "dim"]]
         Falloff correction factor F
 
     Notes
@@ -201,7 +170,7 @@ def sri(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> Scalar
     [2] Kee, R. J., et al. "Chemkin-II: A Fortran chemical kinetics package for the
         analysis of gas-phase chemical kinetics." , Sep. 1989. DOI: 10.2172/5681118
     """
-    a, b, c, d, e = parameters
+    a, b, c, d, e = parameters["a"], parameters["b"], parameters["c"], parameters["d"], parameters["e"]
 
     # ==============================================================================
     # Calculate X factor based on reduced pressure
@@ -215,3 +184,62 @@ def sri(T: ScalarOrVector, Pr: ScalarOrVector, parameters: Array64f_5) -> Scalar
     # ==============================================================================
     # Final SRI falloff factor
     return d * (base**X) * (T**e)
+
+
+def tsang(
+    T: Union[Float64, Float64[Array, "dim"]],
+    Pr: Float64,
+    parameters: Dict[str, Float64],
+) -> Union[Float64, Float64[Array, "dim"]]:
+    """
+    Tsang falloff function (simplified Troe form).
+
+    The Tsang form is a simplified version of the Troe falloff where the
+    centering factor is a linear function of temperature.
+
+    Parameters
+    ----------
+    T : Union[Float64, Float64[Array, "dim"]]
+        Temperature in Kelvin
+    Pr : Union[Float64, Float64[Array, "dim"]]
+        Reduced pressure (Pr = k0[M]/k_{\\infty})
+    parameters : Array64f_5
+        [A, B, unused, unused, unused]
+        - A: Tsang parameter
+        - B: Tsang parameter (K^{-1})
+        - unused: Required for JAX compatibility
+
+    Returns
+    -------
+    Union[Float64, Float64[Array, "dim"]]
+        Falloff correction factor F
+
+    Notes
+    -----
+    The centering factor is simplified to: Fcent = A + B*T
+    The broadening calculation follows the same form as Troe.
+
+    References
+    ----------
+    Wing Tsang, John T. Herron; Chemical Kinetic Data Base for Propellant
+    Combustion I. Reactions Involving NO, NO2, HNO, HNO2, HCN and N2O. J. Phys.
+    Chem. Ref. Data 1 July 1991; 20 (4): 609–663. DOI: 10.1063/1.555890
+    """
+
+    A, B = parameters["A"], parameters["B"]
+
+    # ==============================================================================
+    # Simplified centering factor
+    logFcent = jnp.log10(A + B * T)
+
+    # ==============================================================================
+    # Broadening parameters (same as Troe)
+    c = -0.4 - 0.67 * logFcent
+    n = 0.75 - 1.27 * logFcent
+
+    # ==============================================================================
+    # Calculate broadening factor
+    d = jnp.log10(Pr) + c
+    f1 = (d / (n - 0.14 * d)) ** 2
+
+    return 10.0 ** (logFcent / (1.0 + f1))
