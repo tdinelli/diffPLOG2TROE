@@ -1,6 +1,6 @@
 import warnings
 from enum import IntEnum
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 
 import jax.numpy as jnp
 from jaxtyping import Float64
@@ -29,7 +29,7 @@ def _convert_to_broadening_type(broadening_type: str) -> int:
 
 def validate_broadening_parameters(
     broadening_type: str,
-    parameters: Optional[Dict[str, Float64]],
+    parameters: Optional[Dict[str, Float64]] = None,
 ) -> Union[None, Dict[str, Float64]]:
     broadening_type_int = _convert_to_broadening_type(broadening_type)
 

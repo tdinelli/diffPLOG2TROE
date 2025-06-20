@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -9,7 +9,8 @@ from ..utilities.physical_constants import constants
 from ..utilities.thermodynamic_utilities import calculate_effective_concentration
 from .arrhenius import Arrhenius
 from .broadening_functions import compute_broadening_factor
-from .parametrization_utils import validate_broadening_parameters  # , validate_efficiencies
+from .collision_efficiency import CollisionEfficiency, serialize_collision_efficiencies
+from .parametrization_utils import validate_broadening_parameters
 
 
 class FallOff(eqx.Module):
@@ -17,8 +18,7 @@ class FallOff(eqx.Module):
     lpl: Arrhenius
     falloff_type: str
     falloff_parameters: Union[Dict[str, Float64], None]
-    efficiencies: Dict[str, Float64]
-    explicit_efficiencies: bool
+    efficiencies: Optional[Dict[str, Dict]]
     name: str
 
     def __init__(
@@ -27,23 +27,18 @@ class FallOff(eqx.Module):
         lpl_parameters: Dict[str, Float64],
         falloff_type: str,
         falloff_parameters: Optional[Dict[str, Float64]] = None,
-        efficiencies: Optional[Dict[str, Float64]] = None,
+        efficiencies: Optional[List[CollisionEfficiency]] = None,
         name: str = "",
     ) -> None:
         self.hpl = Arrhenius(parameters=hpl_parameters, name=name)
         self.lpl = Arrhenius(parameters=lpl_parameters, name=name)
-
-        if efficiencies is None:
-            self.efficiencies = {}
-            self.explicit_efficiencies = False
-        else:
-            # validate_efficiencies(efficiencies)
-            self.efficiencies = efficiencies
-            self.explicit_efficiencies = True
-
-        self.name = name
-        self.falloff_parameters = validate_broadening_parameters(falloff_type, falloff_parameters)
         self.falloff_type = falloff_type
+        self.falloff_parameters = validate_broadening_parameters(falloff_type, falloff_parameters)
+        if efficiencies is not None:
+            self.efficiencies = serialize_collision_efficiencies(efficiencies)
+        else:
+            self.efficiencies = None
+        self.name = name
 
     @eqx.filter_jit
     def rate_constant(
@@ -104,8 +99,10 @@ class FallOff(eqx.Module):
                 self.falloff_parameters["A"],
                 self.falloff_parameters["B"],
             )
-        if self.explicit_efficiencies:
-            representation += "\n"
-            for key, value in self.efficiencies.items():
-                representation += " {} / {:.5f} /".format(key, value)
+        if self.efficiencies is not None:
+            # TODO:
+            # representation += "\n"
+            # for collision_efficiency in self.efficiencies:
+            #     representation += " {} / {:.5f} /".format(collision_efficiency.name, collision_efficiency.lnA)
+            pass
         return representation

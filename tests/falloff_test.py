@@ -4,7 +4,7 @@ import unittest
 import jax.numpy as jnp
 import numpy as np
 
-from diffPLOG2TROE.parametrization import FallOff
+from diffPLOG2TROE.parametrization import CollisionEfficiency, FallOff
 
 
 class TestFallOff(unittest.TestCase):
@@ -15,14 +15,14 @@ class TestFallOff(unittest.TestCase):
             hpl_parameters={"A": 2.0e12, "n": 0.9, "Ea": 4.8749e04},
             lpl_parameters={"A": 2.49e24, "n": -2.3, "Ea": 4.8749e04},
             falloff_parameters={"A": 0.43, "T3": 1.0e-30, "T1": 1.0e30, "T2": 0.0},
-            efficiencies={
-                "H2O": 7.65,
-                "N2": 1.5,
-                "O2": 1.2,
-                "HE": 0.65,
-                "H2O2": 7.7,
-                "H2": 3.7,
-            },
+            efficiencies=[
+                CollisionEfficiency(name="H2O", parameters=7.65),
+                CollisionEfficiency(name="N2", parameters=1.5),
+                CollisionEfficiency(name="O2", parameters=1.2),
+                CollisionEfficiency(name="HE", parameters=0.65),
+                CollisionEfficiency(name="H2O2", parameters=7.7),
+                CollisionEfficiency(name="H2", parameters=3.7),
+            ],
             falloff_type="troe",
             name="H2O2(+M)=OH+OH(+M)",
         )

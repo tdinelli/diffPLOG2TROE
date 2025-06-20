@@ -12,17 +12,21 @@ def calculate_effective_concentration(
     T: Union[Float64, Float64[Array, "dim"]],
     P: Union[Float64, Float64[Array, "dim"]],
     composition: Optional[Dict[str, Float64]] = None,
-    efficiencies: Optional[Dict[str, Float64]] = None,
+    efficiencies: Optional[Dict[str, Dict]] = None,
 ) -> Union[Float64, Float64[Array, "dim"]]:
     """Calculate concentration with collision efficiencies applied (if provided)."""
     M = calculate_concentration(T, P)  # [mol/cm3]
 
-    if efficiencies is None or efficiencies is {} or composition is None:
+    if efficiencies is None or efficiencies is [] or composition is None:
         return M
 
     species_list = list(composition.keys())
     mole_fractions = jnp.array([composition[s] for s in species_list])
-    eff_values = jnp.array([efficiencies.get(s, 1.0) for s in species_list])
+
+    # ----------------------------------------------------------------------------------
+    # WAS this line below
+    # eff_values = jnp.array([efficiencies_dict.get(s, 1.0) for s in species_list])
+    eff_values = jnp.array([efficiencies.get(s, {}).get("lnA", 1.0) for s in species_list])
 
     total_accounted_fraction = jnp.sum(mole_fractions)
     weighted_efficiency = jnp.sum(eff_values * mole_fractions)
