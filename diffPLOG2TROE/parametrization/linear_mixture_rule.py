@@ -2,9 +2,8 @@ from typing import Dict, Optional, TypeAlias, Union
 
 import equinox as eqx
 import jax.numpy as jnp
-from jaxtyping import Float64
+from jaxtyping import Float64, Array
 
-from ..utilities.custom_types import ScalarOrVector
 from ..utilities.thermodynamic_utilities import calculate_concentration
 from .arrhenius import Arrhenius
 from .cabr import CABR
@@ -49,16 +48,16 @@ class LinearMixtureRule(eqx.Module):
     @eqx.filter_jit
     def kinetic_constant(
         self,
-        T: ScalarOrVector,
-        P: ScalarOrVector,
+        T: Union[Float64, Float64[Array, "dim"]],
+        P: Union[Float64, Float64[Array, "dim"]],
         composition: Optional[Dict[str, Float64]] = None,
-    ) -> ScalarOrVector:
+    ) -> Union[Float64, Float64[Array, "dim"]]:
         if isinstance(self.default_rate_constant, Plog):
-            k_default = self.default_rate_constant.kinetic_constant(T, P)
+            k_default = self.default_rate_constant.rate_constant(T, P)
         elif isinstance(self.default_rate_constant, FallOff) or isinstance(self.default_rate_constant, CABR):
-            k_default = self.default_rate_constant.kinetic_constant(T, P, composition)
+            k_default = self.default_rate_constant.rate_constant(T, P, composition)
         elif isinstance(self.default_rate_constant, Chebyshev):
-            k_default = self.default_rate_constant.kinetic_constant(T, P, True)
+            k_default = self.default_rate_constant.rate_constant(T, P, True)
         else:
             raise ValueError(f"Unknown default reaction type!")
 
@@ -76,11 +75,11 @@ class LinearMixtureRule(eqx.Module):
                 c_i = x_i * c_tot
 
                 if isinstance(rate_constant, Plog):
-                    k_i = rate_constant.kinetic_constant(T, P)
+                    k_i = rate_constant.rate_constant(T, P)
                 elif isinstance(rate_constant, FallOff) or isinstance(rate_constant, CABR):
-                    k_i = rate_constant.kinetic_constant(T, P, composition)
+                    k_i = rate_constant.rate_constant(T, P, composition)
                 elif isinstance(rate_constant, Chebyshev):
-                    k_i = rate_constant.kinetic_constant(T, P, True)
+                    k_i = rate_constant.rate_constant(T, P, True)
                 else:
                     raise ValueError(f"Unknown specific reaction type!")
 

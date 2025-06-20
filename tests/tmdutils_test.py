@@ -1,7 +1,10 @@
 import unittest
+
 import jax
 import jax.numpy as jnp
-from diffPLOG2TROE.utilities.thermodynamic_utilities import calculate_effective_concentration, calculate_concentration
+
+from diffPLOG2TROE.parametrization.collision_efficiency import CollisionEfficiency, serialize_collision_efficiencies
+from diffPLOG2TROE.utilities.thermodynamic_utilities import calculate_concentration, calculate_effective_concentration
 
 
 class TestConcentrationCalculation(unittest.TestCase):
@@ -11,7 +14,12 @@ class TestConcentrationCalculation(unittest.TestCase):
         self.T_array = jnp.array([200.0, 300.0, 400.0])  # K
         self.P_array = jnp.array([0.5, 1.0, 2.0])  # atm
         self.composition_air = {"N2": 0.78, "O2": 0.21, "Ar": 0.01}
-        self.efficiencies_example = {"N2": 1.0, "O2": 0.4, "Ar": 0.7}
+        efficiencies_example = [
+            CollisionEfficiency(name="N2", parameters=1.0),
+            CollisionEfficiency(name="O2", parameters=0.4),
+            CollisionEfficiency(name="Ar", parameters=0.7),
+        ]
+        self.efficiencies_example = serialize_collision_efficiencies(efficiencies_example)
 
     def test_none_inputs(self):
         """Test that function handles None inputs correctly."""
@@ -46,9 +54,9 @@ class TestConcentrationCalculation(unittest.TestCase):
 
         # Calculate weighted efficiency
         weighted_eff = (
-            self.composition_air["N2"] * self.efficiencies_example["N2"]
-            + self.composition_air["O2"] * self.efficiencies_example["O2"]
-            + self.composition_air["Ar"] * self.efficiencies_example["Ar"]
+            self.composition_air["N2"] * self.efficiencies_example["N2"]["lnA"]
+            + self.composition_air["O2"] * self.efficiencies_example["O2"]["lnA"]
+            + self.composition_air["Ar"] * self.efficiencies_example["Ar"]["lnA"]
         )
 
         # Calculate total accounted fraction
@@ -80,9 +88,9 @@ class TestConcentrationCalculation(unittest.TestCase):
         # T_scalar, P_array[0]
         M = calculate_concentration(self.T_scalar, self.P_array[0])
         weighted_eff = (
-            self.composition_air["N2"] * self.efficiencies_example["N2"]
-            + self.composition_air["O2"] * self.efficiencies_example["O2"]
-            + self.composition_air["Ar"] * self.efficiencies_example["Ar"]
+            self.composition_air["N2"] * self.efficiencies_example["N2"]["lnA"]
+            + self.composition_air["O2"] * self.efficiencies_example["O2"]["lnA"]
+            + self.composition_air["Ar"] * self.efficiencies_example["Ar"]["lnA"]
         )
         total_accounted = sum(self.composition_air.values())
         remaining = max(0.0, 1.0 - total_accounted)
@@ -108,8 +116,8 @@ class TestConcentrationCalculation(unittest.TestCase):
         # Calculate expected value
         M = calculate_concentration(self.T_scalar, self.P_scalar)
         weighted_eff = (
-            incomplete_comp["N2"] * self.efficiencies_example["N2"]
-            + incomplete_comp["O2"] * self.efficiencies_example["O2"]
+            incomplete_comp["N2"] * self.efficiencies_example["N2"]["lnA"]
+            + incomplete_comp["O2"] * self.efficiencies_example["O2"]["lnA"]
         )
         total_accounted = sum(incomplete_comp.values())
         remaining = max(0.0, 1.0 - total_accounted)
@@ -120,13 +128,13 @@ class TestConcentrationCalculation(unittest.TestCase):
     def test_missing_efficiency(self):
         """Test with missing efficiency values for some species."""
         # Efficiency dict missing some species
-        incomplete_eff = {"N2": 1.0}  # Missing O2 and Ar
+        incomplete_eff = {"N2": {"lnA": 1.0}}  # Missing O2 and Ar
         result = calculate_effective_concentration(self.T_scalar, self.P_scalar, self.composition_air, incomplete_eff)
 
         # Calculate expected - missing species should default to 1.0
         M = calculate_concentration(self.T_scalar, self.P_scalar)
         weighted_eff = (
-            self.composition_air["N2"] * incomplete_eff["N2"]
+            self.composition_air["N2"] * incomplete_eff["N2"]["lnA"]
             + self.composition_air["O2"] * 1.0  # Default
             + self.composition_air["Ar"] * 1.0  # Default
         )
@@ -149,9 +157,9 @@ class TestConcentrationCalculation(unittest.TestCase):
         # Calculate expected - CO2 should use default efficiency of 1.0
         M = calculate_concentration(self.T_scalar, self.P_scalar)
         weighted_eff = (
-            extra_comp["N2"] * self.efficiencies_example["N2"]
-            + extra_comp["O2"] * self.efficiencies_example["O2"]
-            + extra_comp["Ar"] * self.efficiencies_example["Ar"]
+            extra_comp["N2"] * self.efficiencies_example["N2"]["lnA"]
+            + extra_comp["O2"] * self.efficiencies_example["O2"]["lnA"]
+            + extra_comp["Ar"] * self.efficiencies_example["Ar"]["lnA"]
             + extra_comp["CO2"] * 1.0  # Default
         )
         total_accounted = sum(extra_comp.values())
@@ -174,9 +182,9 @@ class TestConcentrationCalculation(unittest.TestCase):
         # Calculate expected value manually
         M = calculate_concentration(self.T_scalar, self.P_scalar)
         weighted_eff = (
-            self.composition_air["N2"] * self.efficiencies_example["N2"]
-            + self.composition_air["O2"] * self.efficiencies_example["O2"]
-            + self.composition_air["Ar"] * self.efficiencies_example["Ar"]
+            self.composition_air["N2"] * self.efficiencies_example["N2"]["lnA"]
+            + self.composition_air["O2"] * self.efficiencies_example["O2"]["lnA"]
+            + self.composition_air["Ar"] * self.efficiencies_example["Ar"]["lnA"]
         )
         total_accounted = sum(self.composition_air.values())
         remaining = max(0.0, 1.0 - total_accounted)
