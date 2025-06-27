@@ -17,9 +17,9 @@ class FallOff(eqx.Module):
     hpl: Arrhenius
     lpl: Arrhenius
     falloff_type: str
-    falloff_parameters: Union[Dict[str, Float64], None]
-    efficiencies: Optional[Dict[str, Dict]]
     name: str
+    falloff_parameters: Optional[Dict[str, Float64]] = None
+    efficiencies: Optional[Dict[str, Dict]] = None
 
     def __init__(
         self,
@@ -34,10 +34,8 @@ class FallOff(eqx.Module):
         self.lpl = Arrhenius(parameters=lpl_parameters, name=name)
         self.falloff_type = falloff_type
         self.falloff_parameters = validate_broadening_parameters(falloff_type, falloff_parameters)
-        if efficiencies is not None:
-            self.efficiencies = serialize_collision_efficiencies(efficiencies)
-        else:
-            self.efficiencies = None
+        self.efficiencies = None if efficiencies is None else serialize_collision_efficiencies(efficiencies)
+
         self.name = name
 
     @eqx.filter_jit

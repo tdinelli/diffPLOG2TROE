@@ -42,67 +42,33 @@ reactions:
          [-2.26210e-01,  1.69190e-01,  4.85810e-03, -2.38030e-03],
          [-1.43220e-01,  7.71110e-02,  1.27080e-02, -6.41540e-04]]
   note: Taken from CANTERA example
-
-# - equation: H + O2 (+M) <=> HO2 (+M)
-#   type: linear-Burke
-#   duplicate: true
-#   colliders:
-#   - name: M
-#     type: falloff
-#     low-P-rate-constant: [1.737e+019, -1.230, 0.0]
-#     high-P-rate-constant: [4.650e+012, 0.440, 0.0]
-#     Troe: {A: 6.700e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
-#   - name: AR
-#     type: falloff
-#     low-P-rate-constant: [6.810e+018, -1.200, 0.0]
-#     high-P-rate-constant: [4.650e+012, 0.440, 0.0]
-#     Troe: {A: 7.000e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
-#     efficiency: {A: 1, b: 0, Ea: 0}
-#   - name: He
-#     type: falloff
-#     low-P-rate-constant: [9.192e+018, -1.200, 0.0]
-#     high-P-rate-constant: [4.650e+012, 0.440, 0.0]
-#     Troe: {A: 5.900e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
-#     efficiency: {A: 1, b: 0, Ea: 0}
-#   - name: H2
-#     efficiency: {A: 1.3, b: 0, Ea: 0}
-#   - name: H2O
-#     efficiency: {A: 10.0, b: 0, Ea: 0}
-# - equation: H + O2 (+M) <=> HO2 (+M)
-#   type: falloff
-#   duplicate: true
-#   low-P-rate-constant: [1.737e+019, -1.230, 0.0]
-#   high-P-rate-constant: [4.650e+012, 0.440, 0.0]
-#   Troe: {A: 6.700e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
-#   efficiencies: {AR: 0, He: 0, H2: 1.3, H2O: 10.0}
-# - equation: H + O2 (+AR) <=> HO2 (+AR)
-#   type: falloff
-#   duplicate: true
-#   low-P-rate-constant: [6.810e+018, -1.200, 0.0]
-#   high-P-rate-constant: [4.650e+012, 0.440, 0.0]
-#   Troe: {A: 7.000e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
-# - equation: H + O2 (+He) <=> HO2 (+He)
-#   type: falloff
-#   duplicate: true
-#   low-P-rate-constant: [9.192e+018, -1.200, 0.0]
-#   high-P-rate-constant: [4.650e+012, 0.440, 0.0]
-#   Troe: {A: 5.900e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
-# - equation: H + O2 (+M) <=> HO2 (+M)
-#   type: falloff
-#   duplicate: true
-#   low-P-rate-constant: [1.737e+019, -1.230, 0.0]
-#   high-P-rate-constant: [4.650e+012, 0.440, 0.0]
-#   Troe: {A: 6.700e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
-#   efficiencies: {H2: 1.3, H2O: 10.0}
-# - equation: H + O2 (+M) <=> HO2 (+M)
-#   type: falloff
-#   duplicate: true
-#   low-P-rate-constant: [6.810e+018, -1.200, 0.0]
-#   high-P-rate-constant: [4.650e+012, 0.440, 0.0]
-#   Troe: {A: 7.000e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
-# - equation: H + O2 (+M) <=> HO2 (+M)
-#   type: falloff
-#   duplicate: true
-#   low-P-rate-constant: [9.192e+018, -1.200, 0.0]
-#   high-P-rate-constant: [4.650e+012, 0.440, 0.0]
-#   Troe: {A: 5.900e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
+# Reaction 5-7: Separate reactions, but calculated on the full mixture concentration.
+# These are the rates needed to compute the Chemkin-style mole-fraction based weighting
+# See: https://github.com/Cantera/enhancements/issues/193
+# H +O2 (+M) = HO2 +(M) 4.650e+012 0.440 0.0
+#   LowMX/1.737e+019 -1.230 0.0/
+#   TroeMX/ 6.700e-001 1.000e-030 1.000e+030 1.000e+030/
+#   LowSP/ AR 6.810e+018 -1.200 0.0/
+#   TroeSP/AR 7.000e-001 1.000e-030 1.000e+030 1.000e+030/
+#   LowSP/ HE 9.192e+018 -1.200 0.0/
+#   TroeSP/HE 5.900e-001 1.000e-030 1.000e+030 1.000e+030/
+#   HE / 1.0 / AR / 1.0 / H2/ 1.30/ H2O/ 10.00 /
+- equation: H + O2 (+M) <=> HO2 (+M) # Reaction 5
+  type: falloff
+  duplicate: true
+  low-P-rate-constant: [1.737e+019, -1.230, 0.0]
+  high-P-rate-constant: [4.650e+012, 0.440, 0.0]
+  Troe: {A: 6.700e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
+  efficiencies: {H2: 1.3, H2O: 10.0}
+- equation: H + O2 (+AR) <=> HO2 (+AR) # Reaction 6
+  type: falloff
+  duplicate: true
+  low-P-rate-constant: [6.810e+018, -1.200, 0.0]
+  high-P-rate-constant: [4.650e+012, 0.440, 0.0]
+  Troe: {A: 7.000e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
+- equation: H + O2 (+HE) <=> HO2 (+HE) # Reaction 7
+  type: falloff
+  duplicate: true
+  low-P-rate-constant: [9.192e+018, -1.200, 0.0]
+  high-P-rate-constant: [4.650e+012, 0.440, 0.0]
+  Troe: {A: 5.900e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}

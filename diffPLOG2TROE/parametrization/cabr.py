@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -9,17 +9,17 @@ from ..utilities.physical_constants import constants
 from ..utilities.thermodynamic_utilities import calculate_effective_concentration
 from .arrhenius import Arrhenius
 from .broadening_functions import compute_broadening_factor
-from .parametrization_utils import validate_broadening_parameters  # , validate_efficiencies
+from .collision_efficiency import CollisionEfficiency, serialize_collision_efficiencies
+from .parametrization_utils import validate_broadening_parameters
 
 
 class CABR(eqx.Module):
     hpl: Arrhenius
     lpl: Arrhenius
     cabr_type: str
-    cabr_parameters: Dict[str, Float64]
-    efficiencies: Dict[str, Float64]
-    explicit_efficiencies: bool
     name: str
+    cabr_parameters: Optional[Dict[str, Float64]] = None
+    efficiencies: Optional[Dict[str, Dict]] = None
 
     def __init__(
         self,
@@ -27,23 +27,16 @@ class CABR(eqx.Module):
         lpl_parameters: Dict[str, Float64],
         cabr_type: str,
         cabr_parameters: Optional[Dict[str, Float64]] = None,
-        efficiencies: Optional[Dict[str, Float64]] = None,
+        efficiencies: Optional[List[CollisionEfficiency]] = None,
         name: str = "",
     ) -> None:
         self.hpl = Arrhenius(parameters=hpl_parameters, name=name)
         self.lpl = Arrhenius(parameters=lpl_parameters, name=name)
-
-        if efficiencies is None:
-            self.efficiencies = {}
-            self.explicit_efficiencies = False
-        else:
-            # validate_efficiencies(efficiencies)
-            self.efficiencies = efficiencies
-            self.explicit_efficiencies = True
+        self.cabr_type = cabr_type
+        self.cabr_parameters = validate_broadening_parameters(cabr_type, cabr_parameters)
+        self.efficiencies = None if efficiencies is None else serialize_collision_efficiencies(efficiencies)
 
         self.name = name
-        self.cabr_parameters = validate_broadening_parameters(cabr_type, cabr_parameters)
-        self.cabr_type = cabr_type
 
     @eqx.filter_jit
     def rate_constant(
@@ -53,7 +46,7 @@ class CABR(eqx.Module):
         composition: Optional[Dict[str, Float64]] = None,
     ) -> Union[Float64, Float64[Array, "dim"]]:
         k_hpl = self.hpl.rate_constant(T)  # [cm3/mol/s]
-        k_lpl = self.lpl.rate_constant(T)  # [cm3/mol/s]
+        k_lpl = self.lpl.rate_constant(T)  # [cm3/mol/s] TODO: Check this unit just for the comment and doc
 
         if jnp.isscalar(P) or P.ndim == 0:  # P is scalar
             return self._single_P_rate_constant(T, P, k_lpl, k_hpl, composition)
@@ -90,7 +83,7 @@ class CABR(eqx.Module):
                 self.cabr_parameters["T1"],
                 self.cabr_parameters["T2"],
             )
-        elif self.cabr_type == 2:
+        elif self.cabr_type == 2 and self.cabr_parameters is not None:
             representation += " SRI / {:.5e} {:.5e} {:.5e} {:.5e} {:.5e} /".format(
                 self.cabr_parameters["a"],
                 self.cabr_parameters["b"],
@@ -98,13 +91,15 @@ class CABR(eqx.Module):
                 self.cabr_parameters["d"],
                 self.cabr_parameters["e"],
             )
-        elif self.cabr_type == 3:
+        elif self.cabr_type == 3 and self.cabr_parameters is not None:
             representation += " TSANG / {:.5e} {:.5e} /".format(
                 self.cabr_parameters["A"],
                 self.cabr_parameters["B"],
             )
-        if self.explicit_efficiencies:
-            representation += "\n"
-            for key, value in self.efficiencies.items():
-                representation += " {} / {:.5f} /".format(key, value)
+        if self.efficiencies is not None:
+            # TODO:
+            # representation += "\n"
+            # for key, value in self.efficiencies.items():
+            #     representation += " {} / {:.5f} /".format(key, value)
+            pass
         return representation

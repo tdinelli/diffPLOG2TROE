@@ -1,4 +1,4 @@
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -15,8 +15,14 @@ class Plog(eqx.Module):
     lnp_levels: Float64[Array, "dim"]
     num_p_levels: int
     name: str
+    _k0: Optional[Arrhenius] = None
 
-    def __init__(self, parameters: Dict[Float64, Dict[str, Float64]], name: str = "") -> None:
+    def __init__(
+        self,
+        parameters: Dict[Float64, Dict[str, Float64]],
+        name: str = "",
+        k0: Optional[Dict[str, Float64]] = None,
+    ) -> None:
         self.name = name
 
         # ==============================================================================
@@ -28,6 +34,8 @@ class Plog(eqx.Module):
         self.num_p_levels = len(self.p_levels)
 
         self.k_levels = [Arrhenius(parameters=i) for i in parameters.values()]
+
+        self._k0 = Arrhenius(parameters=k0) if k0 is not None else None
 
     @eqx.filter_jit
     def rate_constant(
@@ -95,6 +103,10 @@ class Plog(eqx.Module):
         indices = jnp.where(indices == self.num_p_levels, self.num_p_levels - 1, indices)
 
         return indices
+
+    @property
+    def k0(self):
+        return self._k0
 
     @staticmethod
     def _log_log_interpolation(

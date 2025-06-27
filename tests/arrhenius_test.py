@@ -5,12 +5,13 @@ import jax.numpy as jnp
 import numpy as np
 
 from diffPLOG2TROE.parametrization import Arrhenius
+from diffPLOG2TROE.parametrization import forward_rate_constant
 
 
 class TestArrhenius(unittest.TestCase):
     def setUp(self):
         self.T_range = jnp.linspace(300, 3000, 300)
-        self.rate_constant = Arrhenius(parameters={"A": 5.08e04, "n": 2.67, "Ea": 6292}, name="H2+O=H+OH")
+        self.reaction = Arrhenius(parameters={"A": 5.08e04, "n": 2.67, "Ea": 6292}, name="H2+O=H+OH")
 
         # ==============================================================================
         # Dataloader
@@ -22,8 +23,8 @@ class TestArrhenius(unittest.TestCase):
 
         self.expected_rate = data[:, 1]
 
-    def test_kinetic_constant(self):
-        calculated_rates = self.rate_constant.rate_constant(self.T_range) / 1000
+    def test_arrhenius_rate_constant_direct(self):
+        calculated_rates = self.reaction.rate_constant(self.T_range) / 1000
         self.assertTrue(
             jnp.allclose(
                 calculated_rates,
@@ -31,7 +32,19 @@ class TestArrhenius(unittest.TestCase):
                 atol=1e-10,
                 rtol=1e-8,
             ),
-            "Calculated rate constants for the Arrhenius case don't match reference data",
+            "Calculated rate constants (from the direct function) for the Arrhenius case don't match reference data",
+        )
+
+    def test_arrhenius_rate_constant_wrapper(self):
+        calculated_rates = forward_rate_constant(self.reaction, self.T_range) / 1000
+        self.assertTrue(
+            jnp.allclose(
+                calculated_rates,
+                self.expected_rate,
+                atol=1e-10,
+                rtol=1e-8,
+            ),
+            "Calculated rate constants (from the wrapper) for the Arrhenius case don't match reference data",
         )
 
 

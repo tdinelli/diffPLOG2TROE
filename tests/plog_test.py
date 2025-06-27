@@ -4,14 +4,14 @@ import unittest
 import jax.numpy as jnp
 import numpy as np
 
-from diffPLOG2TROE.parametrization import Plog
+from diffPLOG2TROE.parametrization import Plog, forward_rate_constant
 
 
 class TestPlog(unittest.TestCase):
     def setUp(self):
         self.T_range = jnp.linspace(300, 3000, 300)
         self.P_range = jnp.logspace(jnp.log10(0.01), jnp.log10(100), 300)
-        self.rate_constant = Plog(
+        self.reaction = Plog(
             parameters={
                 0.01: {"A": 5.02e21, "n": -4.24, "Ea": 898.9},
                 0.1: {"A": 5.31e22, "n": -4.24, "Ea": 1184.0},
@@ -35,8 +35,8 @@ class TestPlog(unittest.TestCase):
 
         self.expected_rate = data
 
-    def test_kinetic_constant(self):
-        calculated_rates = self.rate_constant.rate_constant(self.T_range, self.P_range) / 1000
+    def test_rate_constant_direct(self):
+        calculated_rates = self.reaction.rate_constant(self.T_range, self.P_range) / 1000
         for i, calculated_rate in enumerate(calculated_rates):
             self.assertTrue(
                 jnp.allclose(
@@ -45,7 +45,20 @@ class TestPlog(unittest.TestCase):
                     atol=1e-10,
                     rtol=1e-8,
                 ),
-                "Calculated rate constants for the Arrhenius case don't match reference data",
+                "",
+            )
+
+    def test_rate_constant_wrapped(self):
+        calculated_rates = forward_rate_constant(self.reaction, self.T_range, self.P_range) / 1000
+        for i, calculated_rate in enumerate(calculated_rates):
+            self.assertTrue(
+                jnp.allclose(
+                    calculated_rate,
+                    self.expected_rate[i],
+                    atol=1e-10,
+                    rtol=1e-8,
+                ),
+                "",
             )
 
 

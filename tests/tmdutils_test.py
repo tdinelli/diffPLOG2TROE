@@ -15,9 +15,9 @@ class TestConcentrationCalculation(unittest.TestCase):
         self.P_array = jnp.array([0.5, 1.0, 2.0])  # atm
         self.composition_air = {"N2": 0.78, "O2": 0.21, "Ar": 0.01}
         efficiencies_example = [
-            CollisionEfficiency(name="N2", parameters=1.0),
-            CollisionEfficiency(name="O2", parameters=0.4),
-            CollisionEfficiency(name="Ar", parameters=0.7),
+            CollisionEfficiency(name="N2", value=1.0),
+            CollisionEfficiency(name="O2", value=0.4),
+            CollisionEfficiency(name="Ar", value=0.7),
         ]
         self.efficiencies_example = serialize_collision_efficiencies(efficiencies_example)
 
