@@ -116,8 +116,9 @@ class TestFallOff(unittest.TestCase):
                 "",
             )
 
-    def test_kinetic_constant_aro2h2o_direct(self):
-        calculated_rates = self.reaction.rate_constant(
+    def test_kinetic_constant_aro2h2o_wrapped(self):
+        calculated_rates = forward_rate_constant(
+            self.reaction,
             T=self.T_range,
             P=self.P_range,
             composition={"AR": 0.2, "O2": 0.3, "H2O": 0.5},
@@ -133,13 +134,15 @@ class TestFallOff(unittest.TestCase):
                 "",
             )
 
-    def test_kinetic_constant_aro2h2o_wrapped(self):
-        calculated_rates = forward_rate_constant(
-            self.reaction,
+    def test_kinetic_constant_aro2h2o_direct(self):
+        calculated_rates = self.reaction.rate_constant(
             T=self.T_range,
             P=self.P_range,
             composition={"AR": 0.2, "O2": 0.3, "H2O": 0.5},
         )
+        print("SIEFF")
+        print(calculated_rates[0][0])
+        print(self.expected_rate_aro2h2o[0][0])
         for i, calculated_rate in enumerate(calculated_rates):
             self.assertTrue(
                 jnp.allclose(
