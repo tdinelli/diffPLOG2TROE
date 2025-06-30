@@ -4,7 +4,6 @@ import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, Float64
 
-from ..utilities.thermodynamic_utilities import calculate_concentration
 from .collision_efficiency import CollisionEfficiency, serialize_collision_efficiencies
 from .rate_constant import AnyRate, forward_rate_constant
 
@@ -47,43 +46,75 @@ class MixtureRule(eqx.Module):
         if self.reduced_pressure:
             pass
         else:
-            return self._miller_like_mixture_rules(T, P, composition)
+            return self._lmrp(T, P, composition)
 
-    def _miller_like_mixture_rules(
+    def _lmrp(
         self,
         T: Union[Float64, Float64[Array, "dim"]],
         P: Union[Float64, Float64[Array, "dim"]],
         composition: Optional[Dict[str, Float64]] = None,
     ) -> Union[Float64, Float64[Array, "dim"]]:
-        c_tot = calculate_concentration(T, P)
-
         k_default = forward_rate_constant(self.default_rate_constant, T, P, composition)
 
         if composition is None:
             return k_default
-        else:
-            # Linear mixture rule with concentration weighting
-            weighted_sum = 0.0
-            total_explicit_concentration = 0.0
 
-            for species_name, rate_constant in self.explicit_rate_constants.items():
-                if species_name in composition:
-                    x_i = composition[species_name]
-                    c_i = x_i * c_tot
+        # Mole fraction weighted average (like Cantera does)
+        weighted_sum = 0.0
+        total_explicit_fraction = 0.0
 
-                    k_i = forward_rate_constant(rate_constant, T, P, composition)
+        # Calculate contributions from explicit species
+        for species_name, rate_constant in self.explicit_rate_constants.items():
+            if species_name in composition:
+                x_i = composition[species_name]  # Mole fraction
+                k_i = forward_rate_constant(rate_constant, T, P, composition)
+                weighted_sum += x_i * k_i
+                total_explicit_fraction += x_i
 
-                    weighted_sum += c_i * k_i
-                    total_explicit_concentration += c_i
+        # Remaining mole fraction gets the default rate constant
+        x_remaining = jnp.maximum(0.0, 1.0 - total_explicit_fraction)
 
-            # Remaining concentration
-            c_remaining = jnp.maximum(0.0, c_tot - total_explicit_concentration)
+        # Final weighted average: Σ(x_i * k_i) + x_remaining * k_default
+        kinetic_constant = weighted_sum + x_remaining * k_default
 
-            # Apply linear mixture rule: (Σ(c[i] * k[i]) + c_remaining * k_default) / c_tot
-            kinetic_constant = (weighted_sum + c_remaining * k_default) / c_tot
-
-            return kinetic_constant
+        return kinetic_constant
 
     def __str__(self) -> str:
         """Return string representation in CHEMKIN format."""
         return ""
+
+    # Equivalent implementation for the LMR_P rate constant or as they are called OpenSMOKE ExtendedFallOff
+    # def _miller_like_mixture_rules(
+    #     self,
+    #     T: Union[Float64, Float64[Array, "dim"]],
+    #     P: Union[Float64, Float64[Array, "dim"]],
+    #     composition: Optional[Dict[str, Float64]] = None,
+    # ) -> Union[Float64, Float64[Array, "dim"]]:
+    #     c_tot = calculate_concentration(T, P)
+    #
+    #     k_default = forward_rate_constant(self.default_rate_constant, T, P, composition)
+    #
+    #     if composition is None:
+    #         return k_default
+    #     else:
+    #         # Linear mixture rule with concentration weighting
+    #         weighted_sum = 0.0
+    #         total_explicit_concentration = 0.0
+    #
+    #         for species_name, rate_constant in self.explicit_rate_constants.items():
+    #             if species_name in composition:
+    #                 x_i = composition[species_name]
+    #                 c_i = x_i * c_tot
+    #
+    #                 k_i = forward_rate_constant(rate_constant, T, P, composition)
+    #
+    #                 weighted_sum += c_i * k_i
+    #                 total_explicit_concentration += c_i
+    #
+    #         # Remaining concentration
+    #         c_remaining = jnp.maximum(0.0, c_tot - total_explicit_concentration)
+    #
+    #         # Apply linear mixture rule: (Σ(c[i] * k[i]) + c_remaining * k_default) / c_tot
+    #         kinetic_constant = (weighted_sum + c_remaining * k_default) / c_tot
+    #
+    #         return kinetic_constant

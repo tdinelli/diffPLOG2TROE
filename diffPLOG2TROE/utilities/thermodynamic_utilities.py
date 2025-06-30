@@ -17,7 +17,7 @@ def calculate_effective_concentration(
     """Calculate concentration with collision efficiencies applied (if provided)."""
     M = calculate_concentration(T, P)  # [mol/cm3]
 
-    if efficiencies is None or efficiencies is [] or composition is None:
+    if efficiencies is None or composition is None:
         return M
 
     species_list = list(composition.keys())
