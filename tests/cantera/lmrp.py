@@ -37,7 +37,7 @@ data_directory = os.path.join(current_dir, "cantera_data", str(ct_version))
 if not os.path.isdir(data_directory):
     os.makedirs(data_directory)
 
-np.savetxt(os.path.join(data_directory, "extended_falloff_troe_ar.csv"), k_matrix, delimiter=";", fmt="%.10e")
+np.savetxt(os.path.join(data_directory, "lmrp_ar.csv"), k_matrix, delimiter=";", fmt="%.10e")
 
 k_matrix = np.zeros((len(P_range), len(T_range)))
 
@@ -55,7 +55,7 @@ data_directory = os.path.join(current_dir, "cantera_data", str(ct_version))
 if not os.path.isdir(data_directory):
     os.makedirs(data_directory)
 
-np.savetxt(os.path.join(data_directory, "extended_falloff_troe_arh2o.csv"), k_matrix, delimiter=";", fmt="%.10e")
+np.savetxt(os.path.join(data_directory, "lmrp_arh2o.csv"), k_matrix, delimiter=";", fmt="%.10e")
 
 k_matrix = np.zeros((len(P_range), len(T_range)))
 
@@ -73,4 +73,4 @@ data_directory = os.path.join(current_dir, "cantera_data", str(ct_version))
 if not os.path.isdir(data_directory):
     os.makedirs(data_directory)
 
-np.savetxt(os.path.join(data_directory, "extended_falloff_troe_arh2ohe.csv"), k_matrix, delimiter=";", fmt="%.10e")
+np.savetxt(os.path.join(data_directory, "lmrp_arh2ohe.csv"), k_matrix, delimiter=";", fmt="%.10e")

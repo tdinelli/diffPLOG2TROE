@@ -54,21 +54,21 @@ class TestMixtureRules(unittest.TestCase):
         # 100% AR
         current_file_path = os.path.abspath(__file__)
         current_dir = os.path.dirname(current_file_path)
-        data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.1.0", "extended_falloff_troe_ar.csv")
+        data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.1.0", "lmrp_ar.csv")
         data = np.loadtxt(data_file, delimiter=";")
         self.expected_rate_extended_falloff_ar = jnp.array(data)
 
         # 50% AR, 50% H2O
         current_file_path = os.path.abspath(__file__)
         current_dir = os.path.dirname(current_file_path)
-        data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.1.0", "extended_falloff_troe_arh2o.csv")
+        data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.1.0", "lmrp_arh2o.csv")
         data = np.loadtxt(data_file, delimiter=";")
         self.expected_rate_extended_falloff_ar_h2o = jnp.array(data)
 
         # 50% AR, 25% H2O, 25% HE
         current_file_path = os.path.abspath(__file__)
         current_dir = os.path.dirname(current_file_path)
-        data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.1.0", "extended_falloff_troe_arh2ohe.csv")
+        data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.1.0", "lmrp_arh2ohe.csv")
         data = np.loadtxt(data_file, delimiter=";")
         self.expected_rate_extended_falloff_ar_h2o_he = jnp.array(data)
 
