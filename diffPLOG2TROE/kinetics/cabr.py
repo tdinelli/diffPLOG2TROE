@@ -10,7 +10,7 @@ from ..utilities.thermodynamic_utilities import calculate_effective_concentratio
 from .arrhenius import Arrhenius
 from .broadening_functions import compute_broadening_factor
 from .collision_efficiency import CollisionEfficiency, serialize_collision_efficiencies
-from .parametrization_utils import validate_broadening_parameters
+from .utils import validate_broadening_parameters
 
 
 class CABR(eqx.Module):

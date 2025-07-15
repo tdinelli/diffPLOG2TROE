@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 
 from ..utilities.physical_constants import constants
-from .parametrization_utils import validate_arrhenius_parameters
+from .utils import validate_arrhenius_parameters
 
 
 class ReparametrizedArrhenius(eqx.Module):
@@ -78,9 +78,10 @@ class ReparametrizedArrhenius(eqx.Module):
             If parameters are invalid
         """
         # ====================================================================
+        # TODO: This needs to be checked
         # Validate basic parameters (reuse existing validation)
-        temp_params = {"A": parameters["k_ref"], "n": parameters["n"], "Ea": parameters["Ea"]}
-        validate_arrhenius_parameters(temp_params)
+        # temp_params = {"A": parameters["k_ref"], "n": parameters["n"], "Ea": parameters["Ea"]}
+        # validate_arrhenius_parameters(temp_params)
 
         # ====================================================================
         # Additional validation for T_ref

@@ -2,13 +2,16 @@ from typing import Dict, List, Optional, Union
 
 import equinox as eqx
 import jax.numpy as jnp
+
+# from beartype import beartype as typechecker
 from jax import lax, vmap
-from jaxtyping import Array, Float64
+from jaxtyping import Array, Float64, Scalar  # , jaxtyped
 
 from ..utilities.physical_constants import constants
 from .arrhenius import Arrhenius
 
 
+# @jaxtyped(typechecker=typechecker)
 class Plog(eqx.Module):
     k_levels: List[Arrhenius]
     p_levels: Float64[Array, "dim"]
@@ -19,9 +22,9 @@ class Plog(eqx.Module):
 
     def __init__(
         self,
-        parameters: Dict[Float64, Dict[str, Float64]],
+        parameters: Dict[float, Dict[str, float]],
         name: str = "",
-        k0: Optional[Dict[str, Float64]] = None,
+        k0: Optional[Dict[str, float]] = None,
     ) -> None:
         self.name = name
 
@@ -40,9 +43,9 @@ class Plog(eqx.Module):
     @eqx.filter_jit
     def rate_constant(
         self,
-        T: Union[Float64, Float64[Array, "dim"]],
-        P: Union[Float64, Float64[Array, "dim"]],
-    ) -> Union[Float64, Float64[Array, "dim"]]:
+        T: Union[Float64[Scalar, ""], Float64[Array, "*"]],
+        P: Union[Float64[Scalar, ""], Float64[Array, "*"]],
+    ) -> Union[Float64[Scalar, ""], Float64[Array, "..."]]:
         """Compute kinetic constant for given temperature and pressure."""
         if jnp.isscalar(P) or P.ndim == 0:  # P is scalar
             return self._single_P_rate_constant(T, P)
@@ -52,9 +55,9 @@ class Plog(eqx.Module):
 
     def _single_P_rate_constant(
         self,
-        T: Union[Float64, Float64[Array, "dim"]],
+        T: Union[Float64[Scalar, ""], Float64[Array, "*"]],
         P: Float64,
-    ) -> Union[Float64, Float64[Array, "dim"]]:
+    ) -> Union[Float64[Scalar, ""], Float64[Array, "*"]]:
         all_lnk = jnp.log(jnp.array([k_level.rate_constant(T) for k_level in self.k_levels]))
 
         # ==============================================================================
@@ -77,9 +80,9 @@ class Plog(eqx.Module):
 
     def _interpolated_constant(
         self,
-        all_lnk: Union[Float64, Float64[Array, "dim"]],
+        all_lnk: Union[Float64[Scalar, ""], Float64[Array, "*"]],
         P: Float64,
-    ) -> Union[Float64, Float64[Array, "dim"]]:
+    ) -> Union[Float64[Scalar, ""], Float64[Array, "*"]]:
         # ==============================================================================
         # Log-log interpolation for pressures within range
         upper_idx = self._find_index(P)  # Position of the current pressure value in the pressure levels of the plog
@@ -93,7 +96,9 @@ class Plog(eqx.Module):
 
         return self._log_log_interpolation(lower_lnk, upper_lnk, lower_lnp, upper_lnp, P)
 
-    def _find_index(self, P: Union[Float64, Float64[Array, "dim"]]) -> Float64[Array, "dim"]:
+    def _find_index(
+        self, P: Union[Float64[Scalar, ""], Float64[Array, "*"]]
+    ) -> Union[Float64[Scalar, ""], Float64[Array, "*"]]:
         # ==============================================================================
         # Get the first insertion point where P <= p_levels[i]
         indices = jnp.searchsorted(self.p_levels, P, side="left")
@@ -110,12 +115,12 @@ class Plog(eqx.Module):
 
     @staticmethod
     def _log_log_interpolation(
-        log_k1: Union[Float64, Float64[Array, "dim"]],
-        log_k2: Union[Float64, Float64[Array, "dim"]],
-        log_P1: Union[Float64, Float64[Array, "dim"]],
-        log_P2: Union[Float64, Float64[Array, "dim"]],
+        log_k1: Union[Float64[Scalar, ""], Float64[Array, "*"]],
+        log_k2: Union[Float64[Scalar, ""], Float64[Array, "*"]],
+        log_P1: Union[Float64[Scalar, ""], Float64[Array, "*"]],
+        log_P2: Union[Float64[Scalar, ""], Float64[Array, "*"]],
         P: Float64,
-    ) -> Union[Float64, Float64[Array, "dim"]]:
+    ) -> Union[Float64[Scalar, ""], Float64[Array, "*"]]:
         return log_k1 + (log_k2 - log_k1) * (jnp.log(P) - log_P1) / (log_P2 - log_P1)
 
     def __str__(self) -> str:

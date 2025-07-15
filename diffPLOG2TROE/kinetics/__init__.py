@@ -1,4 +1,5 @@
 from .arrhenius import Arrhenius
+from .reparametrized_arrhenius import ReparametrizedArrhenius
 from .plog import Plog
 from .falloff import FallOff
 from .cabr import CABR

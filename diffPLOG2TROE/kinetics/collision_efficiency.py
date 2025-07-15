@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 
 from ..utilities.physical_constants import constants
-from .parametrization_utils import validate_arrhenius_parameters
+from .utils import validate_arrhenius_parameters
 
 
 class CollisionEfficiency(eqx.Module):
