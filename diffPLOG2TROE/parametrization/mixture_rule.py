@@ -1,10 +1,11 @@
-from typing import Dict, List, Optional, Union
+from typing import Dict, Optional, Union
 
 import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, Float64
 
-from .collision_efficiency import CollisionEfficiency, serialize_collision_efficiencies
+from .cabr import CABR
+from .falloff import FallOff
 from .rate_constant import AnyRate, forward_rate_constant
 
 
@@ -14,20 +15,25 @@ class MixtureRule(eqx.Module):
     linear: bool
     reduced_pressure: bool
     name: str
-    efficiencies: Optional[Dict[str, Dict]] = None
 
     def __init__(
         self,
         default_rate_constant: AnyRate,
         explicit_rate_constants: Dict[str, AnyRate],
-        efficiencies: Optional[List[CollisionEfficiency]] = None,
         linear: bool = True,
         reduced_pressure: bool = False,
         name: str = "",
     ) -> None:
         self.default_rate_constant = default_rate_constant
+
+        for rate_constant in explicit_rate_constants:
+            if isinstance(rate_constant, FallOff) or isinstance(rate_constant, CABR):
+                if rate_constant.efficiencies is not None:
+                    raise ValueError(
+                        "Explicit rate constant in the mixture rules formalism should not have collision efficiencies defined!"
+                    )
+
         self.explicit_rate_constants = explicit_rate_constants
-        self.efficiencies = None if efficiencies is None else serialize_collision_efficiencies(efficiencies)
 
         if linear is False:
             raise ValueError("Non-Linear mixture rules are not implemented yet!")
@@ -43,12 +49,12 @@ class MixtureRule(eqx.Module):
         P: Union[Float64, Float64[Array, "dim"]],
         composition: Optional[Dict[str, Float64]] = None,
     ) -> Union[Float64, Float64[Array, "dim"]]:
-        if self.reduced_pressure:
-            pass
-        else:
-            return self._lmrp(T, P, composition)
+        if self.reduced_pressure and self.linear:
+            return self._lmr_r(T, P, composition)
+        else:  # self.reduced_pressure False and self.linear True
+            return self._lmr_p(T, P, composition)
 
-    def _lmrp(
+    def _lmr_p(
         self,
         T: Union[Float64, Float64[Array, "dim"]],
         P: Union[Float64, Float64[Array, "dim"]],
@@ -79,12 +85,23 @@ class MixtureRule(eqx.Module):
 
         return kinetic_constant
 
+    def _lmr_r(
+        self,
+        T: Union[Float64, Float64[Array, "dim"]],
+        P: Union[Float64, Float64[Array, "dim"]],
+        composition: Optional[Dict[str, Float64]] = None,
+    ) -> Union[Float64, Float64[Array, "dim"]]:
+        k_default = forward_rate_constant(self.default_rate_constant, T, P, composition)
+
+        if composition is None:
+            return k_default
+
     def __str__(self) -> str:
         """Return string representation in CHEMKIN format."""
         return ""
 
     # Equivalent implementation for the LMR_P rate constant or as they are called OpenSMOKE ExtendedFallOff
-    # def _miller_like_mixture_rules(
+    # def _lmr_p(
     #     self,
     #     T: Union[Float64, Float64[Array, "dim"]],
     #     P: Union[Float64, Float64[Array, "dim"]],
