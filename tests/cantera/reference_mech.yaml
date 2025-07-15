@@ -6,28 +6,31 @@ phases:
   - {gri30.yaml/species: [O2, H, AR, N2, H2O, HO2, H2, O, OH, H2O2, NO, CH3, CH4]}
   - {nasa_gas.yaml/species: [He]}
   - {example_data/ammonia-CO-H2-Alzueta-2023.yaml/species: [HONO]}
-  state: {T: 300, P: 1 atm, X: {O2: 1.0, H: 1.0e-5, AR: 4.4, HE: 2.0, N2: 4.0, H2O: 0.1}}
+  state: {T: 300, P: 1 atm}
 reactions:
 - units: {length: cm, time: s, quantity: mol, activation-energy: cal/mol}
+
+# -----------------------------------------
+# Modified Arrhenius
+# -----------------------------------------
 - equation: H2 + O <=> H + OH  # Reaction 1 (Modified arrhenius)
   rate-constant: {A: 5.08e+04, b: 2.67, Ea: 6292.0}
   note: SUTHERLAND ET AL., 21ST SYMPOSIUM, P. 929 (1986)
+
+# -----------------------------------------
+# FallOff (TROE)
+# -----------------------------------------
 - equation: H2O2 (+M) <=> OH + OH (+M)  # Reaction 2 (FallOff TROE)
   type: falloff
-  # duplicate: true
   low-P-rate-constant: {A: 2.49e+24, b: -2.3, Ea: 4.8749e+04}
   high-P-rate-constant: {A: 2.0e+12, b: 0.9, Ea: 4.8749e+04}
   Troe: {A: 0.43, T3: 1.0e-30, T1: 1.0e+30}
   efficiencies: {H2O: 7.65, N2: 1.5, O2: 1.2, HE: 0.65, H2O2: 7.7, H2: 3.7}
   note: TROE, COMBUST. FLAME, 158:594-601 (2011)
-# Thinking about adding this as sanity check for the thermodynamic utilities
-# - equation: H2O2 (+M) <=> OH + OH (+M)  # Reaction 2.1 (FallOff TROE but without efficiencies)
-#   type: falloff
-#   duplicate: true
-#   low-P-rate-constant: {A: 2.49e+24, b: -2.3, Ea: 4.8749e+04}
-#   high-P-rate-constant: {A: 2.0e+12, b: 0.9, Ea: 4.8749e+04}
-#   Troe: {A: 0.43, T3: 1.0e-30, T1: 1.0e+30, T2: 1.0e+30}
-#   note: TROE, COMBUST. FLAME, 158:594-601 (2011)
+
+# -----------------------------------------
+# PLOG
+# -----------------------------------------
 - equation: OH + NO <=> HONO  # Reaction 3 (PLOG)
   type: pressure-dependent-Arrhenius
   rate-constants:
@@ -40,6 +43,10 @@ reactions:
   - {P: 31.6 atm, A: 3.68e+23, b: -3.75, Ea: 2501.0}
   - {P: 100.0 atm, A: 7.29e+22, b: -3.41, Ea: 2660.0}
   note: Chen, X., Fuller, M. E., & Goldsmith, C. F. Reac Chem Eng, 4(2), 323-333 (2019).
+
+# -----------------------------------------
+# CHEBYSHEV
+# -----------------------------------------
 - equation: CH4 <=> CH3 + H # Reaction 4 (Chebyshev)
   type: Chebyshev
   temperature-range: [290, 3000]
@@ -51,6 +58,7 @@ reactions:
          [-2.26210e-01,  1.69190e-01,  4.85810e-03, -2.38030e-03],
          [-1.43220e-01,  7.71110e-02,  1.27080e-02, -6.41540e-04]]
   note: Taken from CANTERA example
+
 # Reaction 5-7: Separate reactions, but calculated on the full mixture concentration.
 # These are the rates needed to compute the Chemkin-style mole-fraction based weighting
 # See: https://github.com/Cantera/enhancements/issues/193
@@ -62,6 +70,9 @@ reactions:
 #   LowSP/ HE 9.192e+018 -1.200 0.0/
 #   TroeSP/HE 5.900e-001 1.000e-030 1.000e+030 1.000e+030/
 #   HE / 1.0 / AR / 1.0 / H2/ 1.30/ H2O/ 10.00 /
+# -----------------------------------------
+# LMR-P
+# -----------------------------------------
 - equation: H + O2 (+M) <=> HO2 (+M) # Reaction 5
   type: falloff
   duplicate: true
@@ -81,6 +92,10 @@ reactions:
   low-P-rate-constant: [9.192e+018, -1.200, 0.0]
   high-P-rate-constant: [4.650e+012, 0.440, 0.0]
   Troe: {A: 5.900e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
+
+# -----------------------------------------
+# LMR-R
+# -----------------------------------------
 - equation: H + O2 (+M) <=> HO2 (+M) # Reaction 8 (LMR-R burke cantera style)
   type: linear-Burke
   duplicate: true
@@ -106,3 +121,25 @@ reactions:
     efficiency: {A: 1.3, b: 0, Ea: 0}
   - name: H2O
     efficiency: {A: 10.0, b: 0, Ea: 0}
+
+# -----------------------------------------
+# Stuff needed to perform some sanity
+# checks over some of the implementations
+# -----------------------------------------
+# Here we are testing the equivalence of
+# the two implementations (reactions 9 and
+# 10)
+- equation: H + O2 (+M) <=> HO2 (+M) # Reaction 9
+  type: falloff
+  duplicate: true
+  low-P-rate-constant: [6.810e+018, -1.200, 0.0]
+  high-P-rate-constant: [4.650e+012, 0.440, 0.0]
+  efficiencies: {O2: 0, H: 0, AR: 1, N2: 0, H2O: 0, HO2: 0, H2: 0, O: 0, OH: 0,
+    H2O2: 0, NO: 0, CH3: 0, CH4: 0, He: 0, HONO: 0}
+  Troe: {A: 7.000e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
+- equation: H + O2 (+AR) <=> HO2 (+AR) # Reaction 10
+  type: falloff
+  duplicate: true
+  low-P-rate-constant: [6.810e+018, -1.200, 0.0]
+  high-P-rate-constant: [4.650e+012, 0.440, 0.0]
+  Troe: {A: 7.000e-001, T3: 1.000e-030, T1: 1.000e+030, T2: 1.000e+030}
