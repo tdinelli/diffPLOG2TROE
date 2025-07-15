@@ -37,5 +37,5 @@ def forward_rate_constant(
             return reaction.rate_constant(T, P)
         else:
             return reaction.rate_constant(T, P, composition)
-    else:
+    else:  # Maybe this will be redundant when the runtime type check will be enforced not at the moment
         raise ValueError(f"Unknown reaction type {reaction.__name__}")
