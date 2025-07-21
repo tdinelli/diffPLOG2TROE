@@ -1,7 +1,7 @@
 [project]
-name = "diffPLOG2TROE"
+name = "KiRATE"
 dynamic = ["version"]
-description = "A differentiable PLOG to TROE refitter"
+description = "Kinetic Analysis and Rate Tuning Environment"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -27,29 +27,56 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Chemistry",
     "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Chemical Kinetics",
+    "Topic :: Scientific/Engineering :: Combustion",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "mkdocs"]
-docs = ["mkdocs", "mkdocs-material", "mkdocstrings[python]"]
 test = ["pytest >=6", "pytest-cov >=3"]
-all = ["pytest", "mkdocs", "mkdocs-material", "mkdocstrings[python]", "pytest-cov"]
+dev = [
+    "pytest >=6", 
+    "pytest-cov >=3",
+    "sphinx", 
+    "sphinx-rtd-theme", 
+    "sphinx-autodoc-typehints",
+    "myst-parser",
+    "sphinx-copybutton",
+    "sphinxcontrib-napoleon"
+]
+docs = [
+    "sphinx", 
+    "sphinx-rtd-theme", 
+    "sphinx-autodoc-typehints",
+    "myst-parser",  # For markdown support
+    "sphinx-copybutton",  # For copy buttons on code blocks
+    "sphinxcontrib-napoleon"  # For Google/NumPy style docstrings
+]
+all = [
+    "pytest >=6", 
+    "pytest-cov >=3",
+    "sphinx", 
+    "sphinx-rtd-theme", 
+    "sphinx-autodoc-typehints",
+    "myst-parser",
+    "sphinx-copybutton",
+    "sphinxcontrib-napoleon"
+]
 
 [project.urls]
-"Homepage" = "https://github.com/tdinelli/diffPLOG2TROE"
-"Bug Tracker" = "https://github.com/tdinelli/diffPLOG2TROE/issues"
-"Documentation" = "https://tdinelli.github.io/diffPLOG2TROE"
-"Repository" = "https://github.com/tdinelli/diffPLOG2TROE"
+"Homepage" = "https://github.com/tdinelli/KiRATE"
+"Bug Tracker" = "https://github.com/tdinelli/KiRATE/issues"
+"Documentation" = "https://tdinelli.github.io/KiRATE"
+"Repository" = "https://github.com/tdinelli/KiRATE"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
-include = ["diffPLOG2TROE/*"]
+include = ["KiRATE/*"]
 
 [tool.hatch.version]
-path = "diffPLOG2TROE/_version.py"
+path = "KiRATE/_version.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -68,7 +95,7 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["diffPLOG2TROE"]
+source = ["KiRATE"]
 omit = [
     "*/tests/*",
     "*/__pycache__/*",
