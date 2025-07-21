@@ -1,3 +1,8 @@
+"""
+Copyright (c) 2025 Timoteo Dinelli
+Licensed under the MIT License - see LICENSE file for details
+"""
+
 from typing import Dict, Union
 
 import equinox as eqx

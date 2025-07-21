@@ -1,5 +1,3 @@
-"""diffPLOG2TROE - A differentiable PLOG to TROE refitter"""
-
 from __future__ import annotations
 
 import jax

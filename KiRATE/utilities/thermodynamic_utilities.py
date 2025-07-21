@@ -23,9 +23,7 @@ def calculate_effective_concentration(
     species_list = list(composition.keys())
     mole_fractions = jnp.array([composition[s] for s in species_list])
 
-    # ----------------------------------------------------------------------------------
-    # WAS this line below
-    # eff_values = jnp.array([efficiencies_dict.get(s, 1.0) for s in species_list])
+    # lnA can be misleading but have a closer look at the CollisionEfficiency implementation
     eff_values = jnp.array([efficiencies.get(s, {}).get("lnA", 1.0) for s in species_list])
 
     total_accounted_fraction = jnp.sum(mole_fractions)
