@@ -62,13 +62,13 @@ reactions:
 # Reaction 5-7: Separate reactions, but calculated on the full mixture concentration.
 # These are the rates needed to compute the Chemkin-style mole-fraction based weighting
 # See: https://github.com/Cantera/enhancements/issues/193
-# H +O2 (+M) = HO2 +(M) 4.650e+012 0.440 0.0
-#   LowMX/1.737e+019 -1.230 0.0/
-#   TroeMX/ 6.700e-001 1.000e-030 1.000e+030 1.000e+030/
-#   LowSP/ AR 6.810e+018 -1.200 0.0/
-#   TroeSP/AR 7.000e-001 1.000e-030 1.000e+030 1.000e+030/
-#   LowSP/ HE 9.192e+018 -1.200 0.0/
-#   TroeSP/HE 5.900e-001 1.000e-030 1.000e+030 1.000e+030/
+# H + O2 (+M) = HO2 (+M) 4.650e+012 0.440 0.0
+#   LowMX  /            1.737e+019 -1.230 0.0 /
+#   TroeMX / 6.700e-001 1.000e-030 1.000e+030 1.000e+030 /
+#   LowSP  / AR 6.810e+018 -1.200 0.0 /
+#   TroeSP / AR 7.000e-001 1.000e-030 1.000e+030 1.000e+030 /
+#   LowSP  / HE 9.192e+018 -1.200 0.0 /
+#   TroeSP / HE 5.900e-001 1.000e-030 1.000e+030 1.000e+030 /
 #   HE / 1.0 / AR / 1.0 / H2/ 1.30/ H2O/ 10.00 /
 # -----------------------------------------
 # LMR-P

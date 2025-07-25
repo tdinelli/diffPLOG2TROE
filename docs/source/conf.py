@@ -5,8 +5,8 @@ import sys
 sys.path.insert(0, os.path.abspath("../../"))
 
 # Project information
-project = "diffPLOG2TROE"
-copyright = "2024, Timoteo Dinelli"
+project = "KiRATE"
+copyright = "2025, Timoteo Dinelli"
 author = "Timoteo Dinelli"
 release = "1.0.0"
 

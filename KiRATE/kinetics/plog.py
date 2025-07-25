@@ -2,16 +2,13 @@ from typing import Dict, List, Optional, Union
 
 import equinox as eqx
 import jax.numpy as jnp
-
-# from beartype import beartype as typechecker
 from jax import lax, vmap
-from jaxtyping import Array, Float64, Scalar  # , jaxtyped
+from jaxtyping import Array, Float64, Scalar
 
 from ..utilities.physical_constants import constants
 from .arrhenius import Arrhenius
 
 
-# @jaxtyped(typechecker=typechecker)
 class Plog(eqx.Module):
     k_levels: List[Arrhenius]
     p_levels: Float64[Array, "dim"]
@@ -129,4 +126,8 @@ class Plog(eqx.Module):
         for i in range(self.num_p_levels):
             arrhenius = self.k_levels[i]
             str_obj += f" PLOG / {self.p_levels[i]:.5e}\t{jnp.exp(arrhenius.lnA):.5e} {arrhenius.n:.5f} {arrhenius.EaR * constants.R_cal_mol:.5e} /\n"
+        if self._k0 is not None:
+            str_obj += (
+                f"! k0 --> {jnp.exp(self._k0.lnA):.5e} {self._k0.n:.5f} {self._k0.EaR * constants.R_cal_mol:.5e}"
+            )
         return str_obj

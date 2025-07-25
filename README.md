@@ -1,4 +1,6 @@
-# diffPLOG2TROE
+# KiRATE
+
+Kinetics Informed Rate Tuning Environment
 
 ## Install
 1. Clone this repository using `git`.

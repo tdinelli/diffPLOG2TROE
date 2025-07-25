@@ -1,7 +1,7 @@
-diffPLOG2TROE Documentation
+KiRATE Documentation
 ===========================
 
-A differentiable PLOG to TROE refitter for chemical kinetics.
+KiRATE gasa
 
 .. toctree::
    :maxdepth: 2

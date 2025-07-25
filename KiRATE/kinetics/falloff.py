@@ -9,7 +9,7 @@ from ..utilities.physical_constants import constants
 from ..utilities.thermodynamic_utilities import calculate_effective_concentration
 from .arrhenius import Arrhenius
 from .broadening_functions import compute_broadening_factor
-from .collision_efficiency import CollisionEfficiency, serialize_collision_efficiencies
+from .collision_efficiency import CollisionEfficiency
 from .utils import validate_broadening_parameters
 
 
@@ -19,7 +19,7 @@ class FallOff(eqx.Module):
     falloff_type: str
     name: str
     falloff_parameters: Optional[Dict[str, Float64]] = None
-    efficiencies: Optional[Dict[str, Dict]] = None
+    efficiencies: Optional[List[CollisionEfficiency]] = None
 
     def __init__(
         self,
@@ -34,7 +34,7 @@ class FallOff(eqx.Module):
         self.lpl = Arrhenius(parameters=lpl_parameters, name=name)
         self.falloff_type = falloff_type
         self.falloff_parameters = validate_broadening_parameters(falloff_type, falloff_parameters)
-        self.efficiencies = None if efficiencies is None else serialize_collision_efficiencies(efficiencies)
+        self.efficiencies = None if efficiencies is None else efficiencies
 
         self.name = name
 
@@ -97,10 +97,9 @@ class FallOff(eqx.Module):
                 self.falloff_parameters["A"],
                 self.falloff_parameters["B"],
             )
-        if self.efficiencies is not None:
-            # TODO:
-            # representation += "\n"
-            # for collision_efficiency in self.efficiencies:
-            #     representation += " {} / {:.5f} /".format(collision_efficiency.name, collision_efficiency.lnA)
-            pass
+        # TODO: add the print of the efficiencies here
+        # if self.efficiencies is not None:
+        # representation += "\n"
+        # for collision_efficiency in self.efficiencies:
+        #     representation += " {} / {:.5f} /".format(collision_efficiency.name, collision_efficiency.lnA)
         return representation

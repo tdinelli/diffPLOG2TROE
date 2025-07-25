@@ -1,7 +1,7 @@
-diffPLOG2TROE package
+KiRATE package
 =====================
 
-.. automodule:: diffPLOG2TROE
+.. automodule:: KiRATE
    :members:
    :undoc-members:
    :show-inheritance:
@@ -12,14 +12,14 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
-   diffPLOG2TROE.kinetics
-   diffPLOG2TROE.plog_refitter
-   diffPLOG2TROE.utilities
+   KiRATE.kinetics
+   KiRATE.plog_refitter
+   KiRATE.utilities
 
-diffPLOG2TROE.kinetics package
+KiRATE.kinetics package
 ==============================
 
-.. automodule:: diffPLOG2TROE.kinetics
+.. automodule:: KiRATE.kinetics
    :members:
    :undoc-members:
    :show-inheritance:
@@ -27,58 +27,66 @@ diffPLOG2TROE.kinetics package
 Submodules
 ----------
 
-diffPLOG2TROE.kinetics.arrhenius module
+KiRATE.kinetics.arrhenius module
 ----------------------------------------
 
-.. automodule:: diffPLOG2TROE.kinetics.arrhenius
+.. automodule:: KiRATE.kinetics.arrhenius
    :members:
    :undoc-members:
    :show-inheritance:
 
-diffPLOG2TROE.kinetics.plog module
+KiRATE.kinetics.plog module
 -----------------------------------
 
-.. automodule:: diffPLOG2TROE.kinetics.plog
+.. automodule:: KiRATE.kinetics.plog
    :members:
    :undoc-members:
    :show-inheritance:
 
-diffPLOG2TROE.kinetics.falloff module
+KiRATE.kinetics.falloff module
 --------------------------------------
 
-.. automodule:: diffPLOG2TROE.kinetics.falloff
+.. automodule:: KiRATE.kinetics.falloff
    :members:
    :undoc-members:
    :show-inheritance:
 
-diffPLOG2TROE.kinetics.cabr module
+KiRATE.kinetics.cabr module
 -----------------------------------
 
-.. automodule:: diffPLOG2TROE.kinetics.cabr
+.. automodule:: KiRATE.kinetics.cabr
    :members:
    :undoc-members:
    :show-inheritance:
 
-diffPLOG2TROE.kinetics.chebyshev module
+KiRATE.kinetics.chebyshev module
 ----------------------------------------
 
-.. automodule:: diffPLOG2TROE.kinetics.chebyshev
+.. automodule:: KiRATE.kinetics.chebyshev
    :members:
    :undoc-members:
    :show-inheritance:
 
-diffPLOG2TROE.plog_refitter package
+KiRATE.kinetics.mixture_rule module
+----------------------------------------
+
+.. automodule:: KiRATE.kinetics.mixture_rule
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+KiRATE.plog_refitter package
 ====================================
 
-.. automodule:: diffPLOG2TROE.plog_refitter
+.. automodule:: KiRATE.plog_refitter
    :members:
    :undoc-members:
    :show-inheritance:
 
-diffPLOG2TROE.utilities package
+KiRATE.utilities package
 ================================
 
-.. automodule:: diffPLOG2TROE.utilities
+.. automodule:: KiRATE.utilities
    :members:
    :undoc-members:
    :show-inheritance:
