@@ -3,7 +3,7 @@ Copyright (c) 2025 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -12,6 +12,7 @@ import optimistix as optx
 from jaxtyping import Array
 from matplotlib.patches import Ellipse
 from scipy.stats import chi2
+from scipy.stats import multivariate_normal
 
 from ..kinetics.reparametrized_arrhenius import ReparametrizedArrhenius
 from ..utilities.physical_constants import constants
@@ -634,3 +635,77 @@ def plot_confidence_ellipses(
     plt.suptitle(f"Confidence Ellipses - {title_prefix}", fontsize=16)
     plt.tight_layout()
     plt.show()
+
+
+def compute_uncertainty_bands(
+    results: ArrheniusFittingResults, T_plot: Array, n_samples: int, confidence_level: float
+) -> Tuple[Array, Array, Array]:
+    """
+    Compute uncertainty bands using Monte Carlo sampling from parameter distribution.
+
+    Parameters
+    ----------
+    results : ArrheniusFittingResults
+        Fitting results with covariance matrix
+    T_plot : Array
+        Temperature points for evaluation
+    n_samples : int
+        Number of Monte Carlo samples
+    confidence_level : float
+        Confidence level (e.g., 0.95 for 95%)
+
+    Returns
+    -------
+    Tuple[Array, Array, Array]
+        Mean, lower bound, upper bound of rate constants
+    """
+
+    if results.cov_matrix is None:
+        # Fallback: use fitted curve only
+        k_fitted = results.arrhenius.rate_constant(T_plot)
+        return k_fitted, k_fitted, k_fitted
+
+    # Extract fitted parameters (in transformed space)
+    if isinstance(results.arrhenius, ReparametrizedArrhenius):
+        fitted_params = np.array([results.arrhenius.lnk_ref, results.arrhenius.n, results.arrhenius.EaR])
+    else:
+        # Standard Arrhenius
+        fitted_params = np.array([results.arrhenius.lnA, results.arrhenius.n, results.arrhenius.EaR])
+
+    # Convert covariance matrix to numpy for scipy
+    cov_matrix_np = np.array(results.cov_matrix)
+
+    # Sample parameters from multivariate normal distribution
+    param_samples = multivariate_normal.rvs(mean=fitted_params, cov=cov_matrix_np, size=n_samples)
+
+    # Ensure param_samples is 2D
+    if param_samples.ndim == 1:
+        param_samples = param_samples.reshape(1, -1)
+
+    # Compute rate constants for each parameter sample
+    k_samples = np.zeros((n_samples, len(T_plot)))
+
+    for i, params in enumerate(param_samples):
+        if isinstance(results.arrhenius, ReparametrizedArrhenius):
+            # Centered form: k = k_ref * (T/T_ref)^n * exp(-Ea/R * (1/T - 1/T_ref))
+            lnk_ref, n, EaR = params
+            T_ref = results.arrhenius.T_ref
+
+            k_pred = np.exp(lnk_ref + n * np.log(T_plot / T_ref) - EaR * (1.0 / T_plot - 1.0 / T_ref))
+        else:
+            # Standard form: k = A * T^n * exp(-Ea/RT)
+            lnA, n, EaR = params
+            k_pred = np.exp(lnA + n * np.log(T_plot) - EaR / T_plot)
+
+        k_samples[i, :] = k_pred
+
+    # Compute percentiles for confidence bands
+    alpha = 1 - confidence_level
+    lower_percentile = 100 * alpha / 2
+    upper_percentile = 100 * (1 - alpha / 2)
+
+    k_mean = np.mean(k_samples, axis=0)
+    k_lower = np.percentile(k_samples, lower_percentile, axis=0)
+    k_upper = np.percentile(k_samples, upper_percentile, axis=0)
+
+    return k_mean, k_lower, k_upper
