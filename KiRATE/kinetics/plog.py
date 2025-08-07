@@ -1,48 +1,38 @@
-from typing import Dict, List, Optional, Union
+from typing import List, Optional
 
 import equinox as eqx
 import jax.numpy as jnp
 from jax import lax, vmap
-from jaxtyping import Array, Float64, Scalar
 
-from ..utilities.physical_constants import constants
+from ..types.common import ArrayLike, Either, Integer, ParamsDict, PlogParamsDict, Real, Vector
 from .arrhenius import Arrhenius
 
 
 class Plog(eqx.Module):
-    k_levels: List[Arrhenius]
-    p_levels: Float64[Array, "dim"]
-    lnp_levels: Float64[Array, "dim"]
-    num_p_levels: int
-    name: str
+    _k_levels: List[Arrhenius]
+    _p_levels: Vector
+    _lnp_levels: Vector
+    _num_p_levels: Integer
+    _name: str
     _k0: Optional[Arrhenius] = None
 
-    def __init__(
-        self,
-        parameters: Dict[float, Dict[str, float]],
-        name: str = "",
-        k0: Optional[Dict[str, float]] = None,
-    ) -> None:
-        self.name = name
+    def __init__(self, parameters: PlogParamsDict, name: str = "", k0: Optional[ParamsDict] = None) -> None:
+        self._name = name
 
         # ==============================================================================
         # Sort pressure levels in ascending order
         parameters = dict(sorted(parameters.items()))
 
-        self.p_levels = jnp.array(list(parameters.keys()))
-        self.lnp_levels = jnp.log(self.p_levels)
-        self.num_p_levels = len(self.p_levels)
+        self._p_levels = jnp.array(list(parameters.keys()))
+        self._lnp_levels = jnp.log(self.p_levels)
+        self._num_p_levels = len(self.p_levels)
 
-        self.k_levels = [Arrhenius(parameters=i) for i in parameters.values()]
+        self._k_levels = [Arrhenius(parameters=i) for i in parameters.values()]
 
         self._k0 = Arrhenius(parameters=k0) if k0 is not None else None
 
     @eqx.filter_jit
-    def rate_constant(
-        self,
-        T: Union[Float64[Scalar, ""], Float64[Array, "*"]],
-        P: Union[Float64[Scalar, ""], Float64[Array, "*"]],
-    ) -> Union[Float64[Scalar, ""], Float64[Array, "..."]]:
+    def rate_constant(self, T: Either, P: Either) -> ArrayLike:
         """Compute kinetic constant for given temperature and pressure."""
         if jnp.isscalar(P) or P.ndim == 0:  # P is scalar
             return self._single_P_rate_constant(T, P)
@@ -50,11 +40,7 @@ class Plog(eqx.Module):
             vec_func = vmap(lambda p: self._single_P_rate_constant(T, p))
             return vec_func(P)
 
-    def _single_P_rate_constant(
-        self,
-        T: Union[Float64[Scalar, ""], Float64[Array, "*"]],
-        P: Float64,
-    ) -> Union[Float64[Scalar, ""], Float64[Array, "*"]]:
+    def _single_P_rate_constant(self, T: Either, P: Real) -> Either:
         all_lnk = jnp.log(jnp.array([k_level.rate_constant(T) for k_level in self.k_levels]))
 
         # ==============================================================================
@@ -75,11 +61,7 @@ class Plog(eqx.Module):
         )
         return jnp.exp(k)
 
-    def _interpolated_constant(
-        self,
-        all_lnk: Union[Float64[Scalar, ""], Float64[Array, "*"]],
-        P: Float64,
-    ) -> Union[Float64[Scalar, ""], Float64[Array, "*"]]:
+    def _interpolated_constant(self, all_lnk: Either, P: Real) -> Either:
         # ==============================================================================
         # Log-log interpolation for pressures within range
         upper_idx = self._find_index(P)  # Position of the current pressure value in the pressure levels of the plog
@@ -93,9 +75,7 @@ class Plog(eqx.Module):
 
         return self._log_log_interpolation(lower_lnk, upper_lnk, lower_lnp, upper_lnp, P)
 
-    def _find_index(
-        self, P: Union[Float64[Scalar, ""], Float64[Array, "*"]]
-    ) -> Union[Float64[Scalar, ""], Float64[Array, "*"]]:
+    def _find_index(self, P: Either) -> Integer:
         # ==============================================================================
         # Get the first insertion point where P <= p_levels[i]
         indices = jnp.searchsorted(self.p_levels, P, side="left")
@@ -106,18 +86,8 @@ class Plog(eqx.Module):
 
         return indices
 
-    @property
-    def k0(self):
-        return self._k0
-
     @staticmethod
-    def _log_log_interpolation(
-        log_k1: Union[Float64[Scalar, ""], Float64[Array, "*"]],
-        log_k2: Union[Float64[Scalar, ""], Float64[Array, "*"]],
-        log_P1: Union[Float64[Scalar, ""], Float64[Array, "*"]],
-        log_P2: Union[Float64[Scalar, ""], Float64[Array, "*"]],
-        P: Float64,
-    ) -> Union[Float64[Scalar, ""], Float64[Array, "*"]]:
+    def _log_log_interpolation(log_k1: Either, log_k2: Either, log_P1: Either, log_P2: Either, P: Real) -> Either:
         return log_k1 + (log_k2 - log_k1) * (jnp.log(P) - log_P1) / (log_P2 - log_P1)
 
     def __str__(self) -> str:
@@ -125,9 +95,35 @@ class Plog(eqx.Module):
         str_obj = f"{self.name}\t\t{0.0:.5e} {0.0:.5f} {0.0:.5e}\n"
         for i in range(self.num_p_levels):
             arrhenius = self.k_levels[i]
-            str_obj += f" PLOG / {self.p_levels[i]:.5e}\t{jnp.exp(arrhenius.lnA):.5e} {arrhenius.n:.5f} {arrhenius.EaR * constants.R_cal_mol:.5e} /\n"
-        if self._k0 is not None:
             str_obj += (
-                f"! k0 --> {jnp.exp(self._k0.lnA):.5e} {self._k0.n:.5f} {self._k0.EaR * constants.R_cal_mol:.5e}"
+                f" PLOG / {self._p_levels[i]:.5e}\t{jnp.exp(arrhenius.A):.5e} {arrhenius.n:.5f} {arrhenius.Ea:.5e} /\n"
             )
+        if self._k0 is not None:
+            str_obj += f"! k0 --> {jnp.exp(self._k0.A):.5e} {self._k0.n:.5f} {self._k0.Ea:.5e}"
         return str_obj
+
+    # ==================================================================================
+    # Getters
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def p_levels(self) -> Vector:
+        return self._p_levels
+
+    @property
+    def lnp_levels(self) -> Vector:
+        return self._lnp_levels
+
+    @property
+    def num_p_levels(self) -> Integer:
+        return self._num_p_levels
+
+    @property
+    def k_levels(self) -> List[Arrhenius]:
+        return self._k_levels
+
+    @property
+    def k0(self):
+        return self._k0

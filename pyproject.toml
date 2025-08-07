@@ -13,6 +13,7 @@ dependencies = [
     "jaxtyping",
     "chex",
     "optax",
+    "optimistix",
     "equinox"
 ]
 keywords = ["chemistry", "reaction-kinetics", "differentiable"]
@@ -27,8 +28,6 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Chemistry",
     "Topic :: Scientific/Engineering :: Physics",
-    "Topic :: Scientific/Engineering :: Chemical Kinetics",
-    "Topic :: Scientific/Engineering :: Combustion",
 ]
 
 [project.optional-dependencies]

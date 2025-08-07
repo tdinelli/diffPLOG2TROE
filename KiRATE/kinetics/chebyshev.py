@@ -1,28 +1,29 @@
-from typing import Optional, Tuple, Union
+from typing import Optional
 
 import equinox as eqx
 import jax.numpy as jnp
 from jax import lax, vmap
-from jaxtyping import Array, Float64
+
+from ..types.common import ArrayLike, Either, Matrix, Real, TupleOfFloat
 
 
 class Chebyshev(eqx.Module):
-    chebyshev_coefficients: Float64[Array, "rows cols"]
-    name: str
-    log10P_min: Float64
-    log10P_max: Float64
-    T_min: Float64 = 300
-    T_max: Float64 = 2500
-    P_min: Float64 = 0.001
-    P_max: Float64 = 100
+    _chebyshev_coefficients: Matrix
+    _name: str
+    _log10P_min: Real
+    _log10P_max: Real
+    _T_min: Real
+    _T_max: Real
+    _P_min: Real
+    _P_max: Real
 
     def __init__(
         self,
         order_T: int,
         order_P: int,
-        chebyshev_coefficients: Float64[Array, "rows cols"],
-        T_limits: Optional[Tuple[Float64, Float64]] = None,
-        P_limits: Optional[Tuple[Float64, Float64]] = None,
+        chebyshev_coefficients: Matrix,
+        T_limits: Optional[TupleOfFloat] = None,
+        P_limits: Optional[TupleOfFloat] = None,
         name: str = "",
     ) -> None:
         if T_limits is not None:
@@ -42,12 +43,7 @@ class Chebyshev(eqx.Module):
         self.name = name
 
     @eqx.filter_jit
-    def rate_constant(
-        self,
-        T: Union[Float64, Float64[Array, "dim"]],
-        P: Union[Float64, Float64[Array, "dim"]],
-        is_violation_allowed: bool = False,
-    ) -> Union[Float64, Float64[Array, "dim"]]:
+    def rate_constant(self, T: Either, P: Either, is_violation_allowed: bool = False) -> ArrayLike:
         Tc, Pc = lax.cond(
             is_violation_allowed,
             lambda operands: (
@@ -68,11 +64,7 @@ class Chebyshev(eqx.Module):
             return vec_func(P_tilde)
 
     @eqx.filter_jit
-    def _single_P_rate_constant(
-        self,
-        T_tilde: Union[Float64, Float64[Array, "dim"]],
-        P_tilde: Float64,
-    ) -> Union[Float64, Float64[Array, "dim"]]:
+    def _single_P_rate_constant(self, T_tilde: Either, P_tilde: Real) -> Either:
         N, M = self.chebyshev_coefficients.shape
 
         # ====================================================================
@@ -98,23 +90,12 @@ class Chebyshev(eqx.Module):
     @staticmethod
     @eqx.filter_jit
     def chebyshev_polynomial(n, x):
-        """
-        Compute Chebyshev polynomial of the first kind T_n(x).
-
-        Args:
-            n: Polynomial order (can be array)
-            x: Input value (can be array)
-
-        Returns:
-            T_n(x) with appropriate broadcasting
-        """
         # Clip x to handle numerical issues near boundaries
         x_clipped = jnp.clip(x, -1.0, 1.0)
         return jnp.cos(n * jnp.arccos(x_clipped))
 
     @staticmethod
-    def _validate_limits(limits: Tuple[Float64, Float64]) -> None:
-        """Validate that lower_limit ≤ upper_limit."""
+    def _validate_limits(limits: TupleOfFloat) -> None:
         lower_limit, upper_limit = limits
         if lower_limit > upper_limit:
             raise ValueError(
@@ -122,10 +103,11 @@ class Chebyshev(eqx.Module):
             )
 
     def __str__(self) -> str:
-        """Return string representation in CHEMKIN format."""
         lines = []
+
         # Header line
         lines.append(f"{self.name}\t\t0.0 0.0 0.0")
+
         # Temperature and pressure ranges
         lines.append(f" TCHEB / {self.T_min:.2f} {self.T_max:.2f} /")
         lines.append(f" PCHEB / {self.P_min:.2f} {self.P_max:.2f} /")

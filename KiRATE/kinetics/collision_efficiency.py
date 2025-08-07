@@ -1,22 +1,22 @@
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 
 import equinox as eqx
-from jaxtyping import Array, Float64
 
+from ..types.common import Either, ParamsDict, Real
 from .arrhenius import Arrhenius
 
 
 class CollisionEfficiency(eqx.Module):
-    name: str = "M"
-    _is_constant: bool = True
-    _efficiency: Union[Float64, Arrhenius] = Float64
+    _efficiency: Union[Real, Arrhenius]
+    _name: str = eqx.field(static=True, default="M")
+    _is_constant: bool = eqx.field(static=True, default=True)
 
     def __init__(
         self,
         name: str = "M",
         *,  # Force keyword-only arguments
-        value: Optional[Float64] = None,
-        parameters: Optional[Dict[str, Float64]] = None,
+        value: Optional[float] = None,
+        parameters: Optional[ParamsDict] = None,
     ) -> None:
         if value is not None and parameters is None:
             if value <= 0:
@@ -32,24 +32,18 @@ class CollisionEfficiency(eqx.Module):
         else:  # value is None and arrhenius_parameters is None:
             raise ValueError("Must specify either value or arrhenius_parameters")
 
-        self.name = name
+        self._name = name
 
-    def __call__(
-        self,
-        T: Optional[Union[Float64, Float64[Array, "dim"]]] = None,
-    ) -> Union[Float64, Float64[Array, "dim"]]:
+    def value(self, T: Optional[Either] = None):
         if isinstance(self._efficiency, Arrhenius) and T is not None:
             return self._efficiency.rate_constant(T)
         else:
             return self._efficiency
 
     @property
-    def is_constant(self) -> bool:
-        return self._is_constant
+    def name(self) -> str:
+        return self._name
 
     @property
-    def value(self):
-        if self._is_constant:
-            return {"efficiency": self._efficiency}
-        else:  # Arrhenius like expression
-            return {"lnA": self._efficiency.lnA, "n": self._efficiency.n, "EaR": self._efficiency.EaR}
+    def is_constant(self) -> bool:
+        return self._is_constant

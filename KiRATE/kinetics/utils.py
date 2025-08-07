@@ -14,7 +14,6 @@ class BroadeningFunctionType(IntEnum):
 
 
 def _convert_to_broadening_type(broadening_type: str) -> int:
-    """Convert string representation to BroadeningFunctionType enum."""
     try:
         return {
             "lindemann": BroadeningFunctionType.lindemann,
@@ -112,31 +111,6 @@ def _validate_tsang_parameters(parameters: Dict[str, Float64]) -> None:
 
 
 def validate_arrhenius_parameters(parameters: Dict[str, Float64]) -> None:
-    """
-    Validate Arrhenius parameters to ensure they are physically meaningful and
-    computationally stable.
-
-    This function performs comprehensive validation of the three Arrhenius parameters:
-    pre-exponential factor (A), temperature exponent (n), and activation energy (Ea).
-    It checks for mathematical validity, physical reasonableness, and computational
-    stability.
-
-    Parameters
-    ----------
-    parameters : Dict[str, Float64]
-        Dictionary containing Arrhenius parameters with keys:
-        - "A" : Pre-exponential factor, must be positive
-        - "n" : Temperature exponent, typically in range [-2, 4]
-        - "Ea" : Activation energy in cal/mol
-
-    Raises
-    ------
-    ValueError
-        If any parameter is missing, not finite, or outside reasonable bounds.
-        Specific conditions checked:
-        - Missing required keys ("A", "n", "Ea")
-        - Any parameter is infinite or NaN
-    """
     # ==============================================================================
     # Check for required keys
     required_keys = {"A", "n", "Ea"}

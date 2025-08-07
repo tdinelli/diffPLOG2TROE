@@ -1,19 +1,20 @@
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 import jax.numpy as jnp
 from jax import jit
-from jaxtyping import Array, Float64
 
+from ..kinetics import CollisionEfficiency
+from ..types.common import Either, ParamsDict
 from .physical_constants import constants
 
 
 @jit
 def calculate_effective_concentration(
-    T: Union[Float64, Float64[Array, "dim"]],
-    P: Union[Float64, Float64[Array, "dim"]],
-    composition: Optional[Dict[str, Float64]] = None,
-    efficiencies: Optional[Dict[str, Dict]] = None,
-) -> Union[Float64, Float64[Array, "dim"]]:
+    T: Either,
+    P: Either,
+    composition: Optional[ParamsDict] = None,
+    efficiencies: Optional[Dict[str, CollisionEfficiency]] = None,
+) -> Either:
     """Calculate concentration with collision efficiencies applied (if provided)."""
     M = calculate_concentration(T, P)  # [mol/cm3]
 
@@ -23,8 +24,8 @@ def calculate_effective_concentration(
     species_list = list(composition.keys())
     mole_fractions = jnp.array([composition[s] for s in species_list])
 
-    # lnA can be misleading but have a closer look at the CollisionEfficiency implementation
-    eff_values = jnp.array([efficiencies.get(s, {}).get("lnA", 1.0) for s in species_list])
+    default_eff = CollisionEfficiency(value=1.0)
+    eff_values = jnp.array([efficiencies.get(species, default_eff).value() for species in species_list])
 
     total_accounted_fraction = jnp.sum(mole_fractions)
     weighted_efficiency = jnp.sum(eff_values * mole_fractions)
@@ -36,10 +37,8 @@ def calculate_effective_concentration(
     return eff_M
 
 
-def calculate_concentration(
-    T: Union[Float64, Float64[Array, "dim"]],
-    P: Union[Float64, Float64[Array, "dim"]],
-) -> Union[Float64, Float64[Array, "dim"]]:
+def calculate_concentration(T: Either, P: Either) -> Either:
+    # TODO: Update the documentation
     """
     Calculate molar concentration from pressure and temperature using the ideal gas law.
 
@@ -61,7 +60,7 @@ def calculate_concentration(
         Concentration in mol/cm³ with shape depending on inputs:
         - If both T and P are scalars: returns a scalar
         - If one is scalar and one is array: returns an array matching the non-scalar input
-        - If both are arrays: returns a 2D meshgrid where result[i,j] corresponds to T[i], P[j]
+        - If both are arrays: returns a 2D meshgrid where result[i, j] corresponds to T[i], P[j]
     """
     P = P * jnp.float64(101325.0)  # [Pa] which is [J/m3]
     R = constants.R_J_mol_K  # [J/mol/K]
