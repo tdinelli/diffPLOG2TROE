@@ -4,7 +4,7 @@ import unittest
 import jax.numpy as jnp
 import numpy as np
 
-from diffPLOG2TROE.parametrization import Plog, forward_rate_constant
+from KiRATE.kinetics import Plog, forward_rate_constant
 
 
 class TestPlog(unittest.TestCase):
