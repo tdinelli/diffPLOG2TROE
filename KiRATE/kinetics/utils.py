@@ -1,9 +1,11 @@
 import warnings
 from enum import IntEnum
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 
 import jax.numpy as jnp
 from jaxtyping import Float64
+
+from ..types.common import ParamsDict
 
 
 class BroadeningFunctionType(IntEnum):
@@ -28,8 +30,8 @@ def _convert_to_broadening_type(broadening_type: str) -> int:
 
 def validate_broadening_parameters(
     broadening_type: str,
-    parameters: Optional[Dict[str, Float64]] = None,
-) -> Union[None, Dict[str, Float64]]:
+    parameters: Optional[ParamsDict] = None,
+) -> Union[None, ParamsDict]:
     broadening_type_int = _convert_to_broadening_type(broadening_type)
 
     if broadening_type_int == 0:
@@ -47,7 +49,7 @@ def validate_broadening_parameters(
     return parameters
 
 
-def _validate_troe_parameters(parameters: Dict[str, Float64]) -> None:
+def _validate_troe_parameters(parameters: ParamsDict) -> None:
     required_keys = {"A", "T3", "T1", "T2"}
     missing_keys = required_keys - parameters.keys()
     if missing_keys:
@@ -71,7 +73,7 @@ def _validate_troe_parameters(parameters: Dict[str, Float64]) -> None:
         raise ValueError(f"Parameter T2 (={T2}) cannot be negative: T2 ≥ 0.")
 
 
-def _validate_sri_parameters(parameters: Dict[str, Float64]) -> None:
+def _validate_sri_parameters(parameters: ParamsDict) -> None:
     """ """
 
     required_keys = {"a", "b", "c", "d", "e"}
@@ -92,7 +94,7 @@ def _validate_sri_parameters(parameters: Dict[str, Float64]) -> None:
         raise ValueError(f"Parameter d (={d}) must be different from 0.")
 
 
-def _validate_tsang_parameters(parameters: Dict[str, Float64]) -> None:
+def _validate_tsang_parameters(parameters: ParamsDict) -> None:
     """ """
 
     required_keys = {"A", "B"}
@@ -110,7 +112,7 @@ def _validate_tsang_parameters(parameters: Dict[str, Float64]) -> None:
         raise ValueError(f"Parameter B (={B}) must be different from 0.")
 
 
-def validate_arrhenius_parameters(parameters: Dict[str, Float64]) -> None:
+def validate_arrhenius_parameters(parameters: ParamsDict) -> None:
     # ==============================================================================
     # Check for required keys
     required_keys = {"A", "n", "Ea"}
@@ -152,7 +154,7 @@ def validate_arrhenius_parameters(parameters: Dict[str, Float64]) -> None:
         raise ValueError(f"Activation energy Ea must be finite, got {Ea}")
 
 
-def validate_efficiencies(efficiencies: Dict[str, Float64]) -> None:
+def validate_efficiencies(efficiencies: ParamsDict) -> None:
     for species, efficiency in efficiencies.items():
         if efficiency < 0:
             raise ValueError(f"Collision efficiency must be positive. {species} given {efficiency}")

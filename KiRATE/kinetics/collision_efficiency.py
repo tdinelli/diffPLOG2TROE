@@ -2,12 +2,12 @@ from typing import Optional, Union
 
 import equinox as eqx
 
-from ..types.common import Either, ParamsDict, Real
+from ..types.common import ParamsDict, Scalar, ScalarOrVector
 from .arrhenius import Arrhenius
 
 
 class CollisionEfficiency(eqx.Module):
-    _efficiency: Union[Real, Arrhenius]
+    _efficiency: Union[Scalar, Arrhenius]
     _name: str = eqx.field(static=True, default="M")
     _is_constant: bool = eqx.field(static=True, default=True)
 
@@ -15,7 +15,7 @@ class CollisionEfficiency(eqx.Module):
         self,
         name: str = "M",
         *,  # Force keyword-only arguments
-        value: Optional[float] = None,
+        value: Optional[Scalar] = None,
         parameters: Optional[ParamsDict] = None,
     ) -> None:
         if value is not None and parameters is None:
@@ -34,7 +34,7 @@ class CollisionEfficiency(eqx.Module):
 
         self._name = name
 
-    def value(self, T: Optional[Either] = None):
+    def value(self, T: Optional[ScalarOrVector] = None) -> ScalarOrVector:
         if isinstance(self._efficiency, Arrhenius) and T is not None:
             return self._efficiency.rate_constant(T)
         else:

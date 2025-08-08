@@ -1,71 +1,68 @@
-from typing import Optional
-
 import equinox as eqx
 import jax.numpy as jnp
 from jax import lax, vmap
 
-from ..types.common import ArrayLike, Either, Matrix, Real, TupleOfFloat
+from ..types.common import Integer, Matrix, RateType, Scalar, ScalarOrVector, TupleOfFloat
 
 
 class Chebyshev(eqx.Module):
     _chebyshev_coefficients: Matrix
-    _name: str
-    _log10P_min: Real
-    _log10P_max: Real
-    _T_min: Real
-    _T_max: Real
-    _P_min: Real
-    _P_max: Real
+    _log10P_min: Scalar
+    _log10P_max: Scalar
+    _T_min: Scalar
+    _T_max: Scalar
+    _P_min: Scalar
+    _P_max: Scalar
+    _name: str = eqx.field(static=True, default="")
 
     def __init__(
         self,
-        order_T: int,
-        order_P: int,
+        order_T: Integer,
+        order_P: Integer,
         chebyshev_coefficients: Matrix,
-        T_limits: Optional[TupleOfFloat] = None,
-        P_limits: Optional[TupleOfFloat] = None,
+        T_limits: TupleOfFloat = (300.0, 2500.0),
+        P_limits: TupleOfFloat = (0.001, 100.0),
         name: str = "",
     ) -> None:
-        if T_limits is not None:
-            self._validate_limits(T_limits)
-            self.T_min, self.T_max = T_limits
-        if P_limits is not None:
-            self._validate_limits(P_limits)
-            self.P_min, self.P_max = P_limits
-            self.log10P_min = jnp.log10(self.P_min)
-            self.log10P_max = jnp.log10(self.P_max)
+        self._validate_limits(T_limits)
+        self._T_min, self._T_max = T_limits
+
+        self._validate_limits(P_limits)
+        self._P_min, self._P_max = P_limits
+        self._log10P_min = jnp.log10(self._P_min)
+        self._log10P_max = jnp.log10(self._P_max)
 
         if chebyshev_coefficients.shape[0] != order_T or chebyshev_coefficients.shape[1] != order_P:
             raise ValueError(
                 f"The number of chebyshev coefficients must be equal to {order_T * order_P} given {chebyshev_coefficients.shape[0] * chebyshev_coefficients.shape[1]}"
             )
-        self.chebyshev_coefficients = chebyshev_coefficients
-        self.name = name
+        self._chebyshev_coefficients = chebyshev_coefficients
+        self._name = name
 
     @eqx.filter_jit
-    def rate_constant(self, T: Either, P: Either, is_violation_allowed: bool = False) -> ArrayLike:
+    def rate_constant(self, T: ScalarOrVector, P: ScalarOrVector, is_violation_allowed: bool = False) -> RateType:
         Tc, Pc = lax.cond(
             is_violation_allowed,
             lambda operands: (
-                jnp.clip(operands[0], self.T_min, self.T_max),
-                jnp.clip(operands[1], self.P_min, self.P_max),
+                jnp.clip(operands[0], self._T_min, self._T_max),
+                jnp.clip(operands[1], self._P_min, self._P_max),
             ),
             lambda operands: (operands[0], operands[1]),
             (T, P),
         )
 
-        T_tilde = (2.0 / Tc - 1.0 / self.T_min - 1.0 / self.T_max) / (1.0 / self.T_max - 1.0 / self.T_min)
-        P_tilde = (2.0 * jnp.log10(Pc) - self.log10P_min - self.log10P_max) / (self.log10P_max - self.log10P_min)
+        T_tilde = (2.0 / Tc - 1.0 / self._T_min - 1.0 / self._T_max) / (1.0 / self._T_max - 1.0 / self._T_min)
+        P_tilde = (2.0 * jnp.log10(Pc) - self._log10P_min - self._log10P_max) / (self._log10P_max - self._log10P_min)
 
-        if jnp.isscalar(P) or P.ndim == 0:  # P is scalar
+        if jnp.isscalar(P):  # P is scalar
             return self._single_P_rate_constant(T_tilde, P_tilde)
         else:  # P is array
             vec_func = vmap(lambda p: self._single_P_rate_constant(T_tilde, p))
             return vec_func(P_tilde)
 
     @eqx.filter_jit
-    def _single_P_rate_constant(self, T_tilde: Either, P_tilde: Real) -> Either:
-        N, M = self.chebyshev_coefficients.shape
+    def _single_P_rate_constant(self, T_tilde: ScalarOrVector, P_tilde: Scalar) -> ScalarOrVector:
+        N, M = self._chebyshev_coefficients.shape
 
         # ====================================================================
         # Calculate Chebyshev polynomials
@@ -81,7 +78,7 @@ class Chebyshev(eqx.Module):
         # ====================================================================
         # Compute the weighted double sum: sum_{n,m} a_{n,m} * phi_n * phi_m
         # Using einsum for efficient broadcasting across all input shapes
-        sum_result = jnp.einsum("nm,n...,m...->...", self.chebyshev_coefficients, phi_n, phi_m)
+        sum_result = jnp.einsum("nm,n...,m...->...", self._chebyshev_coefficients, phi_n, phi_m)
 
         # ====================================================================
         # Apply conversion and return: 10^(sum)
@@ -106,15 +103,15 @@ class Chebyshev(eqx.Module):
         lines = []
 
         # Header line
-        lines.append(f"{self.name}\t\t0.0 0.0 0.0")
+        lines.append(f"{self._name}\t\t0.0 0.0 0.0")
 
         # Temperature and pressure ranges
-        lines.append(f" TCHEB / {self.T_min:.2f} {self.T_max:.2f} /")
-        lines.append(f" PCHEB / {self.P_min:.2f} {self.P_max:.2f} /")
+        lines.append(f" TCHEB / {self._T_min:.2f} {self._T_max:.2f} /")
+        lines.append(f" PCHEB / {self._P_min:.2f} {self._P_max:.2f} /")
 
         # Chebyshev coefficients
-        N, M = self.chebyshev_coefficients.shape
-        flattened = self.chebyshev_coefficients.flatten()
+        N, M = self._chebyshev_coefficients.shape
+        flattened = self._chebyshev_coefficients.flatten()
 
         for i, chunk_start in enumerate(range(0, len(flattened), 5)):
             chunk = flattened[chunk_start : chunk_start + 5]

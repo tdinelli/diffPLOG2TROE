@@ -3,18 +3,18 @@ from typing import Dict, Optional
 import jax.numpy as jnp
 from jax import jit
 
-from ..kinetics import CollisionEfficiency
-from ..types.common import Either, ParamsDict
+from ..kinetics.collision_efficiency import CollisionEfficiency
+from ..types.common import ScalarOrVector, ParamsDict
 from .physical_constants import constants
 
 
 @jit
 def calculate_effective_concentration(
-    T: Either,
-    P: Either,
+    T: ScalarOrVector,
+    P: ScalarOrVector,
     composition: Optional[ParamsDict] = None,
     efficiencies: Optional[Dict[str, CollisionEfficiency]] = None,
-) -> Either:
+) -> ScalarOrVector:
     """Calculate concentration with collision efficiencies applied (if provided)."""
     M = calculate_concentration(T, P)  # [mol/cm3]
 
@@ -37,7 +37,7 @@ def calculate_effective_concentration(
     return eff_M
 
 
-def calculate_concentration(T: Either, P: Either) -> Either:
+def calculate_concentration(T: ScalarOrVector, P: ScalarOrVector) -> ScalarOrVector:
     # TODO: Update the documentation
     """
     Calculate molar concentration from pressure and temperature using the ideal gas law.

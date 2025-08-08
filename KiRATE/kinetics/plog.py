@@ -4,7 +4,7 @@ import equinox as eqx
 import jax.numpy as jnp
 from jax import lax, vmap
 
-from ..types.common import ArrayLike, Either, Integer, ParamsDict, PlogParamsDict, Real, Vector
+from ..types.common import Integer, ParamsDict, PlogParamsDict, RateType, Scalar, ScalarOrVector, Vector
 from .arrhenius import Arrhenius
 
 
@@ -13,8 +13,8 @@ class Plog(eqx.Module):
     _p_levels: Vector
     _lnp_levels: Vector
     _num_p_levels: Integer
-    _name: str
     _k0: Optional[Arrhenius] = None
+    _name: str = eqx.field(static=True, default="")
 
     def __init__(self, parameters: PlogParamsDict, name: str = "", k0: Optional[ParamsDict] = None) -> None:
         self._name = name
@@ -24,29 +24,29 @@ class Plog(eqx.Module):
         parameters = dict(sorted(parameters.items()))
 
         self._p_levels = jnp.array(list(parameters.keys()))
-        self._lnp_levels = jnp.log(self.p_levels)
-        self._num_p_levels = len(self.p_levels)
+        self._lnp_levels = jnp.log(self._p_levels)
+        self._num_p_levels = len(self._p_levels)
 
         self._k_levels = [Arrhenius(parameters=i) for i in parameters.values()]
 
         self._k0 = Arrhenius(parameters=k0) if k0 is not None else None
 
     @eqx.filter_jit
-    def rate_constant(self, T: Either, P: Either) -> ArrayLike:
+    def rate_constant(self, T: ScalarOrVector, P: ScalarOrVector) -> RateType:
         """Compute kinetic constant for given temperature and pressure."""
-        if jnp.isscalar(P) or P.ndim == 0:  # P is scalar
+        if jnp.isscalar(P):  # P is scalar
             return self._single_P_rate_constant(T, P)
         else:  # P is array
             vec_func = vmap(lambda p: self._single_P_rate_constant(T, p))
             return vec_func(P)
 
-    def _single_P_rate_constant(self, T: Either, P: Real) -> Either:
+    def _single_P_rate_constant(self, T: ScalarOrVector, P: Scalar) -> ScalarOrVector:
         all_lnk = jnp.log(jnp.array([k_level.rate_constant(T) for k_level in self.k_levels]))
 
         # ==============================================================================
         # Identify the region of the table
-        is_below_min = P <= self.p_levels[0]
-        is_above_max = P >= self.p_levels[-1]
+        is_below_min = P <= self._p_levels[0]
+        is_above_max = P >= self._p_levels[-1]
 
         k = lax.cond(
             is_below_min,
@@ -61,39 +61,41 @@ class Plog(eqx.Module):
         )
         return jnp.exp(k)
 
-    def _interpolated_constant(self, all_lnk: Either, P: Real) -> Either:
+    def _interpolated_constant(self, all_lnk: ScalarOrVector, P: Scalar) -> ScalarOrVector:
         # ==============================================================================
         # Log-log interpolation for pressures within range
         upper_idx = self._find_index(P)  # Position of the current pressure value in the pressure levels of the plog
         lower_idx = upper_idx - 1
 
-        upper_lnp = self.lnp_levels[upper_idx]
-        lower_lnp = self.lnp_levels[lower_idx]
+        upper_lnp = self._lnp_levels[upper_idx]
+        lower_lnp = self._lnp_levels[lower_idx]
 
         upper_lnk = all_lnk[upper_idx]
         lower_lnk = all_lnk[lower_idx]
 
         return self._log_log_interpolation(lower_lnk, upper_lnk, lower_lnp, upper_lnp, P)
 
-    def _find_index(self, P: Either) -> Integer:
+    def _find_index(self, P: ScalarOrVector) -> Integer:
         # ==============================================================================
         # Get the first insertion point where P <= p_levels[i]
-        indices = jnp.searchsorted(self.p_levels, P, side="left")
+        indices = jnp.searchsorted(self._p_levels, P, side="left")
 
         # ==============================================================================
         # If P is greater than all values in p_levels, set index to the last element
-        indices = jnp.where(indices == self.num_p_levels, self.num_p_levels - 1, indices)
+        indices = jnp.where(indices == self._num_p_levels, self._num_p_levels - 1, indices)
 
         return indices
 
     @staticmethod
-    def _log_log_interpolation(log_k1: Either, log_k2: Either, log_P1: Either, log_P2: Either, P: Real) -> Either:
+    def _log_log_interpolation(
+        log_k1: ScalarOrVector, log_k2: ScalarOrVector, log_P1: ScalarOrVector, log_P2: ScalarOrVector, P: Scalar
+    ) -> ScalarOrVector:
         return log_k1 + (log_k2 - log_k1) * (jnp.log(P) - log_P1) / (log_P2 - log_P1)
 
     def __str__(self) -> str:
         """Return string representation in CHEMKIN format."""
         str_obj = f"{self.name}\t\t{0.0:.5e} {0.0:.5f} {0.0:.5e}\n"
-        for i in range(self.num_p_levels):
+        for i in range(self._num_p_levels):
             arrhenius = self.k_levels[i]
             str_obj += (
                 f" PLOG / {self._p_levels[i]:.5e}\t{jnp.exp(arrhenius.A):.5e} {arrhenius.n:.5f} {arrhenius.Ea:.5e} /\n"

@@ -3,11 +3,11 @@ from functools import partial
 import jax.numpy as jnp
 from jax import jit, lax
 
-from ..types.common import Either, ParamsDict, Real
+from ..types.common import ScalarOrVector, ParamsDict, Scalar
 
 
 @partial(jit, static_argnums=(0,))
-def compute_broadening_factor(broadening_type: str, T: Either, Pr: Real, parameters: ParamsDict) -> Either:
+def compute_broadening_factor(broadening_type: str, T: ScalarOrVector, Pr: Scalar, parameters: ParamsDict) -> ScalarOrVector:
     if broadening_type == "lindemann":
         return lindemann(T)
     elif broadening_type == "troe" and parameters is not None:
@@ -18,11 +18,11 @@ def compute_broadening_factor(broadening_type: str, T: Either, Pr: Real, paramet
         return tsang(T, Pr, parameters)
 
 
-def lindemann(T: Either) -> Either:
+def lindemann(T: ScalarOrVector) -> ScalarOrVector:
     return jnp.ones_like(T, dtype=jnp.float64)
 
 
-def troe(T: Either, Pr: Real, parameters: ParamsDict) -> Either:
+def troe(T: ScalarOrVector, Pr: Scalar, parameters: ParamsDict) -> ScalarOrVector:
     alpha, T3, T1, T2 = parameters["A"], parameters["T3"], parameters["T1"], parameters["T2"]
 
     # ==============================================================================
@@ -47,7 +47,7 @@ def troe(T: Either, Pr: Real, parameters: ParamsDict) -> Either:
     return 10.0 ** (logFcent / (1.0 + f1))
 
 
-def sri(T: Either, Pr: Real, parameters: ParamsDict) -> Either:
+def sri(T: ScalarOrVector, Pr: Scalar, parameters: ParamsDict) -> ScalarOrVector:
     a, b, c, d, e = parameters["a"], parameters["b"], parameters["c"], parameters["d"], parameters["e"]
 
     # ==============================================================================
@@ -64,7 +64,7 @@ def sri(T: Either, Pr: Real, parameters: ParamsDict) -> Either:
     return d * (base**X) * (T**e)
 
 
-def tsang(T: Either, Pr: Real, parameters: ParamsDict) -> Either:
+def tsang(T: ScalarOrVector, Pr: Scalar, parameters: ParamsDict) -> ScalarOrVector:
     A, B = parameters["A"], parameters["B"]
 
     # ==============================================================================

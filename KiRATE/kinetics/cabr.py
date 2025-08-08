@@ -2,25 +2,24 @@ from typing import Dict, Optional
 
 import equinox as eqx
 import jax.numpy as jnp
-from beartype import beartype
 from jax import vmap
-from jaxtyping import jaxtyped
 
-from ..types.common import ArrayLike, Either, ParamsDict, Real
+from ..types.common import ParamsDict, RateType, Scalar, ScalarOrVector
 from ..utilities.thermodynamic_utilities import calculate_effective_concentration
 from .arrhenius import Arrhenius
 from .broadening_functions import compute_broadening_factor
 from .collision_efficiency import CollisionEfficiency
-from .utils import validate_broadening_parameters
+from .utils import validate_broadening_parameters, validate_efficiencies
 
 
 class CABR(eqx.Module):
     _hpl: Arrhenius
     _lpl: Arrhenius
-    _cabr_type: str
-    _name: str
+    _cabr_type: str = eqx.field(static=True)
     _cabr_parameters: Optional[ParamsDict] = None
     _efficiencies: Optional[Dict[str, CollisionEfficiency]] = None
+    _name: str = eqx.field(static=True, default="")
+
 
     def __init__(
         self,
@@ -34,32 +33,43 @@ class CABR(eqx.Module):
         self._hpl = Arrhenius(parameters=hpl_parameters, name=f"HPL: {name}")
         self._lpl = Arrhenius(parameters=lpl_parameters, name=f"LPL: {name}")
         self._cabr_type = cabr_type
-        self._cabr_parameters = validate_broadening_parameters(cabr_type, cabr_parameters)
-        self._efficiencies = None if efficiencies is None else efficiencies
+
+        eqx.filter_pure_callback(
+            lambda bt, params: validate_broadening_parameters(bt, params),
+            cabr_type,
+            cabr_parameters,
+            result_shape_dtypes=None
+        )
+        self._cabr_parameters = cabr_parameters
+
+        if efficiencies is None:
+            self._efficiencies = None
+        else:
+            eqx.filter_pure_callback(validate_efficiencies, efficiencies, result_shape_dtypes=None)
+            self._efficiencies = efficiencies
 
         self._name = name
 
     @eqx.filter_jit
-    def rate_constant(self, T: Either, P: Either, composition: Optional[ParamsDict] = None) -> ArrayLike:
+    def rate_constant(self, T: ScalarOrVector, P: ScalarOrVector, composition: Optional[ParamsDict] = None) -> RateType:
         k_hpl = self._hpl.rate_constant(T)  # [cm3/mol/s]
         k_lpl = self._lpl.rate_constant(T)  # [cm3/mol/s] TODO: Check this unit just for the comment and doc
 
-        if jnp.isscalar(P) or P.ndim == 0:  # P is scalar
+        if jnp.isscalar(P):  # P is scalar
             return self._single_P_rate_constant(T, P, k_lpl, k_hpl, composition)
         else:  # P is array
             vec_func = vmap(lambda p: self._single_P_rate_constant(T, p, k_lpl, k_hpl, composition))
             return vec_func(P)
 
     @eqx.filter_jit
-    @jaxtyped(typechecker=beartype)
     def _single_P_rate_constant(
         self,
-        T: Either,
-        P: Real,
-        lpl: Either,
-        hpl: Either,
+        T: ScalarOrVector,
+        P: Scalar,
+        lpl: ScalarOrVector,
+        hpl: ScalarOrVector,
         composition: Optional[ParamsDict] = None,
-    ) -> Either:
+    ) -> ScalarOrVector:
         M = calculate_effective_concentration(T, P, composition, self._efficiencies)  # [mol/cm3]
         Pr = (lpl * M) / hpl
         F = compute_broadening_factor(self._cabr_type, T, Pr, self._cabr_parameters)
@@ -97,6 +107,8 @@ class CABR(eqx.Module):
         #     representation += " {} / {:.5f} /".format(collision_efficiency.name, collision_efficiency.lnA)
         return representation
 
+    # ==================================================================================
+    # Getters
     @property
     def hpl(self) -> Arrhenius:
         return self._hpl

@@ -6,21 +6,21 @@ Licensed under the MIT License - see LICENSE file for details
 import equinox as eqx
 import jax.numpy as jnp
 
-from ..types.common import Either, ParamsDict, Real
+from ..types.common import ParamsDict, Scalar, ScalarOrVector
 from ..utilities.physical_constants import constants
 from .utils import validate_arrhenius_parameters
 
 
 class Arrhenius(eqx.Module):
-    _lnA: Real
-    _n: Real
-    _EaR: Real
-    _name: str
+    _lnA: Scalar
+    _n: Scalar
+    _EaR: Scalar
+    _name: str = eqx.field(static=True, default="")
 
     def __init__(self, parameters: ParamsDict, name: str = "") -> None:
         # ==============================================================================
         # Validate input parameters
-        validate_arrhenius_parameters(parameters)
+        eqx.filter_pure_callback(validate_arrhenius_parameters, parameters, result_shape_dtypes=None)
 
         # ==============================================================================
         # Store reaction name
@@ -39,7 +39,7 @@ class Arrhenius(eqx.Module):
         self._EaR = parameters["Ea"] / constants.R_cal_mol
 
     @eqx.filter_jit
-    def rate_constant(self, T: Either) -> Either:
+    def rate_constant(self, T: ScalarOrVector) -> ScalarOrVector:
         return jnp.exp(self._lnA + self._n * jnp.log(T) - self._EaR / T)
 
     def __str__(self) -> str:
@@ -49,20 +49,24 @@ class Arrhenius(eqx.Module):
 
     def __repr__(self) -> str:
         return (
-            f"Arrhenius(name='{self._name}', "
-            f"A={jnp.exp(self._lnA):.3e}, "
-            f"n={self._n:.3f}, "
-            f"Ea={self._EaR * constants.R_cal_mol:.1f} cal/mol)"
+            f"Arrhenius("
+            f"\n name = {self._name}"
+            f"\n A    = {jnp.exp(self._lnA):.3e}"
+            f"\n n    = {self._n:.3f}"
+            f"\n Ea   = {self._EaR * constants.R_cal_mol:.3e}"
+            "\n)"
         )
 
+    # ==================================================================================
+    # Getters
     @property
-    def A(self) -> Real:
+    def A(self) -> Scalar:
         return jnp.exp(self._lnA)
 
     @property
-    def n(self) -> Real:
+    def n(self) -> Scalar:
         return self._n
 
     @property
-    def Ea(self) -> Real:
+    def Ea(self) -> Scalar:
         return self._EaR * constants.R_cal_mol

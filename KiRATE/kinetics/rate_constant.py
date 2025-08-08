@@ -1,7 +1,6 @@
-from typing import Dict, Optional, TypeAlias, Union
+from typing import Optional, TypeAlias, Union
 
-from jaxtyping import Array, Float64
-
+from ..types.common import RateType, ScalarOrVector, ParamsDict
 from .arrhenius import Arrhenius
 from .cabr import CABR
 from .chebyshev import Chebyshev
@@ -14,10 +13,10 @@ AnyRate: TypeAlias = Union[Arrhenius, Plog, FallOff, CABR, Chebyshev]
 
 def forward_rate_constant(
     reaction: Union[Arrhenius, Plog, FallOff, CABR, Chebyshev],
-    T: Union[Float64, Float64[Array, "dim"]],
-    P: Optional[Union[Float64, Float64[Array, "dim"]]] = None,
-    composition: Optional[Dict[str, Float64]] = None,
-) -> Union[Float64, Float64[Array, "dim"]]:
+    T: ScalarOrVector,
+    P: Optional[ScalarOrVector] = None,
+    composition: Optional[ParamsDict] = None,
+) -> RateType:
     if isinstance(reaction, Arrhenius):
         # ==============================================================================
         # Temperature dependency only
