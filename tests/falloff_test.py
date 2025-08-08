@@ -4,7 +4,7 @@ import unittest
 import jax.numpy as jnp
 import numpy as np
 
-from diffPLOG2TROE.parametrization import CollisionEfficiency, FallOff, forward_rate_constant
+from KiRATE.kinetics import CollisionEfficiency, FallOff, forward_rate_constant
 
 
 class TestFallOff(unittest.TestCase):
@@ -15,14 +15,14 @@ class TestFallOff(unittest.TestCase):
             hpl_parameters={"A": 2.0e12, "n": 0.9, "Ea": 4.8749e04},
             lpl_parameters={"A": 2.49e24, "n": -2.3, "Ea": 4.8749e04},
             falloff_parameters={"A": 0.43, "T3": 1.0e-30, "T1": 1.0e30, "T2": 0.0},
-            efficiencies=[
-                CollisionEfficiency(name="H2O", value=7.65),
-                CollisionEfficiency(name="N2", value=1.5),
-                CollisionEfficiency(name="O2", value=1.2),
-                CollisionEfficiency(name="HE", value=0.65),
-                CollisionEfficiency(name="H2O2", value=7.7),
-                CollisionEfficiency(name="H2", value=3.7),
-            ],
+            efficiencies={
+                "H2O": CollisionEfficiency(name="H2O", value=7.65),
+                "N2": CollisionEfficiency(name="N2", value=1.5),
+                "O2": CollisionEfficiency(name="O2", value=1.2),
+                "HE": CollisionEfficiency(name="HE", value=0.65),
+                "H2O2": CollisionEfficiency(name="H2O2", value=7.7),
+                "H2": CollisionEfficiency(name="H2", value=3.7),
+            },
             falloff_type="troe",
             name="H2O2(+M)=OH+OH(+M)",
         )
@@ -140,9 +140,6 @@ class TestFallOff(unittest.TestCase):
             P=self.P_range,
             composition={"AR": 0.2, "O2": 0.3, "H2O": 0.5},
         )
-        print("SIEFF")
-        print(calculated_rates[0][0])
-        print(self.expected_rate_aro2h2o[0][0])
         for i, calculated_rate in enumerate(calculated_rates):
             self.assertTrue(
                 jnp.allclose(

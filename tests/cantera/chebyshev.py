@@ -15,7 +15,7 @@ P_range = np.logspace(np.log10(0.1), np.log10(50), 300)
 
 k_matrix = np.zeros((len(P_range), len(T_range)))
 
-print(f"Extracting rate constants for (CHEBYSHEV) reaction: {gas.reaction(2).equation}")
+print(f"Extracting rate constants for (CHEBYSHEV) reaction: {gas.reaction(3).equation}")
 print(f" - Temperature range: {T_range[0]:.1f} - {T_range[-1]:.1f} K")
 print(f" - Pressure range: {P_range[0]:.3f} - {P_range[-1]:.1f} atm")
 for t_idx, t in enumerate(T_range):

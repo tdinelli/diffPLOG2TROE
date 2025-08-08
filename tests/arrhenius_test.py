@@ -4,8 +4,8 @@ import unittest
 import jax.numpy as jnp
 import numpy as np
 
-from diffPLOG2TROE.parametrization import Arrhenius
-from diffPLOG2TROE.parametrization import forward_rate_constant
+from KiRATE.kinetics import Arrhenius
+from KiRATE.kinetics import forward_rate_constant
 
 
 class TestArrhenius(unittest.TestCase):

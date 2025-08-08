@@ -4,7 +4,7 @@ import unittest
 import jax.numpy as jnp
 import numpy as np
 
-from diffPLOG2TROE.parametrization import Chebyshev, forward_rate_constant
+from KiRATE.kinetics import Chebyshev, forward_rate_constant
 
 
 class TestChebyshev(unittest.TestCase):
