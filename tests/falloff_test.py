@@ -4,7 +4,7 @@ import unittest
 import jax.numpy as jnp
 import numpy as np
 
-from KiRATE.kinetics import CollisionEfficiency, FallOff, forward_rate_constant
+from KiRATE.kinetics import FallOff
 
 
 class TestFallOff(unittest.TestCase):
@@ -15,14 +15,7 @@ class TestFallOff(unittest.TestCase):
             hpl_parameters={"A": 2.0e12, "n": 0.9, "Ea": 4.8749e04},
             lpl_parameters={"A": 2.49e24, "n": -2.3, "Ea": 4.8749e04},
             falloff_parameters={"A": 0.43, "T3": 1.0e-30, "T1": 1.0e30, "T2": 0.0},
-            efficiencies={
-                "H2O": CollisionEfficiency(name="H2O", value=7.65),
-                "N2": CollisionEfficiency(name="N2", value=1.5),
-                "O2": CollisionEfficiency(name="O2", value=1.2),
-                "HE": CollisionEfficiency(name="HE", value=0.65),
-                "H2O2": CollisionEfficiency(name="H2O2", value=7.7),
-                "H2": CollisionEfficiency(name="H2", value=3.7),
-            },
+            efficiencies={"H2O": 7.65, "N2": 1.5, "O2": 1.2, "HE": 0.65, "H2O2": 7.7, "H2": 3.7},
             falloff_type="troe",
             name="H2O2(+M)=OH+OH(+M)",
         )
@@ -43,7 +36,7 @@ class TestFallOff(unittest.TestCase):
         data = np.loadtxt(data_file, delimiter=";")
         self.expected_rate_aro2h2o = jnp.array(data)
 
-    def test_kinetic_constant_ar_direct(self):
+    def test_kinetic_constant_ar(self):
         calculated_rates = self.reaction.rate_constant(
             T=self.T_range,
             P=self.P_range,
@@ -60,26 +53,7 @@ class TestFallOff(unittest.TestCase):
                 "",
             )
 
-    def test_kinetic_constant_ar_wrapped(self):
-        calculated_rates = forward_rate_constant(
-            reaction=self.reaction,
-            T=self.T_range,
-            P=self.P_range,
-            composition={"AR": 1},
-        )
-
-        for i, calculated_rate in enumerate(calculated_rates):
-            self.assertTrue(
-                jnp.allclose(
-                    calculated_rate,
-                    self.expected_rate_ar[i],
-                    atol=1e-10,
-                    rtol=1e-8,
-                ),
-                "",
-            )
-
-    def test_kinetic_constant_arh2o_direct(self):
+    def test_kinetic_constant_arh2o(self):
         calculated_rates = self.reaction.rate_constant(
             T=self.T_range,
             P=self.P_range,
@@ -97,44 +71,7 @@ class TestFallOff(unittest.TestCase):
                 "",
             )
 
-    def test_kinetic_constant_arh2o_wrapped(self):
-        calculated_rates = forward_rate_constant(
-            reaction=self.reaction,
-            T=self.T_range,
-            P=self.P_range,
-            composition={"AR": 0.5, "H2O": 0.5},
-        )
-
-        for i, calculated_rate in enumerate(calculated_rates):
-            self.assertTrue(
-                jnp.allclose(
-                    calculated_rate,
-                    self.expected_rate_arh2o[i],
-                    atol=1e-10,
-                    rtol=1e-8,
-                ),
-                "",
-            )
-
-    def test_kinetic_constant_aro2h2o_wrapped(self):
-        calculated_rates = forward_rate_constant(
-            self.reaction,
-            T=self.T_range,
-            P=self.P_range,
-            composition={"AR": 0.2, "O2": 0.3, "H2O": 0.5},
-        )
-        for i, calculated_rate in enumerate(calculated_rates):
-            self.assertTrue(
-                jnp.allclose(
-                    calculated_rate,
-                    self.expected_rate_aro2h2o[i],
-                    atol=1e-10,
-                    rtol=1e-8,
-                ),
-                "",
-            )
-
-    def test_kinetic_constant_aro2h2o_direct(self):
+    def test_kinetic_constant_aro2h2o(self):
         calculated_rates = self.reaction.rate_constant(
             T=self.T_range,
             P=self.P_range,

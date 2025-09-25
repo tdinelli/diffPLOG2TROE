@@ -4,7 +4,7 @@ import unittest
 import jax.numpy as jnp
 import numpy as np
 
-from KiRATE.kinetics import Chebyshev, forward_rate_constant
+from KiRATE.kinetics import Chebyshev
 
 
 class TestChebyshev(unittest.TestCase):
@@ -39,22 +39,8 @@ class TestChebyshev(unittest.TestCase):
 
         self.expected_rate = data
 
-    def test_rate_constant_direct(self):
+    def test_rate_constant(self):
         calculated_rates = self.reaction.rate_constant(self.T_range, self.P_range)
-
-        for i, calculated_rate in enumerate(calculated_rates):
-            self.assertTrue(
-                jnp.allclose(
-                    calculated_rate,
-                    self.expected_rate[i],
-                    atol=1e-10,
-                    rtol=1e-8,
-                ),
-                "",
-            )
-
-    def test_rate_constant_wrapped(self):
-        calculated_rates = forward_rate_constant(self.reaction, self.T_range, self.P_range)
 
         for i, calculated_rate in enumerate(calculated_rates):
             self.assertTrue(

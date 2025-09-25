@@ -1,34 +1,41 @@
+"""
+Copyright (c) 2025 Timoteo Dinelli
+Licensed under the MIT License - see LICENSE file for details
+"""
+
+from typing import Dict, Optional, Tuple, Union
+
 import equinox as eqx
 import jax.numpy as jnp
 from jax import lax, vmap
-
-from ..types.common import Integer, Matrix, RateType, Scalar, ScalarOrVector, TupleOfFloat
+from jaxtyping import Array, Float64
 
 
 class Chebyshev(eqx.Module):
-    _chebyshev_coefficients: Matrix
-    _log10P_min: Scalar
-    _log10P_max: Scalar
-    _T_min: Scalar
-    _T_max: Scalar
-    _P_min: Scalar
-    _P_max: Scalar
+    _chebyshev_coefficients: Float64[Array, "nt np"]
+    _log10P_min: Float64[Array, ""]
+    _log10P_max: Float64[Array, ""]
+    _T_min: Float64[Array, ""]
+    _T_max: Float64[Array, ""]
+    _P_min: Float64[Array, ""]
+    _P_max: Float64[Array, ""]
     _name: str = eqx.field(static=True, default="")
 
     def __init__(
         self,
-        order_T: Integer,
-        order_P: Integer,
-        chebyshev_coefficients: Matrix,
-        T_limits: TupleOfFloat = (300.0, 2500.0),
-        P_limits: TupleOfFloat = (0.001, 100.0),
+        order_T: int,
+        order_P: int,
+        chebyshev_coefficients: Float64[Array, "nt np"],
+        T_limits: Tuple[float, float] = (300.0, 2500.0),
+        P_limits: Tuple[float, float] = (0.001, 100.0),
         name: str = "",
     ) -> None:
         self._validate_limits(T_limits)
-        self._T_min, self._T_max = T_limits
+        self._T_min, self._T_max = jnp.float64(T_limits)
 
         self._validate_limits(P_limits)
-        self._P_min, self._P_max = P_limits
+        self._P_min, self._P_max = jnp.float64(P_limits)
+
         self._log10P_min = jnp.log10(self._P_min)
         self._log10P_max = jnp.log10(self._P_max)
 
@@ -40,7 +47,12 @@ class Chebyshev(eqx.Module):
         self._name = name
 
     @eqx.filter_jit
-    def rate_constant(self, T: ScalarOrVector, P: ScalarOrVector, is_violation_allowed: bool = False) -> RateType:
+    def rate_constant(
+        self,
+        T: Union[float, Float64[Array, ""], Float64[Array, "nt"]],
+        P: Union[float, Float64[Array, ""], Float64[Array, "np"]],
+        is_violation_allowed: bool = False,
+    ) -> Union[Float64[Array, ""], Float64[Array, "nt"], Float64[Array, "np"], Float64[Array, "nt np"]]:
         Tc, Pc = lax.cond(
             is_violation_allowed,
             lambda operands: (
@@ -61,7 +73,11 @@ class Chebyshev(eqx.Module):
             return vec_func(P_tilde)
 
     @eqx.filter_jit
-    def _single_P_rate_constant(self, T_tilde: ScalarOrVector, P_tilde: Scalar) -> ScalarOrVector:
+    def _single_P_rate_constant(
+        self,
+        T_tilde: Union[float, Float64[Array, ""], Float64[Array, "nt"]],
+        P_tilde: Float64[Array, ""],
+    ) -> Union[Float64[Array, ""], Float64[Array, "nt"]]:
         N, M = self._chebyshev_coefficients.shape
 
         # ====================================================================
@@ -92,7 +108,7 @@ class Chebyshev(eqx.Module):
         return jnp.cos(n * jnp.arccos(x_clipped))
 
     @staticmethod
-    def _validate_limits(limits: TupleOfFloat) -> None:
+    def _validate_limits(limits: Tuple[float, float]) -> None:
         lower_limit, upper_limit = limits
         if lower_limit > upper_limit:
             raise ValueError(

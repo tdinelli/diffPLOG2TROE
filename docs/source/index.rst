@@ -29,12 +29,12 @@ Quick Start
 
 .. code-block:: python
 
-   from diffPLOG2TROE import Arrhenius
-   
+   from KiRATE.kinetics import Arrhenius
+
    # Create an Arrhenius reaction
    params = {"A": 1e13, "n": 0.0, "Ea": 50000}
    reaction = Arrhenius(params, name="example")
-   
+
    # Calculate rate constant at 1000 K
    k = reaction.rate_constant(1000.0)
 

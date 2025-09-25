@@ -127,8 +127,7 @@ reactions:
 # checks over some of the implementations
 # -----------------------------------------
 # Here we are testing the equivalence of
-# the two implementations (reactions 9 and
-# 10)
+# the two implementations (reactions 9 and 10)
 - equation: H + O2 (+M) <=> HO2 (+M) # Reaction 9
   type: falloff
   duplicate: true

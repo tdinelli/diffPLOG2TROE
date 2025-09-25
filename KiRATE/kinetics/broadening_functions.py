@@ -1,13 +1,23 @@
+"""
+Copyright (c) 2025 Timoteo Dinelli
+Licensed under the MIT License - see LICENSE file for details
+"""
+
 from functools import partial
+from typing import Dict, Optional, Union
 
 import jax.numpy as jnp
 from jax import jit, lax
-
-from ..types.common import ScalarOrVector, ParamsDict, Scalar
+from jaxtyping import Array, Float64
 
 
 @partial(jit, static_argnums=(0,))
-def compute_broadening_factor(broadening_type: str, T: ScalarOrVector, Pr: Scalar, parameters: ParamsDict) -> ScalarOrVector:
+def compute_broadening_factor(
+    broadening_type: str,
+    T: Union[Float64[Array, ""], Float64[Array, "nt"]],
+    Pr: Float64[Array, ""],
+    parameters: Optional[Dict[str, Float64[Array, ""]]] = None,
+) -> Union[Float64[Array, ""], Float64[Array, "nt"]]:
     if broadening_type == "lindemann":
         return lindemann(T)
     elif broadening_type == "troe" and parameters is not None:
@@ -16,13 +26,19 @@ def compute_broadening_factor(broadening_type: str, T: ScalarOrVector, Pr: Scala
         return sri(T, Pr, parameters)
     elif broadening_type == "tsang" and parameters is not None:
         return tsang(T, Pr, parameters)
+    else:
+        raise ValueError(f"Broadening type {broadening_type} is not unknown!")
 
 
-def lindemann(T: ScalarOrVector) -> ScalarOrVector:
+def lindemann(T: Union[Float64[Array, ""], Float64[Array, "nt"]]) -> Union[Float64[Array, ""], Float64[Array, "nt"]]:
     return jnp.ones_like(T, dtype=jnp.float64)
 
 
-def troe(T: ScalarOrVector, Pr: Scalar, parameters: ParamsDict) -> ScalarOrVector:
+def troe(
+    T: Union[Float64[Array, ""], Float64[Array, "nt"]],
+    Pr: Float64[Array, ""],
+    parameters: Dict[str, Float64[Array, ""]],
+) -> Union[Float64[Array, ""], Float64[Array, "nt"]]:
     alpha, T3, T1, T2 = parameters["A"], parameters["T3"], parameters["T1"], parameters["T2"]
 
     # ==============================================================================
@@ -47,7 +63,11 @@ def troe(T: ScalarOrVector, Pr: Scalar, parameters: ParamsDict) -> ScalarOrVecto
     return 10.0 ** (logFcent / (1.0 + f1))
 
 
-def sri(T: ScalarOrVector, Pr: Scalar, parameters: ParamsDict) -> ScalarOrVector:
+def sri(
+    T: Union[Float64[Array, ""], Float64[Array, "nt"]],
+    Pr: Float64[Array, ""],
+    parameters: Dict[str, Float64[Array, ""]],
+) -> Union[Float64[Array, ""], Float64[Array, "nt"]]:
     a, b, c, d, e = parameters["a"], parameters["b"], parameters["c"], parameters["d"], parameters["e"]
 
     # ==============================================================================
@@ -64,7 +84,11 @@ def sri(T: ScalarOrVector, Pr: Scalar, parameters: ParamsDict) -> ScalarOrVector
     return d * (base**X) * (T**e)
 
 
-def tsang(T: ScalarOrVector, Pr: Scalar, parameters: ParamsDict) -> ScalarOrVector:
+def tsang(
+    T: Union[Float64[Array, ""], Float64[Array, "nt"]],
+    Pr: Float64[Array, ""],
+    parameters: Dict[str, Float64[Array, ""]],
+) -> Union[Float64[Array, ""], Float64[Array, "nt"]]:
     A, B = parameters["A"], parameters["B"]
 
     # ==============================================================================

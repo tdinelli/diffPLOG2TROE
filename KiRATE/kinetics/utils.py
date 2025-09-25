@@ -1,118 +1,56 @@
 import warnings
-from enum import IntEnum
-from typing import Optional, Union
+from typing import Dict, Optional
 
 import jax.numpy as jnp
-from jaxtyping import Float64
-
-from ..types.common import ParamsDict
-
-
-class BroadeningFunctionType(IntEnum):
-    lindemann = 0
-    troe = 1
-    sri = 2
-    tsang = 3
-
-
-def _convert_to_broadening_type(broadening_type: str) -> int:
-    try:
-        return {
-            "lindemann": BroadeningFunctionType.lindemann,
-            "troe": BroadeningFunctionType.troe,
-            "sri": BroadeningFunctionType.sri,
-            "tsang": BroadeningFunctionType.tsang,
-        }[broadening_type.lower()]
-    except KeyError:
-        available = ", ".join(f"'{k}'" for k in ["lindemann", "troe", "sri", "tsang"])
-        raise ValueError(f"Unknown broadening function type '{broadening_type}'. Available types are: {available}")
 
 
 def validate_broadening_parameters(
     broadening_type: str,
-    parameters: Optional[ParamsDict] = None,
-) -> Union[None, ParamsDict]:
-    broadening_type_int = _convert_to_broadening_type(broadening_type)
+    parameters: Optional[Dict[str, float]] = None,
+) -> None:
+    """Static validation function that raises errors for invalid parameters."""
+    if broadening_type == "troe" and parameters is not None:
+        required_keys = {"A", "T3", "T1", "T2"}
+        missing_keys = required_keys - parameters.keys()
+        if missing_keys:
+            raise ValueError(f"Missing required parameters: {missing_keys}")
 
-    if broadening_type_int == 0:
-        pass
+        A, T3, T1, T2 = parameters["A"], parameters["T3"], parameters["T1"], parameters["T2"]
+        if A <= 0 or A > 1:
+            raise ValueError(f"Parameter A (={A}) is out of valid range: must satisfy 0 < A ≤ 1.")
+        if T3 <= 0:
+            raise ValueError(f"Parameter T3 (={T3}) must be positive: T3 > 0.")
+        if T1 <= 0:
+            raise ValueError(f"Parameter T1 (={T1}) must be positive: T1 > 0.")
+        if T2 < 0:
+            raise ValueError(f"Parameter T2 (={T2}) cannot be negative: T2 ≥ 0.")
 
-    if broadening_type_int == 1 and parameters is not None:
-        _validate_troe_parameters(parameters)
+    elif broadening_type == "sri" and parameters is not None:
+        required_keys = {"a", "b", "c", "d", "e"}
+        missing_keys = required_keys - parameters.keys()
+        if missing_keys:
+            raise ValueError(f"Missing required parameters: {missing_keys}")
 
-    if broadening_type_int == 2 and parameters is not None:
-        _validate_sri_parameters(parameters)
+        c, d = parameters["c"], parameters["d"]
+        if c == 0:
+            raise ValueError(f"Parameter c (={c}) must be different from 0.")
+        if d == 0:
+            raise ValueError(f"Parameter d (={d}) must be different from 0.")
 
-    if broadening_type_int == 3 and parameters is not None:
-        _validate_tsang_parameters(parameters)
+    elif broadening_type == "tsang" and parameters is not None:
+        required_keys = {"A", "B"}
+        missing_keys = required_keys - parameters.keys()
+        if missing_keys:
+            raise ValueError(f"Missing required parameters: {missing_keys}")
 
-    return parameters
-
-
-def _validate_troe_parameters(parameters: ParamsDict) -> None:
-    required_keys = {"A", "T3", "T1", "T2"}
-    missing_keys = required_keys - parameters.keys()
-    if missing_keys:
-        raise ValueError(f"Missing required parameters: {missing_keys}")
-
-    A = parameters["A"]
-    T3 = parameters["T3"]
-    T1 = parameters["T1"]
-    T2 = parameters["T2"]
-
-    if A <= 0 or A > 1:
-        raise ValueError(f"Parameter A (={A}) is out of valid range: must satisfy 0 < A ≤ 1.")
-
-    if T3 <= 0:
-        raise ValueError(f"Parameter T3 (={T3}) must be positive: T3 > 0.")
-
-    if T1 <= 0:
-        raise ValueError(f"Parameter T1 (={T1}) must be positive: T1 > 0.")
-
-    if T2 < 0:
-        raise ValueError(f"Parameter T2 (={T2}) cannot be negative: T2 ≥ 0.")
-
-
-def _validate_sri_parameters(parameters: ParamsDict) -> None:
-    """ """
-
-    required_keys = {"a", "b", "c", "d", "e"}
-    missing_keys = required_keys - parameters.keys()
-    if missing_keys:
-        raise ValueError(f"Missing required parameters: {missing_keys}")
-
-    a = parameters["a"]
-    b = parameters["b"]
-    c = parameters["c"]
-    d = parameters["d"]
-    e = parameters["e"]
-
-    if c == 0:
-        raise ValueError(f"Parameter c (={c}) must be different from 0.")
-
-    if d == 0:
-        raise ValueError(f"Parameter d (={d}) must be different from 0.")
+        A, B = parameters["A"], parameters["B"]
+        if A == 0:
+            raise ValueError(f"Parameter A (={A}) must be different from 0.")
+        if B == 0:
+            raise ValueError(f"Parameter B (={B}) must be different from 0.")
 
 
-def _validate_tsang_parameters(parameters: ParamsDict) -> None:
-    """ """
-
-    required_keys = {"A", "B"}
-    missing_keys = required_keys - parameters.keys()
-    if missing_keys:
-        raise ValueError(f"Missing required parameters: {missing_keys}")
-
-    A = parameters["A"]
-    B = parameters["B"]
-
-    if A == 0:
-        raise ValueError(f"Parameter A (={A}) must be different from 0.")
-
-    if B == 0:
-        raise ValueError(f"Parameter B (={B}) must be different from 0.")
-
-
-def validate_arrhenius_parameters(parameters: ParamsDict) -> None:
+def validate_arrhenius_parameters(parameters: Dict[str, float]) -> None:
     # ==============================================================================
     # Check for required keys
     required_keys = {"A", "n", "Ea"}
@@ -129,7 +67,11 @@ def validate_arrhenius_parameters(parameters: ParamsDict) -> None:
     # ==============================================================================
     # Validate pre-exponential factor
     if A <= 0:
-        warnings.warn(f"Pre-exponential factor A is usually positive be careful, got {A}", UserWarning, stacklevel=2)
+        warnings.warn(
+            f"Pre-exponential factor A is usually positive, be careful, got {A}",
+            UserWarning,
+            stacklevel=2,
+        )
 
     if not jnp.isfinite(A):
         raise ValueError(f"Pre-exponential factor A must be finite, got {A}")
@@ -154,7 +96,7 @@ def validate_arrhenius_parameters(parameters: ParamsDict) -> None:
         raise ValueError(f"Activation energy Ea must be finite, got {Ea}")
 
 
-def validate_efficiencies(efficiencies: ParamsDict) -> None:
+def validate_efficiencies(efficiencies: Dict[str, float]) -> None:
     for species, efficiency in efficiencies.items():
-        if efficiency < 0:
+        if efficiency < 0.0:
             raise ValueError(f"Collision efficiency must be positive. {species} given {efficiency}")

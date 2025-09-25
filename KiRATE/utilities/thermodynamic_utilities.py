@@ -1,20 +1,19 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 import jax.numpy as jnp
 from jax import jit
+from jaxtyping import Array, Float64
 
-from ..kinetics.collision_efficiency import CollisionEfficiency
-from ..types.common import ScalarOrVector, ParamsDict
 from .physical_constants import constants
 
 
 @jit
 def calculate_effective_concentration(
-    T: ScalarOrVector,
-    P: ScalarOrVector,
-    composition: Optional[ParamsDict] = None,
-    efficiencies: Optional[Dict[str, CollisionEfficiency]] = None,
-) -> ScalarOrVector:
+    T: Union[Float64[Array, ""], Float64[Array, "nt"]],
+    P: Union[Float64[Array, ""], Float64[Array, "np"]],
+    composition: Optional[Dict[str, Float64[Array, ""]]] = None,
+    efficiencies: Optional[Dict[str, Float64[Array, ""]]] = None,
+) -> Union[Float64[Array, ""], Float64[Array, "nt"], Float64[Array, "np"], Float64[Array, "nt np"]]:
     """Calculate concentration with collision efficiencies applied (if provided)."""
     M = calculate_concentration(T, P)  # [mol/cm3]
 
@@ -24,8 +23,8 @@ def calculate_effective_concentration(
     species_list = list(composition.keys())
     mole_fractions = jnp.array([composition[s] for s in species_list])
 
-    default_eff = CollisionEfficiency(value=1.0)
-    eff_values = jnp.array([efficiencies.get(species, default_eff).value() for species in species_list])
+    default_eff = jnp.float64(1.0)
+    eff_values = jnp.array([efficiencies.get(species, default_eff) for species in species_list])
 
     total_accounted_fraction = jnp.sum(mole_fractions)
     weighted_efficiency = jnp.sum(eff_values * mole_fractions)
@@ -37,7 +36,10 @@ def calculate_effective_concentration(
     return eff_M
 
 
-def calculate_concentration(T: ScalarOrVector, P: ScalarOrVector) -> ScalarOrVector:
+def calculate_concentration(
+    T: Union[Float64[Array, ""], Float64[Array, "np"]],
+    P: Union[Float64[Array, ""], Float64[Array, "nt"]],
+) -> Union[Float64[Array, ""], Float64[Array, "nt"], Float64[Array, "np"], Float64[Array, "np nt"]]:
     # TODO: Update the documentation
     """
     Calculate molar concentration from pressure and temperature using the ideal gas law.
@@ -62,7 +64,10 @@ def calculate_concentration(T: ScalarOrVector, P: ScalarOrVector) -> ScalarOrVec
         - If one is scalar and one is array: returns an array matching the non-scalar input
         - If both are arrays: returns a 2D meshgrid where result[i, j] corresponds to T[i], P[j]
     """
+    T = jnp.asarray(T, dtype=jnp.float64)
+    P = jnp.asarray(P, dtype=jnp.float64)
     P = P * jnp.float64(101325.0)  # [Pa] which is [J/m3]
+
     R = constants.R_J_mol_K  # [J/mol/K]
     conversion_factor = jnp.float64(1e6)  # from [m3] to [cm3]
 
