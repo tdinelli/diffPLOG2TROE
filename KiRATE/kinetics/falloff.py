@@ -28,8 +28,8 @@ class FallOff(eqx.Module):
 
     where:
         - k(T, P, [M]) is the pressure-dependent rate constant
-        - :math:`k_\\infty`(T) is the high-pressure limit (Arrhenius)
-        - :math:`k_0`(T) is the low-pressure limit (Arrhenius)
+        - :math:`k_\\infty(T)` is the high-pressure limit (Arrhenius)
+        - :math:`k_0(T)` is the low-pressure limit (Arrhenius)
         - :math:`P_r = k_0(T) \\cdot [M] / k_\\infty (T)` is the reduced pressure
         - [M] is the effective third-body concentration with efficiencies
         - F(T, Pr) is the broadening factor (Lindemann, Troe, SRI, or Tsang)
