@@ -97,19 +97,19 @@ class ArrheniusFittingResults:
 
         # Print parameters based on type
         if isinstance(self.arrhenius, ReparametrizedArrhenius):
-            k_ref = jnp.exp(self.arrhenius.lnk_ref)
-            Ea = self.arrhenius.EaR * constants.R_cal_mol
+            k_ref = self.arrhenius.k_ref
+            Ea = self.arrhenius.Ea
             print(f"Parametrization: Centered (T_ref = {self.arrhenius.T_ref:.1f} K)")
-            print(f"k_ref = {k_ref:.3e}")
-            print(f"n     = {self.arrhenius.n:.3f}")
-            print(f"Ea    = {Ea:.1f} cal/mol")
+            print(f" k_ref = {k_ref:.5E}")
+            print(f" n     = {self.arrhenius.n:.5E}")
+            print(f" Ea    = {Ea:.5E}")
         else:
-            A = jnp.exp(self.arrhenius.lnA)
-            Ea = self.arrhenius.EaR * constants.R_cal_mol
+            A = self.arrhenius.A
+            Ea = self.arrhenius.Ea
             print(f"Parametrization: Standard")
-            print(f"A  = {A:.3e}")
-            print(f"n  = {self.arrhenius.n:.3f}")
-            print(f"Ea = {Ea:.1f} cal/mol")
+            print(f" A  = {A:.5E}")
+            print(f" n  = {self.arrhenius.n:.5E}")
+            print(f" Ea = {Ea:.5E}")
 
         print(f"\nFit Quality:")
         print(f"RMS residual = {self.rms_residual:.4f}")
@@ -122,14 +122,14 @@ class ArrheniusFittingResults:
                 print(f"k_ref: ±{k_ref_std:.3e} ({k_ref_std / k_ref * 100:.1f}%)")
                 print(f"n:     ±{self.std_errors[1]:.3f} ({abs(self.std_errors[1] / self.arrhenius.n) * 100:.1f}%)")
                 print(
-                    f"Ea:    ±{self.std_errors[2] * constants.R_cal_mol:.1f} cal/mol ({abs(self.std_errors[2] * constants.R_cal_mol / Ea) * 100:.1f}%)"
+                    f"Ea:    ±{self.std_errors[2]:.5E} ({abs(self.std_errors[2] / Ea) * 100:.5E}%)"
                 )
             else:
                 A_std = A * self.std_errors[0]  # Convert from log-space
-                print(f"A:  ±{A_std:.3e} ({A_std / A * 100:.1f}%)")
-                print(f"n:  ±{self.std_errors[1]:.3f} ({abs(self.std_errors[1] / self.arrhenius.n) * 100:.1f}%)")
+                print(f"A:  ±{A_std:.5E} ({A_std / A * 100:.1f}%)")
+                print(f"n:  ±{self.std_errors[1]:.5E} ({abs(self.std_errors[1] / self.arrhenius.n) * 100:.1f}%)")
                 print(
-                    f"Ea: ±{self.std_errors[2] * constants.R_cal_mol:.1f} cal/mol ({abs(self.std_errors[2] * constants.R_cal_mol / Ea) * 100:.1f}%)"
+                    f"Ea: ±{self.std_errors[2] * constants.R_cal_mol:.5E} cal/mol ({abs(self.std_errors[2] * constants.R_cal_mol / Ea) * 100:.1f}%)"
                 )
 
         if verbose and self.corr_matrix is not None:
