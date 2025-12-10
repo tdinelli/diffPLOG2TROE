@@ -18,6 +18,7 @@ class PhysicalConstants:
     _J_TO_CAL: Float64[Array, ""] = jnp.float64(4.184)  # Conversion from joules to calories
     _MOL_TO_KMOL: Float64[Array, ""] = jnp.float64(1000.0)  # Conversion from mol to kmol
     R_J_mol_K: Float64[Array, ""] = jnp.float64(8.31446261815324)  # Ideal gas constant [J/mol/K]
+    N_A: Float64[Array, ""] = jnp.float64(6.02214076e23)  # Avogadro constant [1/mol]
 
     @property
     def R_cal_mol(self) -> Float64[Array, ""]:

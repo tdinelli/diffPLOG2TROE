@@ -48,7 +48,7 @@ class TestArrhenius(unittest.TestCase):
 
     def setUp(self):
         self.T_range = jnp.linspace(300, 3000, 300)
-        self.reaction = Arrhenius(parameters={"A": 5.08e04, "n": 2.67, "Ea": 6292}, name="H2+O=H+OH")
+        self.reaction = Arrhenius(parameters={"A": 1.000e+14, "n": 0.0, "Ea": 1.5286e+04}, name="H2+O=H+OH")
 
         # Test temperatures for gradient validation
         self.test_temperatures = jnp.array([300.0, 1000.0, 1500.0, 2000.0, 3000.0])
@@ -57,10 +57,13 @@ class TestArrhenius(unittest.TestCase):
         # Dataloader for rate constant validation
         current_file_path = os.path.abspath(__file__)
         current_dir = os.path.dirname(current_file_path)
-        data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.1.0", "arrhenius.csv")
+        data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.2.0", "arrhenius.csv")
         data = np.loadtxt(data_file, delimiter=";")
         data = jnp.array(data)
-        self.expected_rate = data[:, 1]
+
+        # Cantera returns the rate constant in m³/kmol·s so the conversion is:
+        # cm³/(mol·s) = m³/(kmol·s) × 10⁶ / 1000 = m³/(kmol·s) × 10³
+        self.expected_rate = data[:, 1] * 1000
 
         # ==============================================================================
         # Additional test cases for gradient validation
@@ -70,13 +73,14 @@ class TestArrhenius(unittest.TestCase):
 
     def test_arrhenius_rate_constant(self):
         """Test direct rate constant calculation against reference data."""
-        calculated_rates = self.reaction.rate_constant(self.T_range) / 1000
+        calculated_rates = self.reaction.rate_constant(self.T_range)
+
         self.assertTrue(
             jnp.allclose(
                 calculated_rates,
                 self.expected_rate,
                 atol=1e-10,
-                rtol=1e-8,
+                rtol=1e-10,
             ),
             "Calculated rate constants (from the direct function) for the Arrhenius case don't match reference data",
         )
@@ -101,21 +105,20 @@ class TestArrhenius(unittest.TestCase):
                         # Get analytical gradients
                         analytical_dkdA, analytical_dkdn, analytical_dkdEa = self.analytical_gradients(reaction, T)
 
-                        # Compare gradients with high precision
                         self.assertTrue(
-                            jnp.allclose(autodiff_grads.A, analytical_dkdA, rtol=1e-8, atol=1e-10),
+                            jnp.allclose(autodiff_grads.A, analytical_dkdA, rtol=1e-10, atol=1e-10),
                             f"dk/dA mismatch for {reaction_name} at T={T}K: "
                             f"autodiff={autodiff_grads.A:.6e}, analytical={analytical_dkdA:.6e}",
                         )
 
                         self.assertTrue(
-                            jnp.allclose(autodiff_grads.n, analytical_dkdn, rtol=1e-8, atol=1e-10),
+                            jnp.allclose(autodiff_grads.n, analytical_dkdn, rtol=1e-10, atol=1e-10),
                             f"dk/dn mismatch for {reaction_name} at T={T}K: "
                             f"autodiff={autodiff_grads.n:.6e}, analytical={analytical_dkdn:.6e}",
                         )
 
                         self.assertTrue(
-                            jnp.allclose(autodiff_grads.Ea, analytical_dkdEa, rtol=1e-8, atol=1e-10),
+                            jnp.allclose(autodiff_grads.Ea, analytical_dkdEa, rtol=1e-10, atol=1e-10),
                             f"dk/dEa mismatch for {reaction_name} at T={T}K: "
                             f"autodiff={autodiff_grads.Ea:.6e}, analytical={analytical_dkdEa:.6e}",
                         )
@@ -140,9 +143,8 @@ class TestArrhenius(unittest.TestCase):
                         # Get analytical gradient
                         analytical_dkdT = self.analytical_temperature_gradient(reaction, T)
 
-                        # Compare gradients with high precision
                         self.assertTrue(
-                            jnp.allclose(autodiff_dkdT, analytical_dkdT, rtol=1e-8, atol=1e-10),
+                            jnp.allclose(autodiff_dkdT, analytical_dkdT, rtol=1e-10, atol=1e-10),
                             f"dk/dT mismatch for {reaction_name} at T={T}K: "
                             f"autodiff={autodiff_dkdT:.6e}, analytical={analytical_dkdT:.6e}",
                         )
@@ -163,18 +165,18 @@ class TestArrhenius(unittest.TestCase):
 
         # Compare vectorized results
         self.assertTrue(
-            jnp.allclose(autodiff_grads.A, analytical_dkdA, rtol=1e-8, atol=1e-10),
-            f"Vectorized dk/dA mismatch",
+            jnp.allclose(autodiff_grads.A, analytical_dkdA, rtol=1e-10, atol=1e-10),
+            "Vectorized dk/dA mismatch",
         )
 
         self.assertTrue(
-            jnp.allclose(autodiff_grads.n, analytical_dkdn, rtol=1e-8, atol=1e-10),
-            f"Vectorized dk/dn mismatch",
+            jnp.allclose(autodiff_grads.n, analytical_dkdn, rtol=1e-10, atol=1e-10),
+            "Vectorized dk/dn mismatch",
         )
 
         self.assertTrue(
-            jnp.allclose(autodiff_grads.Ea, analytical_dkdEa, rtol=1e-8, atol=1e-10),
-            f"Vectorized dk/dEa mismatch",
+            jnp.allclose(autodiff_grads.Ea, analytical_dkdEa, rtol=1e-10, atol=1e-10),
+            "Vectorized dk/dEa mismatch",
         )
 
     def test_temperature_gradients_vectorized(self):
@@ -190,8 +192,8 @@ class TestArrhenius(unittest.TestCase):
 
         # Compare vectorized results
         self.assertTrue(
-            jnp.allclose(autodiff_dkdT, analytical_dkdT, rtol=1e-8, atol=1e-10),
-            f"Vectorized dk/dT mismatch",
+            jnp.allclose(autodiff_dkdT, analytical_dkdT, rtol=1e-10, atol=1e-10),
+            "Vectorized dk/dT mismatch",
         )
 
 

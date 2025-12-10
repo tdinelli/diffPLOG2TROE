@@ -1,20 +1,26 @@
-from typing import Dict, Optional, Union
+from typing import Optional
 
 import jax.numpy as jnp
 from jax import jit
 from jaxtyping import Array, Float64
 
-from .physical_constants import constants
+from KiRATE.utilities.physical_constants import constants
 
 
 @jit
 def calculate_effective_concentration(
-    T: Union[Float64[Array, ""], Float64[Array, "nt"]],
-    P: Union[Float64[Array, ""], Float64[Array, "np"]],
-    composition: Optional[Dict[str, Float64[Array, ""]]] = None,
-    efficiencies: Optional[Dict[str, Float64[Array, ""]]] = None,
-) -> Union[Float64[Array, ""], Float64[Array, "nt"], Float64[Array, "np"], Float64[Array, "nt np"]]:
-    """Calculate concentration with collision efficiencies applied (if provided)."""
+    T: Float64[Array, ""] | Float64[Array, "nt"],
+    P: Float64[Array, ""] | Float64[Array, "np"],
+    composition: Optional[dict[str, Float64[Array, ""]]] = None,
+    efficiencies: Optional[dict[str, Float64[Array, ""]]] = None,
+) -> Float64[Array, ""] | Float64[Array, "nt"] | Float64[Array, "np"] | Float64[Array, "nt np"]:
+    """
+    TODO: Documentation much needed here
+
+    T is in kelvin
+    P is bar
+    composition is mole fraction
+    """
     M = calculate_concentration(T, P)  # [mol/cm3]
 
     if efficiencies is None or composition is None:
@@ -37,32 +43,11 @@ def calculate_effective_concentration(
 
 
 def calculate_concentration(
-    T: Union[Float64[Array, ""], Float64[Array, "np"]],
-    P: Union[Float64[Array, ""], Float64[Array, "nt"]],
-) -> Union[Float64[Array, ""], Float64[Array, "nt"], Float64[Array, "np"], Float64[Array, "np nt"]]:
-    # TODO: Update the documentation
+    T: Float64[Array, ""] | Float64[Array, "nt"],
+    P: Float64[Array, ""] | Float64[Array, "np"],
+) -> Float64[Array, ""] | Float64[Array, "nt"] | Float64[Array, "np"] | Float64[Array, "np nt"]:
     """
-    Calculate molar concentration from pressure and temperature using the ideal gas law.
-
-    Computes total concentration Ctot [mol/cm³] = P/(R*T), where:
-    - P is pressure in atmospheres [atm]
-    - T is temperature in Kelvin [K]
-    - R is the gas constant, units must be consistent with T and P
-
-    Parameters
-    ----------
-    T : float or ndarray
-        Temperature in Kelvin [K]. Can be a scalar or array.
-    P : float or ndarray
-        Pressure in atmospheres [atm]. Can be a scalar or array.
-
-    Returns
-    -------
-    float or ndarray
-        Concentration in mol/cm³ with shape depending on inputs:
-        - If both T and P are scalars: returns a scalar
-        - If one is scalar and one is array: returns an array matching the non-scalar input
-        - If both are arrays: returns a 2D meshgrid where result[i, j] corresponds to T[i], P[j]
+    Function that computes the concentration given the ideal gas law.
     """
     T = jnp.asarray(T, dtype=jnp.float64)
     P = jnp.asarray(P, dtype=jnp.float64)

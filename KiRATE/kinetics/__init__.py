@@ -9,4 +9,3 @@ from .chebyshev import Chebyshev
 from .falloff import FallOff
 from .plog import Plog
 from .reparametrized_arrhenius import ReparametrizedArrhenius
-# from .three_body import ThreeBody

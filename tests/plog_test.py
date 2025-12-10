@@ -9,8 +9,13 @@ from KiRATE.kinetics import Plog
 
 class TestPlog(unittest.TestCase):
     def setUp(self):
+        # Define temperature and pressure grids for validation
         self.T_range = jnp.linspace(300, 3000, 300)
+
+        # Pressure range: 0.01 to 100 atm
         self.P_range = jnp.logspace(jnp.log10(0.01), jnp.log10(100), 300)
+
+        # Create PLOG reaction object: OH + NO = HONO
         self.reaction = Plog(
             parameters={
                 0.01: {"A": 5.02e21, "n": -4.24, "Ea": 898.9},
@@ -25,27 +30,41 @@ class TestPlog(unittest.TestCase):
             name="OH+NO=HONO",
         )
 
-        # ==============================================================================
-        # Dataloader
+        # Load reference data from Cantera 3.2.0
+        # Each row corresponds to a pressure level, columns are temperatures
+        # Shape: (300 pressures, 300 temperatures)
         current_file_path = os.path.abspath(__file__)
         current_dir = os.path.dirname(current_file_path)
-        data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.1.0", "plog.csv")
+        data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.2.0", "plog.csv")
         data = np.loadtxt(data_file, delimiter=";")
-        data = jnp.array(data)
+
+        # Unit conversion: Cantera returns k in m3/(kmol s), we use cm3/(mol·s)
+        # Conversion factor: m3/(kmol s) x 1000 = cm3/(mol s)
+        # 1 m3 = 10^6 cm3 and 1 kmol = 1000 mol, so 10^6/1000 = 1000
+        data = jnp.array(data) * 1000
 
         self.expected_rate = data
 
     def test_rate_constant(self):
-        calculated_rates = self.reaction.rate_constant(self.T_range, self.P_range) / 1000
+        # Compute rate constants over full T-P grid
+        # Shape: (300 pressures, 300 temperatures) matching reference data
+        calculated_rates = self.reaction.rate_constant(self.T_range, self.P_range)
+
+        # Validate against reference data pressure-by-pressure
+        # Iterate over pressure levels (axis 0 of output)
         for i, calculated_rate in enumerate(calculated_rates):
+            # Compare calculated k(T, P_i) against reference k(T, P_i)
+            # at all 300 temperatures simultaneously
             self.assertTrue(
                 jnp.allclose(
-                    calculated_rate,
-                    self.expected_rate[i],
+                    calculated_rate,      # Our computed values at pressure P_i
+                    self.expected_rate[i],  # Cantera reference at pressure P_i
                     atol=1e-10,
                     rtol=1e-8,
                 ),
-                "",
+                f"Rate constant mismatch at pressure index {i} "
+                f"(P = {float(self.P_range[i]):.4f} atm). "
+                f"Max error: {float(jnp.max(jnp.abs(calculated_rate - self.expected_rate[i]))):.2e}",
             )
 
 
