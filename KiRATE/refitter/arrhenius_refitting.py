@@ -3,709 +3,383 @@ Copyright (c) 2025 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
+import equinox as eqx
+import jax
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
-import numpy as np
-import optimistix as optx
-from jaxtyping import Array
-from matplotlib.patches import Ellipse
-from scipy.stats import chi2
-from scipy.stats import multivariate_normal
+from jaxtyping import Array, ArrayLike, Float64
+from optimistix import RESULTS, LevenbergMarquardt, least_squares
 
-from ..kinetics.reparametrized_arrhenius import ReparametrizedArrhenius
-from ..utilities.physical_constants import constants
+from KiRATE.kinetics import Arrhenius
+from KiRATE.refitter.utils import RefittingResult, compute_statistics
+from KiRATE.utilities import constants
 
 
-class ArrheniusFittingResults:
+def compute_initial_guess(
+    temperature: Float64[Array, "n"],
+    log_rate_constant: Float64[Array, "n"],
+    params: Optional[dict[str, float]] = None,
+) -> Float64[Array, "n_params"]:
     """
-    Container for Arrhenius fitting results and statistics.
+    Compute initial parameter guess using linear least squares.
 
-    Attributes
-    ----------
-    arrhenius : ReparametrizedArrhenius
-        Fitted Arrhenius object
-    fitted_values : Array
-        Predicted rate constants at input temperatures
-    residuals : Array
-        Log-space residuals (log(k_pred) - log(k_data))
-    rms_residual : float
-        Root mean square of residuals
-    std_errors : Optional[Array]
-        Standard errors of fitted parameters
-    cov_matrix : Optional[Array]
-        Covariance matrix of fitted parameters
-    corr_matrix : Optional[Array]
-        Correlation matrix of fitted parameters
-    max_correlation : Optional[float]
-        Maximum absolute correlation coefficient
-    condition_number : Optional[float]
-        Condition number of covariance matrix
-    success : bool
-        Whether the fitting was successful
-    T_ref : Optional[float]
-        Reference temperature (for centered parametrization only)
-    """
+    Solves the linearized Arrhenius equation:
+        ln(k) = ln(A) + n*ln(T) - Ea/(R*T)
 
-    def __init__(
-        self,
-        arrhenius: ReparametrizedArrhenius,
-        fitted_values: Array,
-        residuals: Array,
-        rms_residual: float,
-        T_ref: Optional[float] = None,
-        std_errors: Optional[Array] = None,
-        cov_matrix: Optional[Array] = None,
-        corr_matrix: Optional[Array] = None,
-        success: bool = True,
-    ):
-        self.arrhenius = arrhenius
-        self.fitted_values = fitted_values
-        self.residuals = residuals
-        self.rms_residual = rms_residual
-        self.T_ref = T_ref
-        self.std_errors = std_errors
-        self.cov_matrix = cov_matrix
-        self.corr_matrix = corr_matrix
-        self.success = success
-
-        # ==============================================================================
-        # Compute additional statistics
-        if corr_matrix is not None:
-            self.max_correlation = jnp.max(jnp.abs(corr_matrix - jnp.eye(len(corr_matrix))))
-        else:
-            self.max_correlation = None
-
-        if cov_matrix is not None:
-            eigenvals = jnp.linalg.eigvals(cov_matrix)
-            self.condition_number = jnp.max(eigenvals) / jnp.min(eigenvals)
-        else:
-            self.condition_number = None
-
-    def print_summary(self, verbose: bool = True) -> None:
-        """
-        Print a summary of the fitting results.
-
-        Parameters
-        ----------
-        verbose : bool
-            If True, print detailed statistics including correlations
-        """
-        print(f"Arrhenius Fitting Results: {self.arrhenius.name}")
-        print("=" * 50)
-
-        # Print parameters based on type
-        if isinstance(self.arrhenius, ReparametrizedArrhenius):
-            k_ref = self.arrhenius.k_ref
-            Ea = self.arrhenius.Ea
-            print(f"Parametrization: Centered (T_ref = {self.arrhenius.T_ref:.1f} K)")
-            print(f" k_ref = {k_ref:.5E}")
-            print(f" n     = {self.arrhenius.n:.5E}")
-            print(f" Ea    = {Ea:.5E}")
-        else:
-            A = self.arrhenius.A
-            Ea = self.arrhenius.Ea
-            print(f"Parametrization: Standard")
-            print(f" A  = {A:.5E}")
-            print(f" n  = {self.arrhenius.n:.5E}")
-            print(f" Ea = {Ea:.5E}")
-
-        print(f"\nFit Quality:")
-        print(f"RMS residual = {self.rms_residual:.4f}")
-        print(f"Success = {self.success}")
-
-        if verbose and self.std_errors is not None:
-            print(f"\nParameter Uncertainties:")
-            if isinstance(self.arrhenius, ReparametrizedArrhenius):
-                k_ref_std = k_ref * self.std_errors[0]  # Convert from log-space
-                print(f"k_ref: ±{k_ref_std:.3e} ({k_ref_std / k_ref * 100:.1f}%)")
-                print(f"n:     ±{self.std_errors[1]:.3f} ({abs(self.std_errors[1] / self.arrhenius.n) * 100:.1f}%)")
-                print(
-                    f"Ea:    ±{self.std_errors[2]:.5E} ({abs(self.std_errors[2] / Ea) * 100:.5E}%)"
-                )
-            else:
-                A_std = A * self.std_errors[0]  # Convert from log-space
-                print(f"A:  ±{A_std:.5E} ({A_std / A * 100:.1f}%)")
-                print(f"n:  ±{self.std_errors[1]:.5E} ({abs(self.std_errors[1] / self.arrhenius.n) * 100:.1f}%)")
-                print(
-                    f"Ea: ±{self.std_errors[2] * constants.R_cal_mol:.5E} cal/mol ({abs(self.std_errors[2] * constants.R_cal_mol / Ea) * 100:.1f}%)"
-                )
-
-        if verbose and self.corr_matrix is not None:
-            print(f"\nCorrelation Analysis:")
-            print(f"Max |correlation| = {self.max_correlation:.3f}")
-            if self.condition_number is not None:
-                print(f"Condition number = {self.condition_number:.2e}")
-                if self.condition_number > 1e12:
-                    print("  Very high condition number - near singular covariance")
-                elif self.condition_number > 1e6:
-                    print("  High condition number - potential numerical issues")
-                else:
-                    print("  Good numerical conditioning")
-
-
-def fit_centered_arrhenius(
-    T: Array,
-    k_data: Array,
-    T_ref: Optional[float] = None,
-    initial_guess: Optional[Dict[str, float]] = None,
-    name: str = "",
-    rtol: float = 1e-10,
-    atol: float = 1e-10,
-    max_steps: int = 1000,
-) -> ArrheniusFittingResults:
-    """
-    Fit centered Arrhenius parameters to experimental data for improved numerical stability.
+    by constructing a design matrix and using least squares regression.
 
     Parameters
     ----------
-    T : Array
-        Temperature data in Kelvin
-    k_data : Array
-        Rate constant data
-    T_ref : Optional[float]
-        Reference temperature. If None, uses mean temperature
-    initial_guess : Optional[Dict[str, float]]
-        Initial parameter guesses {"k_ref": float, "n": float, "Ea": float}
-        If None, uses heuristic estimates
-    name : str
-        Name for the resulting ReparametrizedArrhenius object
-    rtol, atol : float
-        Relative and absolute tolerances for optimization
+    temperature : Float64[Array, "n"]
+        Temperature values (K)
+    log_rate_constant : Float64[Array, "n"]
+        Natural logarithm of rate constants
+    params : dict[str, float], optional
+        Known parameters to fix during fitting. If provided, only unknown
+        parameters will be included in the initial guess.
 
     Returns
     -------
-    ArrheniusFittingResults
-        Fitting results container
+    Float64[Array, "n_params"]
+        Initial guess for free parameters. Order depends on which parameters
+        are being fitted:
+        - If params is None: [A, n, Ea]
+        - Otherwise: subset of free parameters in order [A, n, Ea]
+
+    Notes
+    -----
+    The linear least squares solution provides an excellent initial guess
+    because the logarithm of the Arrhenius equation is linear in the
+    transformed parameters [ln(A), n, Ea/R].
+
+    For many well-conditioned problems, this initial guess is already
+    very close to the optimal solution, leading to rapid convergence.
     """
     # ==================================================================================
-    # Validate input data
-    _validate_input_data(T, k_data)
+    # CASE 1: Fit all three parameters
+    if params is None:
+        # Design matrix: [1, ln(T), -1/T]
+        # Corresponds to: ln(k) = ln(A) + n*ln(T) - Ea/(R*T)
+        X = jnp.column_stack([jnp.ones_like(temperature), jnp.log(temperature), -1.0 / temperature])
+        coeffs, *_ = jnp.linalg.lstsq(X, log_rate_constant, rcond=None)
+
+        # Return [A, n, Ea]
+        # Note: coeffs[0] = ln(A), coeffs[2] = Ea/R
+        return jnp.array([jnp.exp(coeffs[0]), coeffs[1], coeffs[2] * constants.R_cal_mol])
 
     # ==================================================================================
-    # Set reference temperature
-    if T_ref is None:
-        T_ref = float(jnp.mean(T))
-    elif T_ref <= 0:
-        raise ValueError("Reference temperature must be positive")
+    # CASE 2: Fit subset of parameters
+    else:
+        known = {k: v for k, v in params.items() if v is not None}
+        param_names = ["A", "n", "Ea"]
+
+        # Build design matrix and adjust residual for known parameters
+        # Start with full log_k
+        residual = log_rate_constant.copy()
+        design_cols = []
+
+        # For each parameter, either subtract its contribution (if known)
+        # or add to design matrix (if unknown)
+        # Order: A, n, Ea
+
+        # Handle A
+        if "A" in known:
+            # Known A: subtract ln(A) from residual
+            residual = residual - jnp.log(known["A"])
+        else:
+            # Unknown A: add intercept column
+            design_cols.append(jnp.ones_like(temperature))
+
+        # Handle n
+        if "n" in known:
+            # Known n: subtract n*ln(T) from residual
+            residual = residual - known["n"] * jnp.log(temperature)
+        else:
+            # Unknown n: add ln(T) column
+            design_cols.append(jnp.log(temperature))
+
+        # Handle Ea
+        if "Ea" in known:
+            # Known Ea: subtract -Ea/(R*T) from residual (which is adding Ea/(R*T))
+            residual = residual + known["Ea"] / (constants.R_cal_mol * temperature)
+        else:
+            # Unknown Ea: add -1/T column
+            design_cols.append(-1.0 / temperature)
+
+        # Solve for unknowns
+        if not design_cols:
+            raise ValueError("No free parameters to fit (all are fixed)")
+
+        X = jnp.column_stack(design_cols)
+        coeffs, *_ = jnp.linalg.lstsq(X, residual, rcond=None)
+
+        # Map coeffs back to parameters (A needs exp transform, Ea needs R scaling)
+        p0 = []
+        coeff_idx = 0
+        for name in param_names:
+            if name not in known:
+                if name == "A":
+                    p0.append(jnp.exp(coeffs[coeff_idx]))
+                elif name == "Ea":
+                    p0.append(coeffs[coeff_idx] * constants.R_cal_mol)
+                else:  # n
+                    p0.append(coeffs[coeff_idx])
+                coeff_idx += 1
+
+        return jnp.array(p0)
+
+
+def refitter(
+    temperature: ArrayLike,
+    rate_constant: ArrayLike,
+    params: Optional[dict[str, float]] = None,
+    initial_guess: Optional[ArrayLike] = None,
+    max_steps: int = 1000,
+    atol: float = 1e-8,
+    rtol: float = 1e-8,
+) -> "RefittingResult":
+    """
+    Fit Arrhenius parameters (A, n, Ea) to temperature-rate constant data.
+
+    Parameters
+    ----------
+    temperature : ArrayLike
+        Temperature values (K) - accepts list, tuple, numpy array, or JAX array
+    rate_constant : ArrayLike
+        Rate constant values - accepts list, tuple, numpy array, or JAX array
+    params : dict[str, float], optional
+        Optional dict with known parameters {'A': val, 'n': val, 'Ea': val}.
+        Any subset can be provided; unknown params will be fitted.
+        If None, all three parameters will be fitted.
+    initial_guess : ArrayLike, optional
+        Initial guess for free parameters. If None, computed automatically
+        using linear least squares. Order must match free parameters:
+        - If params is None: [A, n, Ea]
+        - Otherwise: values for free parameters in order [A, n, Ea]
+    max_steps : int, optional
+        Maximum number of steps for the least sqaure solver, by default 1000
+    atol : float, optional
+        Absolute convergence tolerance for optimization, by default 1e-8
+    rtol : float, optional
+        Relative convergence tolerance for optimization, by default 1e-8
+
+    Returns
+    -------
+    RefittingResult
+        Dataclass containing fitted parameters and statistics:
+
+        - arrhenius: Fitted Arrhenius object
+        - A, n, Ea: Parameter properties
+        - R2, SSE, RMSE, MAE: Fit quality metrics
+        - optimality: Gradient norm at solution
+        - converged: Boolean convergence status
+        - n_steps: Number of optimization steps
+        - fun: Final objective value
+
+    Notes
+    -----
+    **Fitting Methodology:**
+
+    1. **Log-space fitting**: Minimizes sum of squared errors in log(k) space:
+
+       .. math::
+           \\mathrm{SSE} = \\sum_i [\\ln k_i^{\\mathrm{exp}} - \\ln k_i^{\\mathrm{calc}}(T_i)]^2
+
+    2. **Initial guess**: Uses linear least squares on the linearized form:
+
+       .. math::
+           \\ln k = \\ln A + n \\ln T - \\frac{E_a}{R T}
+
+    **Parameter Masking:**
+
+    When `params` is provided, only unspecified parameters are fitted. For example:
+
+    - `params={'n': 0.0}` -> fits only A and Ea (standard Arrhenius)
+    - `params={'A': 1e14, 'n': 0.0}` -> fits only Ea
+    """
+    # ==================================================================================
+    # Input validation and conversion to JAX arrays
+    T = jnp.asarray(temperature, dtype=jnp.float64)
+    k = jnp.asarray(rate_constant, dtype=jnp.float64)
+
+    if T.shape != k.shape:
+        raise ValueError(f"Temperature and rate_constant must have same shape, got {T.shape} vs {k.shape}")
+
+    if jnp.any(k <= 0):
+        raise ValueError("All rate constants must be positive (k > 0) for log-space fitting")
+
+    if jnp.any(T <= 0):
+        raise ValueError("All temperatures must be positive (T > 0 K)")
+
+    # Convert to log space for fitting
+    log_k = jnp.log(k)
 
     # ==================================================================================
-    # Generate initial guess if not provided
+    # Compute or use provided initial guess
     if initial_guess is None:
-        initial_guess = _generate_initial_guess(T, k_data, T_ref)
-        print(
-            f"Estimated initial guess:\n k_ref: {initial_guess['k_ref']}, n: {initial_guess['n']}, Ea: {initial_guess['Ea']}"
+        p0 = compute_initial_guess(T, log_k, params)
+    else:
+        p0 = jnp.asarray(initial_guess, dtype=jnp.float64)
+
+    # ==================================================================================
+    # CASE 1: Fit all three parameters (A, n, Ea)
+    if params is None:
+        # Create Arrhenius object once with initial guess
+        arrh_base = Arrhenius(
+            parameters={
+                "A": float(p0[0]),
+                "n": float(p0[1]),
+                "Ea": float(p0[2]),
+            }
+        )
+
+        # Define residual function for least_squares
+        # Note: least_squares expects residuals (vector), not sum of squares (scalar)
+        @jax.jit
+        def _residuals(params_vec: Float64[Array, "3"], _) -> Float64[Array, "n"]:
+            # Update Arrhenius object parameters efficiently using eqx.tree_at
+            arrh_updated = eqx.tree_at(
+                lambda arr: (arr._A, arr._n, arr._Ea),
+                arrh_base,
+                (params_vec[0], params_vec[1], params_vec[2]),
+            )
+            k_pred = arrh_updated.rate_constant(T)
+            log_k_pred = jnp.log(k_pred)
+            return log_k - log_k_pred
+
+        # Set up solver
+        solver = LevenbergMarquardt(rtol=rtol, atol=atol)
+
+        # Solve
+        solution = least_squares(
+            fn=_residuals,
+            solver=solver,
+            y0=p0,
+            max_steps=max_steps,
+            throw=False,
+        )
+
+        if solution.result != RESULTS.successful:
+            print(f"Warning: Optimization did not fully converge: {solution.result}")
+
+        # Extract optimized parameters from Optimistix result
+        A_opt, n_opt, Ea_opt = float(solution.value[0]), float(solution.value[1]), float(solution.value[2])
+
+        # Calculate statistics using utility function
+        arrh_final = Arrhenius(parameters={"A": A_opt, "n": n_opt, "Ea": Ea_opt})
+        k_pred = arrh_final.rate_constant(T)
+        log_k_pred = jnp.log(k_pred)
+        stats = compute_statistics(log_k_pred, log_k)
+
+        # Compute objective value (sum of squared residuals)
+        residuals_final = _residuals(solution.value, None)
+        sse_final = float(jnp.sum(residuals_final**2))
+
+        return RefittingResult(
+            arrhenius=arrh_final,
+            **stats,
+            optimality=float(jnp.linalg.norm(residuals_final)),
+            converged=bool(solution.result == RESULTS.successful),
+            n_steps=int(solution.stats["num_steps"]),
+            fun=sse_final,
+            std_errors=None,  # TODO: Compute from Jacobian
+            cov_matrix=None,  # TODO: Compute from Hessian
+            corr_matrix=None,  # TODO: Compute from covariance
         )
 
     # ==================================================================================
-    # Convert to optimization parameters
-    initial_params = jnp.array(
-        [
-            jnp.log(initial_guess["k_ref"]),
-            initial_guess["n"],
-            initial_guess["Ea"] / constants.R_cal_mol,
-        ]
-    )
-
-    # ==================================================================================
-    # Set up solver
-    solver = optx.LevenbergMarquardt(rtol=rtol, atol=atol, verbose=frozenset({"loss", "step_size"}))
-
-    # ==================================================================================
-    # Solve
-    solution = optx.least_squares(
-        fn=_residual_function,
-        solver=solver,
-        y0=initial_params,
-        args=(T, k_data, T_ref),
-        max_steps=max_steps,
-    )
-
-    if solution.result != optx.RESULTS.successful:
-        print(f"Warning: Optimization failed with status: {solution.result}")
-        success = False
+    # CASE 2: Fit subset of parameters (parameter masking)
     else:
-        success = True
-
-    # ==================================================================================
-    # Extract fitted parameters
-    lnk_ref_fit, n_fit, EaR_fit = solution.value
-    k_ref_fit = jnp.exp(lnk_ref_fit)
-    Ea_fit = EaR_fit * constants.R_cal_mol
-
-    # ==================================================================================
-    # Create ReparametrizedArrhenius object
-    parameters = {"k_ref": float(k_ref_fit), "n": float(n_fit), "Ea": float(Ea_fit), "T_ref": T_ref}
-    arrhenius = ReparametrizedArrhenius(parameters, name)
-
-    # ==================================================================================
-    # Compute fitted values and residuals
-    fitted_values = arrhenius.rate_constant(T)
-    residuals = jnp.log(fitted_values) - jnp.log(k_data)
-    rms_residual = float(jnp.sqrt(jnp.mean(residuals**2)))
-
-    # ==================================================================================
-    # Compute uncertainties
-    std_errors, cov_matrix, corr_matrix, _ = _compute_parameter_uncertainty(solution)
-
-    return ArrheniusFittingResults(
-        arrhenius=arrhenius,
-        fitted_values=fitted_values,
-        residuals=residuals,
-        rms_residual=rms_residual,
-        T_ref=T_ref,
-        std_errors=std_errors,
-        cov_matrix=cov_matrix,
-        corr_matrix=corr_matrix,
-        success=success,
-    )
-
-
-def _validate_input_data(T: Array, k_data: Array) -> None:
-    """
-    Validate input temperature and rate constant data.
-
-    Parameters
-    ----------
-    T : Array
-        Temperature data
-    k_data : Array
-        Rate constant data
-
-    Raises
-    ------
-    ValueError
-        If data is invalid
-    """
-    if len(T) != len(k_data):
-        raise ValueError("Temperature and rate constant arrays must have the same length")
-
-    if len(T) < 3:
-        raise ValueError("Need at least 3 data points for parameter fitting")
-
-    if jnp.any(T <= 0):
-        raise ValueError("All temperatures must be positive")
-
-    if jnp.any(k_data <= 0):
-        raise ValueError("All rate constants must be positive")
-
-    if jnp.any(~jnp.isfinite(T)) or jnp.any(~jnp.isfinite(k_data)):
-        raise ValueError("All data must be finite")
-
-
-def _compute_parameter_uncertainty(
-    solution: optx.Solution,
-) -> Tuple[Optional[Array], Optional[Array], Optional[Array], float]:
-    """
-    Compute parameter uncertainties and correlation matrix from optimization solution.
-
-    Parameters
-    ----------
-    solution : optx.Solution
-        Solution object from optimistix least squares solver
-
-    Returns
-    -------
-    Tuple[Optional[Array], Optional[Array], Optional[Array], float]
-        Standard errors, covariance matrix, correlation matrix, and residual variance
-    """
-    try:
-        # ==============================================================================
-        # Get the final Jacobian from the solution
-        final_jacobian = solution.state.f_info.jac
-
-        # ==============================================================================
-        # Convert to dense matrix
-        if hasattr(final_jacobian, "as_dense"):
-            J = final_jacobian.as_dense()
-        else:
-            # ==========================================================================
-            # For FunctionLinearOperator, evaluate it properly
-            n_params = len(solution.value)
-
-            # ==========================================================================
-            # Create unit vectors and apply the Jacobian
-            J_cols = []
-            for i in range(n_params):
-                unit_vec = jnp.zeros(n_params)
-                unit_vec = unit_vec.at[i].set(1.0)
-                col = final_jacobian.mv(unit_vec)
-                J_cols.append(col)
-
-            J = jnp.column_stack(J_cols)
-
-        residuals = solution.state.f_info.residual
-
-        # ==============================================================================
-        # Estimate residual variance
-        dof = len(residuals) - len(solution.value)
-        if dof > 0:
-            residual_variance = jnp.sum(residuals**2) / dof
-        else:
-            residual_variance = jnp.sum(residuals**2)
-
-        # ==============================================================================
-        # Covariance matrix
-        JtJ = J.T @ J
-        cov_matrix = residual_variance * jnp.linalg.inv(JtJ)
-        std_errors = jnp.sqrt(jnp.diag(cov_matrix))
-
-        # ==============================================================================
-        # Correlation matrix
-        std_matrix = jnp.outer(std_errors, std_errors)
-        corr_matrix = cov_matrix / std_matrix
-
-        return std_errors, cov_matrix, corr_matrix, residual_variance
-
-    except (jnp.linalg.LinAlgError, AttributeError) as e:
-        print("Warning: Covariance matrix is singular - parameters may be non-identifiable")
-        print(f"Warning: Could not compute parameter uncertainties: {e}")
-        return None, None, None, 0.0
-
-
-def _residual_function(params: Array, args: Tuple) -> Array:
-    """
-    Residual function for centered Arrhenius parametrization.
-
-    Parameters
-    ----------
-    params : Array
-        Parameters [log(k_ref), n, Ea/R]
-    args : Tuple
-        (T_data, k_data, T_ref)
-
-    Returns
-    -------
-    Array
-        Log-space residuals
-    """
-    T_data, k_data, T_ref = args
-    lnk_ref, n, EaR = params
-
-    # ==================================================================================
-    # Compute predicted rate constants
-    k_pred = jnp.exp(lnk_ref + n * jnp.log(T_data / T_ref) - EaR * (1.0 / T_data - 1.0 / T_ref))
-
-    return jnp.log(k_pred) - jnp.log(k_data)
-
-
-def _generate_initial_guess(
-    T: Array,
-    k_data: Array,
-    T_ref: Optional[float] = None,
-) -> Dict[str, float]:
-    """
-    Generate initial parameter guesses using linear regression heuristics.
-
-    Parameters
-    ----------
-    T : Array
-        Temperature data
-    k_data : Array
-        Rate constant data
-    T_ref : Optional[float]
-        Reference temperature for centered parametrization
-
-    Returns
-    -------
-    Dict[str, float]
-        Initial parameter guesses
-    """
-    # ==============================================================================
-    # Linear regression on log(k) vs 1/T for Ea estimate
-    inv_T = 1.0 / T
-    log_k = jnp.log(k_data)
-    X = jnp.column_stack([jnp.ones_like(inv_T), inv_T])
-    coeffs = jnp.linalg.lstsq(X, log_k, rcond=None)[0]
-
-    Ea_guess = float(-coeffs[1] * constants.R_cal_mol)
-
-    if T_ref is None:
-        T_ref = float(jnp.mean(T))
-    # Estimate k_ref at T_ref from data
-    idx_ref = jnp.argmin(jnp.abs(T - T_ref))
-    k_ref_guess = float(k_data[idx_ref])
-    return {"k_ref": k_ref_guess, "n": 0.0, "Ea": Ea_guess}
-
-
-def plot_correlation_matrix(
-    results: ArrheniusFittingResults,
-    figsize: Tuple[float, float] = (6, 5),
-    cmap: str = "RdBu_r",
-    title: Optional[str] = None,
-    show_values: bool = True,
-    value_format: str = ".3f",
-) -> None:
-    """
-    Plot the correlation matrix for fitted Arrhenius parameters.
-
-    Parameters
-    ----------
-    results : ArrheniusFittingResults
-        Fitting results containing correlation matrix
-    figsize : Tuple[float, float]
-        Figure size (width, height)
-    cmap : str
-        Colormap for the correlation matrix
-    title : Optional[str]
-        Custom title for the plot
-    show_values : bool
-        Whether to show correlation values on the matrix
-    value_format : str
-        Format string for correlation values
-    """
-    if results.corr_matrix is None:
-        print("Warning: No correlation matrix available in results")
-        return
-
-    if isinstance(results.arrhenius, ReparametrizedArrhenius):
-        param_labels = ["log(k_ref)", "n", "Ea/R"]
-        default_title = f"Correlation Matrix - Centered Parametrization\n(T_ref = {results.T_ref:.0f} K)"
-    else:
-        param_labels = ["log(A)", "n", "Ea/R"]
-        default_title = "Correlation Matrix - Standard Parametrization"
-
-    if title is None:
-        title = default_title
-
-    # Create the plot
-    fig, ax = plt.subplots(figsize=figsize)
-
-    # Plot correlation matrix
-    im = ax.imshow(results.corr_matrix, cmap=cmap, vmin=-1, vmax=1, aspect="equal")
-
-    # Add correlation values as text
-    if show_values:
-        for i in range(len(param_labels)):
-            for j in range(len(param_labels)):
-                text = ax.text(
-                    j,
-                    i,
-                    f"{results.corr_matrix[i, j]:{value_format}}",
-                    ha="center",
-                    va="center",
-                    color="black",
-                    fontweight="bold",
-                )
-
-    # Set labels and ticks
-    ax.set_xticks(range(len(param_labels)))
-    ax.set_yticks(range(len(param_labels)))
-    ax.set_xticklabels(param_labels)
-    ax.set_yticklabels(param_labels)
-    ax.set_title(title)
-
-    # Add colorbar
-    cbar = plt.colorbar(im, ax=ax, label="Correlation coefficient")
-
-    # Add statistics text
-    # if results.max_correlation is not None:
-    #     stats_text = f"Max |correlation| = {results.max_correlation:.3f}"
-    #     if results.condition_number is not None:
-    #         stats_text += f"\nCondition number = {results.condition_number:.2e}"
-    #
-    #     ax.text(
-    #         0.02,
-    #         0.98,
-    #         stats_text,
-    #         transform=ax.transAxes,
-    #         verticalalignment="top",
-    #         bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
-    #     )
-
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_confidence_ellipses(
-    results: ArrheniusFittingResults,
-    T: Optional[Array] = None,
-    true_params: Optional[List[float]] = None,
-    confidence_levels: List[float] = [0.68, 0.95, 0.99],
-    colors: List[str] = ["red", "orange", "yellow"],
-    alphas: List[float] = [0.3, 0.2, 0.1],
-    figsize: Tuple[float, float] = (15, 5),
-) -> None:
-    """
-    Plot confidence ellipses for pairwise parameter correlations.
-
-    Parameters
-    ----------
-    results : ArrheniusFittingResults
-        Fitting results containing correlation matrix and parameter values
-    T : Optional[jnp.Array]
-        Temperature data (used for computing true parameter values)
-    true_params : Optional[List[float]]
-        True parameter values [A, n, Ea] for comparison (if known)
-    confidence_levels : List[float]
-        Confidence levels for ellipses
-    colors : List[str]
-        Colors for each confidence level
-    alphas : List[float]
-        Alpha values for each confidence level
-    figsize : Tuple[float, float]
-        Figure size
-    """
-    if results.corr_matrix is None or results.std_errors is None:
-        print("Warning: Correlation matrix or standard errors not available")
-        return
-
-    param_labels = ["log(k_ref)", "n", "Ea/R"]
-    fitted_params = np.array([results.arrhenius.lnk_ref, results.arrhenius.n, results.arrhenius.EaR])
-    title_prefix = "Centered Parametrization"
-
-    # Compute true values if provided
-    true_values = None
-    if true_params is not None and T is not None:
-        true_A, true_n, true_Ea = true_params
-        true_EaR = true_Ea / constants.R_cal_mol
-        true_k_ref = true_A * jnp.power(results.T_ref, true_n) * jnp.exp(-true_EaR / results.T_ref)
-        true_values = np.array([jnp.log(true_k_ref), true_n, true_EaR])
-
-    # Convert correlation to covariance matrix
-    std_errors_np = np.array(results.std_errors)
-    cov_np = results.corr_matrix * np.outer(std_errors_np, std_errors_np)
-
-    # Parameter pairs for plotting
-    param_pairs = [(0, 1), (0, 2), (1, 2)]
-
-    # Create subplots
-    fig, axes = plt.subplots(1, 3, figsize=figsize)
-
-    for idx, (i, j) in enumerate(param_pairs):
-        ax = axes[idx]
-
-        # Extract 2x2 covariance submatrix
-        cov_2d = cov_np[np.ix_([i, j], [i, j])]
-
-        # Eigenvalues and eigenvectors for ellipse orientation
-        eigenvals, eigenvecs = np.linalg.eigh(cov_2d)
-
-        # Sort by eigenvalue
-        order = eigenvals.argsort()[::-1]
-        eigenvals = eigenvals[order]
-        eigenvecs = eigenvecs[:, order]
-
-        # Angle of first eigenvector
-        angle = np.degrees(np.arctan2(eigenvecs[1, 0], eigenvecs[0, 0]))
-
-        # Plot confidence ellipses
-        for conf_level, color, alpha in zip(confidence_levels, colors, alphas):
-            chi2_val = chi2.ppf(conf_level, df=2)
-
-            width = 2 * np.sqrt(chi2_val * eigenvals[0])
-            height = 2 * np.sqrt(chi2_val * eigenvals[1])
-
-            ellipse = Ellipse(
-                xy=(fitted_params[i], fitted_params[j]),
-                width=width,
-                height=height,
-                angle=angle,
-                facecolor=color,
-                alpha=alpha,
-                edgecolor=color,
-                linewidth=2,
-                label=f"{conf_level * 100:.0f}% confidence",
+        known = {k: v for k, v in params.items() if v is not None}
+        param_names = ["A", "n", "Ea"]
+
+        # Determine which parameters need fitting
+        free_params = [name for name in param_names if name not in known]
+
+        if not free_params:
+            raise ValueError("All parameters are fixed; nothing to fit!")
+
+        # ==================================================================================
+        # Create base Arrhenius object with initial guess
+        initial_params = {}
+        free_idx = 0
+        for name in param_names:
+            if name in known:
+                initial_params[name] = known[name]
+            else:
+                initial_params[name] = float(p0[free_idx])
+                free_idx += 1
+
+        arrh_base = Arrhenius(parameters=initial_params)
+
+        # ==================================================================================
+        # Define masked residual function for least_squares
+        @jax.jit
+        def _masked_residuals(free_params_vec: Float64[Array, "n_free"], _) -> Float64[Array, "n"]:
+            """Residual function with some parameters fixed."""
+            # Reconstruct full parameter array [A, n, Ea]
+            full_params_array = jnp.array(
+                [
+                    free_params_vec[free_params.index("A")] if "A" in free_params else known["A"],
+                    free_params_vec[free_params.index("n")] if "n" in free_params else known["n"],
+                    free_params_vec[free_params.index("Ea")] if "Ea" in free_params else known["Ea"],
+                ]
             )
-            ax.add_patch(ellipse)
 
-        # Plot fitted point
-        ax.plot(fitted_params[i], fitted_params[j], "ko", markersize=8, label="Fitted value", zorder=10)
+            # Update Arrhenius object parameters efficiently using eqx.tree_at
+            arrh_updated = eqx.tree_at(
+                lambda arr: (arr._A, arr._n, arr._Ea),
+                arrh_base,
+                (full_params_array[0], full_params_array[1], full_params_array[2]),
+            )
+            k_pred = arrh_updated.rate_constant(T)
+            log_k_pred = jnp.log(k_pred)
+            return log_k - log_k_pred
 
-        # Plot true point if available
-        if true_values is not None:
-            ax.plot(true_values[i], true_values[j], "r*", markersize=12, label="True value", zorder=10)
+        # ==================================================================================
+        # Set up solver
+        solver = LevenbergMarquardt(rtol=rtol, atol=atol)
 
-        # Labels and formatting
-        ax.set_xlabel(param_labels[i])
-        ax.set_ylabel(param_labels[j])
-        ax.set_title(f"{param_labels[i]} vs {param_labels[j]}")
-        ax.grid(True, alpha=0.3)
-        ax.legend()
+        # Solve
+        solution = least_squares(
+            fn=_masked_residuals,
+            solver=solver,
+            y0=p0,
+            max_steps=max_steps,
+            throw=False,
+        )
 
-        # Set axis limits based on confidence ellipses
-        center_x, center_y = fitted_params[i], fitted_params[j]
-        max_std_x = 3 * np.sqrt(cov_2d[0, 0])
-        max_std_y = 3 * np.sqrt(cov_2d[1, 1])
+        if solution.result != RESULTS.successful:
+            print(f"Warning: Optimization did not fully converge: {solution.result}")
 
-        ax.set_xlim(center_x - max_std_x, center_x + max_std_x)
-        ax.set_ylim(center_y - max_std_y, center_y + max_std_y)
+        # ==================================================================================
+        # Reconstruct full parameter set from Optimistix result
+        result_params = known.copy()
+        free_idx = 0
+        for name in param_names:
+            if name not in known:
+                result_params[name] = float(solution.value[free_idx])
+                free_idx += 1
 
-    plt.suptitle(f"Confidence Ellipses - {title_prefix}", fontsize=16)
-    plt.tight_layout()
-    plt.show()
+        # Calculate statistics using utility function
+        arrh_final = Arrhenius(parameters=result_params)
+        k_pred = arrh_final.rate_constant(T)
+        log_k_pred = jnp.log(k_pred)
+        stats = compute_statistics(log_k_pred, log_k)
 
+        # Compute objective value (sum of squared residuals)
+        residuals_final = _masked_residuals(solution.value, None)
+        sse_final = float(jnp.sum(residuals_final**2))
 
-def compute_uncertainty_bands(
-    results: ArrheniusFittingResults, T_plot: Array, n_samples: int, confidence_level: float
-) -> Tuple[Array, Array, Array]:
-    """
-    Compute uncertainty bands using Monte Carlo sampling from parameter distribution.
-
-    Parameters
-    ----------
-    results : ArrheniusFittingResults
-        Fitting results with covariance matrix
-    T_plot : Array
-        Temperature points for evaluation
-    n_samples : int
-        Number of Monte Carlo samples
-    confidence_level : float
-        Confidence level (e.g., 0.95 for 95%)
-
-    Returns
-    -------
-    Tuple[Array, Array, Array]
-        Mean, lower bound, upper bound of rate constants
-    """
-
-    if results.cov_matrix is None:
-        # Fallback: use fitted curve only
-        k_fitted = results.arrhenius.rate_constant(T_plot)
-        return k_fitted, k_fitted, k_fitted
-
-    # Extract fitted parameters (in transformed space)
-    if isinstance(results.arrhenius, ReparametrizedArrhenius):
-        fitted_params = np.array([results.arrhenius.lnk_ref, results.arrhenius.n, results.arrhenius.EaR])
-    else:
-        # Standard Arrhenius
-        fitted_params = np.array([results.arrhenius.lnA, results.arrhenius.n, results.arrhenius.EaR])
-
-    # Convert covariance matrix to numpy for scipy
-    cov_matrix_np = np.array(results.cov_matrix)
-
-    # Sample parameters from multivariate normal distribution
-    param_samples = multivariate_normal.rvs(mean=fitted_params, cov=cov_matrix_np, size=n_samples)
-
-    # Ensure param_samples is 2D
-    if param_samples.ndim == 1:
-        param_samples = param_samples.reshape(1, -1)
-
-    # Compute rate constants for each parameter sample
-    k_samples = np.zeros((n_samples, len(T_plot)))
-
-    for i, params in enumerate(param_samples):
-        if isinstance(results.arrhenius, ReparametrizedArrhenius):
-            # Centered form: k = k_ref * (T/T_ref)^n * exp(-Ea/R * (1/T - 1/T_ref))
-            lnk_ref, n, EaR = params
-            T_ref = results.arrhenius.T_ref
-
-            k_pred = np.exp(lnk_ref + n * np.log(T_plot / T_ref) - EaR * (1.0 / T_plot - 1.0 / T_ref))
-        else:
-            # Standard form: k = A * T^n * exp(-Ea/RT)
-            lnA, n, EaR = params
-            k_pred = np.exp(lnA + n * np.log(T_plot) - EaR / T_plot)
-
-        k_samples[i, :] = k_pred
-
-    # Compute percentiles for confidence bands
-    alpha = 1 - confidence_level
-    lower_percentile = 100 * alpha / 2
-    upper_percentile = 100 * (1 - alpha / 2)
-
-    k_mean = np.mean(k_samples, axis=0)
-    k_lower = np.percentile(k_samples, lower_percentile, axis=0)
-    k_upper = np.percentile(k_samples, upper_percentile, axis=0)
-
-    return k_mean, k_lower, k_upper
+        return RefittingResult(
+            arrhenius=arrh_final,
+            **stats,
+            optimality=float(jnp.linalg.norm(residuals_final)),
+            converged=bool(solution.result == RESULTS.successful),
+            n_steps=int(solution.stats["num_steps"]),
+            fun=sse_final,
+            std_errors=None,  # TODO: Compute from Jacobian
+            cov_matrix=None,  # TODO: Compute from Hessian
+            corr_matrix=None,  # TODO: Compute from covariance
+        )
