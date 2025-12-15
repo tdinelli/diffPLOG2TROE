@@ -27,17 +27,17 @@ class TestFallOff(unittest.TestCase):
         current_dir = os.path.dirname(current_file_path)
         data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.2.0", "falloff_troe_n2.csv")
         data = np.loadtxt(data_file, delimiter=";")
-        self.expected_rate_ar = jnp.array(data) * 1000
+        self.expected_rate_n2 = jnp.array(data) * 1000
 
         data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.2.0", "falloff_troe_n2_h2o.csv")
         data = np.loadtxt(data_file, delimiter=";")
-        self.expected_rate_arh2o = jnp.array(data) * 1000
+        self.expected_rate_n2h2o = jnp.array(data) * 1000
 
         data_file = os.path.join(current_dir, "cantera", "cantera_data", "3.2.0", "falloff_troe_n2_o2_h2o.csv")
         data = np.loadtxt(data_file, delimiter=";")
-        self.expected_rate_aro2h2o = jnp.array(data) * 1000
+        self.expected_rate_n2o2h2o = jnp.array(data) * 1000
 
-    def test_kinetic_constant_ar(self):
+    def test_kinetic_constant_n2(self):
         calculated_rates = self.reaction.rate_constant(
             T=self.T_range,
             P=self.P_range,
@@ -45,12 +45,12 @@ class TestFallOff(unittest.TestCase):
         )
 
         # Calculate relative errors for reporting
-        rel_errors = jnp.abs(calculated_rates - self.expected_rate_ar) / jnp.abs(self.expected_rate_ar)
+        rel_errors = jnp.abs(calculated_rates - self.expected_rate_n2) / jnp.abs(self.expected_rate_n2)
         max_rel_error = jnp.max(rel_errors)
         max_error_idx = jnp.unravel_index(jnp.argmax(rel_errors), rel_errors.shape)
 
         # Check if all values are close
-        is_close = jnp.allclose(calculated_rates, self.expected_rate_ar, atol=1e-10, rtol=1e-8)
+        is_close = jnp.allclose(calculated_rates, self.expected_rate_n2, atol=1e-10, rtol=1e-8)
 
         if not is_close:
             p_idx, t_idx = max_error_idx
@@ -59,13 +59,13 @@ class TestFallOff(unittest.TestCase):
                 f"P_idx={p_idx} (P={self.P_range[p_idx].item():.6f}atm), "
                 f"T_idx={t_idx} (T={self.T_range[t_idx].item():.2f}K), "
                 f"calculated={calculated_rates[p_idx, t_idx].item():.6e}, "
-                f"expected={self.expected_rate_ar[p_idx, t_idx].item():.6e}"
+                f"expected={self.expected_rate_n2[p_idx, t_idx].item():.6e}"
             )
             self.fail(error_msg)
 
         self.assertTrue(is_close)
 
-    def test_kinetic_constant_arh2o(self):
+    def test_kinetic_constant_n2h2o(self):
         calculated_rates = self.reaction.rate_constant(
             T=self.T_range,
             P=self.P_range,
@@ -75,17 +75,17 @@ class TestFallOff(unittest.TestCase):
         # Check shapes match
         self.assertEqual(
             calculated_rates.shape,
-            self.expected_rate_arh2o.shape,
-            f"Shape mismatch: calculated {calculated_rates.shape} vs expected {self.expected_rate_arh2o.shape}",
+            self.expected_rate_n2h2o.shape,
+            f"Shape mismatch: calculated {calculated_rates.shape} vs expected {self.expected_rate_n2h2o.shape}",
         )
 
         # Calculate relative errors for reporting
-        rel_errors = jnp.abs(calculated_rates - self.expected_rate_arh2o) / jnp.abs(self.expected_rate_arh2o)
+        rel_errors = jnp.abs(calculated_rates - self.expected_rate_n2h2o) / jnp.abs(self.expected_rate_n2h2o)
         max_rel_error = jnp.max(rel_errors)
         max_error_idx = jnp.unravel_index(jnp.argmax(rel_errors), rel_errors.shape)
 
         # Check if all values are close
-        is_close = jnp.allclose(calculated_rates, self.expected_rate_arh2o, atol=1e-10, rtol=1e-8)
+        is_close = jnp.allclose(calculated_rates, self.expected_rate_n2h2o, atol=1e-10, rtol=1e-8)
 
         if not is_close:
             p_idx, t_idx = max_error_idx
@@ -94,13 +94,13 @@ class TestFallOff(unittest.TestCase):
                 f"P_idx={p_idx} (P={self.P_range[p_idx].item():.6f}atm), "
                 f"T_idx={t_idx} (T={self.T_range[t_idx].item():.2f}K), "
                 f"calculated={calculated_rates[p_idx, t_idx].item():.6e}, "
-                f"expected={self.expected_rate_arh2o[p_idx, t_idx].item():.6e}"
+                f"expected={self.expected_rate_n2h2o[p_idx, t_idx].item():.6e}"
             )
             self.fail(error_msg)
 
         self.assertTrue(is_close)
 
-    def test_kinetic_constant_aro2h2o(self):
+    def test_kinetic_constant_n2o2h2o(self):
         calculated_rates = self.reaction.rate_constant(
             T=self.T_range,
             P=self.P_range,
@@ -110,17 +110,17 @@ class TestFallOff(unittest.TestCase):
         # Check shapes match
         self.assertEqual(
             calculated_rates.shape,
-            self.expected_rate_aro2h2o.shape,
-            f"Shape mismatch: calculated {calculated_rates.shape} vs expected {self.expected_rate_aro2h2o.shape}",
+            self.expected_rate_n2o2h2o.shape,
+            f"Shape mismatch: calculated {calculated_rates.shape} vs expected {self.expected_rate_n2o2h2o.shape}",
         )
 
         # Calculate relative errors for reporting
-        rel_errors = jnp.abs(calculated_rates - self.expected_rate_aro2h2o) / jnp.abs(self.expected_rate_aro2h2o)
+        rel_errors = jnp.abs(calculated_rates - self.expected_rate_n2o2h2o) / jnp.abs(self.expected_rate_n2o2h2o)
         max_rel_error = jnp.max(rel_errors)
         max_error_idx = jnp.unravel_index(jnp.argmax(rel_errors), rel_errors.shape)
 
         # Check if all values are close
-        is_close = jnp.allclose(calculated_rates, self.expected_rate_aro2h2o, atol=1e-10, rtol=1e-8)
+        is_close = jnp.allclose(calculated_rates, self.expected_rate_n2o2h2o, atol=1e-10, rtol=1e-8)
 
         if not is_close:
             p_idx, t_idx = max_error_idx
@@ -129,7 +129,7 @@ class TestFallOff(unittest.TestCase):
                 f"P_idx={p_idx} (P={self.P_range[p_idx].item():.6f}atm), "
                 f"T_idx={t_idx} (T={self.T_range[t_idx].item():.2f}K), "
                 f"calculated={calculated_rates[p_idx, t_idx].item():.6e}, "
-                f"expected={self.expected_rate_aro2h2o[p_idx, t_idx].item():.6e}"
+                f"expected={self.expected_rate_n2o2h2o[p_idx, t_idx].item():.6e}"
             )
             self.fail(error_msg)
 

@@ -1,9 +1,6 @@
 description: |-
   Test mechanism to compare KiRATE's implementation against CANTERA
 
-
-date: Thu, 04 Dec 2025 15:02:00 +0200
-
 units: {length: cm, time: s, quantity: mol, activation-energy: cal/mol}
 
 phases:
@@ -11,6 +8,7 @@ phases:
   thermo: ideal-gas
   elements: [C, H, O, N, He, Ar]
   species:
+  - {gri30.yaml/species: [CH4, CH3, CH2O]}
   - {example_data/ammonia-CO-H2-Alzueta-2023.yaml/species: [H, O2, HO2, O, OH,
         AR, CO, CO2, H2, H2O, N2, HONO, NO]}
   kinetics: gas
@@ -54,20 +52,30 @@ reactions:
   note: |-
     Chen, X., Fuller, M. E., & Goldsmith, C. F. Reac Chem Eng, 4(2), 323-333
     (2019).
+
 # -----------------------------------------
 # CHEBYSHEV
 # -----------------------------------------
-# - equation: CH4 <=> CH3 + H # Reaction 4 (Chebyshev)
-#   type: Chebyshev
-#   temperature-range: [290, 3000]
-#   pressure-range: [0.0098692326671601278 atm, 98.692326671601279 atm]
-#   data: [[-1.44280e+01,  2.59970e-01, -2.24320e-02, -2.78700e-03],
-#          [ 2.20630e+01,  4.88090e-01, -3.96430e-02, -5.48110e-03],
-#          [-2.32940e-01,  4.01900e-01, -2.60730e-02, -5.04860e-03],
-#          [-2.93660e-01,  2.85680e-01, -9.33730e-03, -4.01020e-03],
-#          [-2.26210e-01,  1.69190e-01,  4.85810e-03, -2.38030e-03],
-#          [-1.43220e-01,  7.71110e-02,  1.27080e-02, -6.41540e-04]]
-#   note: Taken from CANTERA example
+- equation: CH4 <=> CH3 + H # Reaction 4 (Chebyshev)
+  type: Chebyshev
+  temperature-range: [290, 3000]
+  pressure-range: [0.0098692326671601278 atm, 98.692326671601279 atm]
+  data: [[-1.44280e+01,  2.59970e-01, -2.24320e-02, -2.78700e-03],
+         [ 2.20630e+01,  4.88090e-01, -3.96430e-02, -5.48110e-03],
+         [-2.32940e-01,  4.01900e-01, -2.60730e-02, -5.04860e-03],
+         [-2.93660e-01,  2.85680e-01, -9.33730e-03, -4.01020e-03],
+         [-2.26210e-01,  1.69190e-01,  4.85810e-03, -2.38030e-03],
+         [-1.43220e-01,  7.71110e-02,  1.27080e-02, -6.41540e-04]]
+  note: Taken from CANTERA example
+
+# -----------------------------------------
+# CHEMICALLY ACTIVATED
+# -----------------------------------------
+- equation: CH3 + OH (+M) <=> CH2O + H2 (+M)
+  type: chemically-activated
+  high-P-rate-constant: [5.88E-14, 6.721, -3022.227]
+  low-P-rate-constant: [282320.078, 1.46878, -3270.56495]
+
 # Reaction 5-7: Separate reactions, but calculated on the full mixture concentration.
 # These are the rates needed to compute the Chemkin-style mole-fraction based weighting
 # See: https://github.com/Cantera/enhancements/issues/193
