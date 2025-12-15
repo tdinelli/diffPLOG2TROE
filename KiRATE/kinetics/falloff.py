@@ -331,7 +331,7 @@ class FallOff(eqx.Module):
         # Dimensionless parameter characterizing pressure regime:
         # - Pr << 1: Low-pressure (third-order) regime
         # - Pr >> 1: High-pressure (second-order) regime
-        # - Pr \\approx 1: Transition (fall-off) regime
+        # - Pr ~= 1: Transition (fall-off) regime
         Pr = (lpl * M) / hpl
 
         # Step 3: Compute broadening factor F(T, Pr)
@@ -361,8 +361,8 @@ class FallOff(eqx.Module):
 
                 REACTION_NAME    A_hpl   n_hpl   Ea_hpl
                   LOW  /         A_lpl   n_lpl   Ea_lpl /
-                  TROE / alpha   T3   T1   T2 /     ! or SRI / a b c d e /
-                  SPECIES / efficiency /            ! optional
+                  TROE / alpha   T3   T1   T2           / ! or SRI / a b c d e /
+                  SPECIES / efficiency / ... / ...      / ! optional
 
         Returns
         -------
@@ -585,11 +585,6 @@ class FallOff(eqx.Module):
 
         .. math::
             [M]_{eff} = [M] \\cdot \\sum_i \\epsilon_i x_i
-
-        Typical values:
-        - Noble gases (Ar, He): 0.5-0.9 (less efficient)
-        - Polar molecules (H2O): 5-15 (more efficient)
-        - Default species: 1.0
 
         These values are differentiable and can be optimized if needed.
         """
