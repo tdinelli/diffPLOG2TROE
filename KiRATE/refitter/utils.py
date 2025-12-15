@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 
 import jax.numpy as jnp
 from jaxtyping import Array, Float64
@@ -70,6 +70,16 @@ class RefittingResult:
         return float(self.arrhenius.Ea)
 
     @property
+    def ln_A(self) -> float:
+        """Natural logarithm of pre-exponential factor (transformed parameter)."""
+        return float(jnp.log(self.arrhenius.A))
+
+    @property
+    def Ea_over_R(self) -> float:
+        """Activation energy divided by R in temperature units (K)."""
+        return float(self.arrhenius.Ea / constants.R_cal_mol)
+
+    @property
     def refitted_rate(self) -> "Arrhenius":
         return self.arrhenius
 
@@ -90,13 +100,220 @@ class RefittingResult:
 
         return None
 
+    @property
+    def transformed_params(self) -> tuple[float, float, float]:
+        """
+        Transformed Arrhenius parameters following Turányi-Nagy (2011).
+
+        Returns
+        -------
+        tuple[float, float, float]
+            [ln(A), Ea/R, n] where:
+            - ln(A): natural log of pre-exponential factor (dimensionless)
+            - Ea/R: activation energy in temperature units (K)
+            - n: temperature exponent (dimensionless)
+
+        Notes
+        -----
+        This parametrization follows the approach of Turányi and Nagy [1]_,
+        where the transformed parameters approximately follow a multivariate
+        normal distribution, making uncertainty quantification more rigorous.
+
+        References
+        ----------
+        .. [1] T. Nagy and T. Turányi, "Uncertainty of Arrhenius parameters",
+               Int. J. Chem. Kinet., 43, 359-378 (2011).
+        """
+        return (self.ln_A, self.Ea_over_R, self.n)
+
+    @property
+    def transformed_cov_matrix(self) -> Optional[Float64[Array, "3 3"]]:
+        """
+        Covariance matrix in transformed parameter space [ln(A), Ea/R, n].
+
+        Returns
+        -------
+        Float64[Array, "3 3"] or None
+            Covariance matrix Σ' in transformed space, or None if not computed.
+            Element (i,j) is Cov(θ'_i, θ'_j) where θ' = [ln(A), Ea/R, n].
+
+        Notes
+        -----
+        The covariance matrix stored internally is already in transformed space:
+        - First parameter: ln(A), not A
+        - Second parameter: Ea/(R_cal), not Ea
+        - Third parameter: n (unchanged)
+
+        This follows the Turányi-Nagy approach where transformed parameters
+        approximately follow a multivariate normal distribution.
+        """
+        return self.cov_matrix
+
+    @property
+    def transformed_std_errors(self) -> Optional[Float64[Array, "3"]]:
+        """
+        Standard errors in transformed parameter space [ln(A), Ea/R, n].
+
+        Returns
+        -------
+        Float64[Array, "3"] or None
+            Standard errors [σ(ln A), σ(Ea/R), σ(n)], or None if not computed.
+
+        Notes
+        -----
+        These are the square roots of the diagonal elements of the transformed
+        covariance matrix. They represent 1-sigma uncertainties in the
+        transformed parameters.
+        """
+        return self.std_errors
+
+    def rate_constant_uncertainty(
+        self,
+        temperature: Union[float, Float64[Array, "n"]],
+    ) -> Union[float, Float64[Array, "n"]]:
+        """
+        Compute uncertainty in rate constant k(T) using Turányi-Nagy formula.
+
+        This method computes the standard deviation of ln(k) at given temperature(s)
+        by propagating the covariance matrix through the Arrhenius expression using
+        the analytical formula from Turányi and Nagy (2011).
+
+        Parameters
+        ----------
+        temperature : float or Float64[Array, "n"]
+            Temperature(s) in Kelvin at which to compute uncertainty
+
+        Returns
+        -------
+        float or Float64[Array, "n"]
+            Standard deviation σ(ln k) in log-space (dimensionless).
+            To get relative uncertainty: σ(k)/k ≈ σ(ln k) for small uncertainties.
+
+        Raises
+        ------
+        ValueError
+            If covariance matrix was not computed during fitting
+
+        Notes
+        -----
+        **Mathematical Formulation**
+
+        For the Arrhenius expression in log-space:
+
+        .. math::
+            \\ln k(T) = \\ln(A) + n \\ln(T) - \\frac{E_a}{RT}
+
+        The variance of ln(k) is computed via the delta method:
+
+        .. math::
+            \\sigma^2[\\ln k(T)] = \\mathbf{g}(T)^T \\Sigma' \\mathbf{g}(T)
+
+        where the gradient vector is:
+
+        .. math::
+            \\mathbf{g}(T) = \\begin{bmatrix}
+                \\frac{\\partial \\ln k}{\\partial \\ln A} \\\\
+                \\frac{\\partial \\ln k}{\\partial (E_a/R)} \\\\
+                \\frac{\\partial \\ln k}{\\partial n}
+            \\end{bmatrix} = \\begin{bmatrix}
+                1 \\\\
+                -1/T \\\\
+                \\ln(T)
+            \\end{bmatrix}
+
+        and Σ' is the covariance matrix in transformed parameter space [ln(A), Ea/R, n].
+
+        **Handling Fixed Parameters**
+
+        When some parameters are fixed (e.g., n=0), the covariance matrix is reduced
+        to only include the free parameters. The gradient is adjusted accordingly.
+
+        **Interpretation**
+
+        - Returns σ(ln k), the standard deviation of the natural log of k
+        - For small uncertainties: σ(k)/k ≈ σ(ln k)
+        - For ±1σ confidence band: k(T) · exp(±σ_ln_k)
+        - For ±2σ confidence band: k(T) · exp(±2·σ_ln_k)
+
+        **Key Advantages**
+
+        1. **Accounts for parameter correlations**: Uses full covariance matrix
+        2. **Analytical formula**: No Monte Carlo sampling needed
+        3. **Temperature-dependent uncertainty**: Shows where fit is most/least certain
+        4. **Rigorous error propagation**: Based on first-order Taylor expansion
+
+        Examples
+        --------
+        >>> result = refitter(T_data, k_data, uncertainties=sigma)
+        >>>
+        >>> # Uncertainty at single temperature
+        >>> sigma_ln_k = result.rate_constant_uncertainty(2000.0)
+        >>> print(f"At 2000 K: σ(ln k) = {sigma_ln_k:.4f}")
+        >>> print(f"Relative uncertainty: {sigma_ln_k*100:.1f}%")
+        >>>
+        >>> # Uncertainty over temperature range
+        >>> T_range = jnp.linspace(1000, 3000, 50)
+        >>> sigma_ln_k = result.rate_constant_uncertainty(T_range)
+        >>>
+        >>> # Compute confidence bands
+        >>> k_center = result.arrhenius.rate_constant(T_range)
+        >>> k_upper = k_center * jnp.exp(sigma_ln_k)   # +1σ
+        >>> k_lower = k_center * jnp.exp(-sigma_ln_k)  # -1σ
+        >>> plt.fill_between(T_range, k_lower, k_upper, alpha=0.3)
+
+        References
+        ----------
+        .. [1] T. Nagy and T. Turányi, "Uncertainty of Arrhenius parameters",
+               Int. J. Chem. Kinet., 43, 359-378 (2011).
+               DOI: 10.1002/kin.20551
+        """
+        if self.cov_matrix is None:
+            raise ValueError(
+                "Covariance matrix not available. "
+                "Ensure uncertainties were provided during fitting."
+            )
+
+        T = jnp.asarray(temperature, dtype=jnp.float64)
+        scalar_input = T.ndim == 0
+
+        # Reshape to 1D for vectorized computation
+        T_flat = jnp.atleast_1d(T)
+
+        # Build gradient vector based on covariance matrix size
+        n_params = self.cov_matrix.shape[0]
+
+        if n_params == 3:
+            # All three parameters [ln(A), Ea/R, n]
+            g = jnp.stack([jnp.ones_like(T_flat), -1.0 / T_flat, jnp.log(T_flat)], axis=1)
+        elif n_params == 2:
+            # Two parameters (e.g., n fixed) [ln(A), Ea/R]
+            g = jnp.stack([jnp.ones_like(T_flat), -1.0 / T_flat], axis=1)
+        elif n_params == 1:
+            # One parameter (e.g., A and n fixed) [Ea/R]
+            g = jnp.stack([-1.0 / T_flat], axis=1)
+        else:
+            raise ValueError(f"Unexpected covariance matrix size: {n_params}x{n_params}")
+
+        # Variance: σ²(ln k) = g^T Σ' g
+        # For multiple temperatures: (n_temps, n_params) @ (n_params, n_params) @ (n_params, n_temps)
+        var_ln_k = jnp.sum(g @ self.cov_matrix * g, axis=1)
+
+        # Standard deviation
+        sigma_ln_k = jnp.sqrt(var_ln_k)
+
+        # Return scalar if input was scalar
+        if scalar_input:
+            return float(sigma_ln_k[0])
+        else:
+            return sigma_ln_k
+
     def __repr__(self) -> str:
         return (
             f"RefittingResult(A={self.A:.3e}, n={self.n:.3f}, Ea={self.Ea:.1f}, "
             f"R2={self.R2:.5f}, converged={self.converged})"
         )
 
-    def print_summary(self, verbose: bool = True) -> None:
+    def print_summary(self, verbose: bool = True, show_transformed: bool = False) -> None:
         """
         Print a summary of the fitting results.
 
@@ -105,6 +322,9 @@ class RefittingResult:
         verbose : bool, optional
             If True, print detailed statistics including uncertainties and correlations.
             Default is True.
+        show_transformed : bool, optional
+            If True, also print transformed parameters [ln(A), Ea/R, n] following
+            Turányi-Nagy (2011) convention. Default is False.
         """
         print("Arrhenius Fitting Results")
         print("=" * 70)
@@ -113,17 +333,24 @@ class RefittingResult:
         print(" - Fitted Parameters:")
         print(f"    A             = {self.A:.6e}")
         print(f"    n             = {self.n:.6f}")
-        print(f"    Ea            = {self.Ea:.2f}")
+        print(f"    Ea            = {self.Ea:.2f} cal/mol")
+
+        # Transformed parameters (Turányi-Nagy)
+        if show_transformed:
+            print("\n - Transformed Parameters [ln(A), Ea/R, n]:")
+            print(f"    ln(A)         = {self.ln_A:.6f}")
+            print(f"    Ea/R          = {self.Ea_over_R:.2f} K")
+            print(f"    n             = {self.n:.6f}")
 
         # Fit quality
-        print(" - Fit Quality:")
+        print("\n - Fit Quality:")
         print(f"    R2            = {self.R2:.6f}")
         print(f"    RMSE          = {self.RMSE:.6f}")
         print(f"    MAE           = {self.MAE:.6f}")
         print(f"    SSE           = {self.SSE:.6f}")
 
         # Convergence info
-        print(" - Optimization:")
+        print("\n - Optimization:")
         print(f"    Converged     = {self.converged}")
         print(f"    Steps         = {self.n_steps}")
         print(f"    Optimality    = {self.optimality:.3e}")
@@ -131,28 +358,50 @@ class RefittingResult:
 
         # Detailed statistics
         if verbose and self.std_errors is not None:
-            print(" * Parameter Uncertainties:")
+            print("\n * Parameter Uncertainties (Original Space):")
             A_std = self.A * self.std_errors[0]  # Convert from log-space
             n_std = self.std_errors[1]
             Ea_std = self.std_errors[2] * constants.R_cal_mol
 
-            print(" * Parameter Uncertainties:")
             print(f"    A:  ±{A_std:.3e} ({A_std / self.A * 100:.1f}%)")
-            print(f"    n:  ±{n_std:.6f} ({abs(n_std / self.n) * 100:.1f}%)")
-            print(f"    Ea: ±{Ea_std:.2f}({abs(Ea_std / self.Ea) * 100:.1f}%)")
+            if self.n != 0:
+                print(f"    n:  ±{n_std:.6f} ({abs(n_std / self.n) * 100:.1f}%)")
+            else:
+                print(f"    n:  ±{n_std:.6f} (n=0, fixed or negligible)")
+            print(f"    Ea: ±{Ea_std:.2f} cal/mol ({abs(Ea_std / self.Ea) * 100:.1f}%)")
+
+            if show_transformed:
+                print("\n * Parameter Uncertainties (Transformed Space):")
+                print(f"    σ(ln A)       = ±{self.std_errors[0]:.6f}")
+                print(f"    σ(Ea/R)       = ±{self.std_errors[1]:.2f} K")
+                print(f"    σ(n)          = ±{self.std_errors[2]:.6f}")
 
         if verbose and self.corr_matrix is not None:
-            print(" * Correlation Analysis:")
-            print(f"    Max |correlation| = {self.max_correlation:.4f}")
+            print("\n * Correlation Analysis:")
+            print(f"    Max |ρ|       = {self.max_correlation:.4f}")
 
             if self.condition_number is not None:
-                print(f"  Condition number  = {self.condition_number:.3e}")
+                print(f"    κ (cond. num) = {self.condition_number:.3e}")
                 if self.condition_number > 1e12:
-                    print("    Very high - near singular covariance matrix")
+                    print("      ⚠ Very high - near singular covariance matrix")
+                    print("      → Parameters are poorly identifiable")
+                    print("      → Consider: fixing n, reparametrization, or wider T range")
                 elif self.condition_number > 1e6:
-                    print("    High - potential numerical issues")
+                    print("      ⚠ High - potential numerical issues")
+                    print("      → Some parameter correlations may be strong")
                 else:
-                    print("    Good numerical conditioning")
+                    print("      ✓ Good numerical conditioning")
+
+            # Show correlation matrix if requested
+            if show_transformed and self.corr_matrix is not None:
+                print("\n * Correlation Matrix:")
+                labels = ["ln(A)", "Ea/R ", "n    "]
+                print("         ", "  ".join(labels))
+                for i, label in enumerate(labels):
+                    row_str = f"    {label}"
+                    for j in range(3):
+                        row_str += f"  {self.corr_matrix[i, j]:6.3f}"
+                    print(row_str)
 
         print("=" * 70)
 

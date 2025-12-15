@@ -423,14 +423,14 @@ class FallOff(eqx.Module):
         )
 
         if self._falloff_type == "troe" and self._falloff_parameters is not None:
-            representation += " TROE / {:.5E} {:.5E} {:.5E} {:.5E} /".format(
+            representation += " TROE / {:.5E} {:.5E} {:.5E} {:.5E} /\n".format(
                 float(self._falloff_parameters["A"]),
                 float(self._falloff_parameters["T3"]),
                 float(self._falloff_parameters["T1"]),
                 float(self._falloff_parameters["T2"]),
             )
         elif self._falloff_type == "sri" and self._falloff_parameters is not None:
-            representation += " SRI / {:.5E} {:.5E} {:.5E} {:.5E} {:.5E} /".format(
+            representation += " SRI / {:.5E} {:.5E} {:.5E} {:.5E} {:.5E} /\n".format(
                 float(self._falloff_parameters["a"]),
                 float(self._falloff_parameters["b"]),
                 float(self._falloff_parameters["c"]),
@@ -440,13 +440,12 @@ class FallOff(eqx.Module):
         elif self._falloff_type == "tsang" and self._falloff_parameters is not None:
             # This is not CHEMKIN standard but i believe it would have been
             # implemented like this
-            representation += " TSANG / {:.5E} {:.5E} /".format(
+            representation += " TSANG / {:.5E} {:.5E} /\n".format(
                 float(self._falloff_parameters["A"]),
                 float(self._falloff_parameters["B"]),
             )
 
         if self._efficiencies is not None:
-            representation += "\n"
             for species, efficiency in self._efficiencies.items():
                 representation += " {} / {:.5E} /".format(species, float(efficiency))
 
@@ -489,7 +488,7 @@ class FallOff(eqx.Module):
             lines.append(" efficiencies = {")
             for species, efficiency in self._efficiencies.items():
                 lines.append(f"  {species:4s} = {float(efficiency):.5E}")
-                lines.append(" }")
+            lines.append(" }")
         lines.append(")")
         return "\n".join(lines)
 

@@ -1,7 +1,7 @@
 KiRATE Documentation
 ===========================
 
-KiRATE gasa
+KiRATE gas
 
 .. toctree::
    :maxdepth: 2
