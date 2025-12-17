@@ -64,7 +64,9 @@ class TestPlog(unittest.TestCase):
                 ),
                 f"Rate constant mismatch at pressure index {i} "
                 f"(P = {float(self.P_range[i]):.4f} atm). "
-                f"Max error: {float(jnp.max(jnp.abs(calculated_rate - self.expected_rate[i]))):.2e}",
+                f"Max error: {float(jnp.max(jnp.abs(calculated_rate - self.expected_rate[i]))):.2e}"
+                f"\n * KiRATE:  {float(calculated_rate)}"
+                f"\n * Cantera: {self.expected_rate[i]}",
             )
 
 
