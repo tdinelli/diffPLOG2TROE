@@ -357,9 +357,9 @@ class Plog(eqx.Module):
         # ==============================================================================
         # Step 5: Soft selection of the active interval
         # Identify which interval contains lnP_clamped using boolean mask
-        # Interval i is active if: lnP_i < lnP_clamped <= lnP_{i+1}
-        # Note: Use > (not >=) on lower bound to avoid double-counting at boundaries
-        in_interval = ((lnP_clamped > lnP_lower) & (lnP_clamped <= lnP_upper)).astype(jnp.float64)
+        # Interval i is active if: lnP_i <= lnP_clamped <= lnP_{i+1}
+        # Use >= on lower bound to handle exact pressure level matches
+        in_interval = ((lnP_clamped >= lnP_lower) & (lnP_clamped <= lnP_upper)).astype(jnp.float64)
 
         # Convert to normalized weights (exactly one interval should be active)
         # Add small epsilon (1e-12) for numerical stability in edge cases
