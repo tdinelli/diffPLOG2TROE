@@ -254,7 +254,7 @@ def _make_residual_function(
                 )
                 k_pred = arrh_updated.rate_constant(T)
                 log_k_pred = jnp.log(k_pred)
-                return (log_k - log_k_pred) / weights
+                return (log_k - log_k_pred) * weights
 
     # CASE 2: Masked parameters (some fixed)
     else:
@@ -301,7 +301,7 @@ def _make_residual_function(
                 )
                 k_pred = arrh_updated.rate_constant(T)
                 log_k_pred = jnp.log(k_pred)
-                return (log_k - log_k_pred) / weights
+                return (log_k - log_k_pred) * weights
 
     return _residuals
 
@@ -451,8 +451,14 @@ def refitter(
         - Full array: Weighted fit using provided uncertainties
         - Partial array with NaN/Inf: Two-stage fit (estimates missing values)
 
-        **Important**: These are RELATIVE uncertainties (sig/k), not absolute.
-        They are used directly in log-space fitting since d(ln k) ~= dk/k.
+        **Important**: These are RELATIVE uncertainties (sigma_k/k), not absolute.
+
+        **Delta Method Approximation**: The code uses the first-order approximation
+        that sigma(ln k) = sigma_k/k for transforming uncertainties to log-space.
+        This is valid for small relative uncertainties (<20%) but breaks down for
+        large uncertainties where the log transformation becomes significantly
+        non-linear. For exact treatment of large uncertainties, log-normal error
+        propagation would be required, which is not currently implemented.
     params : dict[str, float], optional
         Optional dict with known parameters {'A': val, 'n': val, 'Ea': val}.
         Any subset can be provided; unknown params will be fitted.
@@ -518,6 +524,22 @@ def refitter(
 
     - **Unweighted fit**: Uncertainties estimated from residual variance
     - **Weighted fit**: Uses provided uncertainties (assumes they are correct)
+
+    **Delta Method Approximation:**
+
+    The transformation from k-space to log-space uncertainties uses the first-order
+    delta method approximation:
+
+    .. math::
+        \\sigma(\\ln k) \\approx \\frac{\\sigma_k}{k} = \\sigma_{\\mathrm{rel}}
+
+    This is derived from the Taylor expansion: d(ln k) = dk/k. The approximation
+    is accurate for small relative uncertainties (typically <20%) but becomes
+    progressively worse for larger uncertainties due to the non-linearity of the
+    logarithm. For data with large uncertainties, the true distribution of ln(k)
+    is log-normal (skewed), not normal. The current implementation uses the
+    symmetric normal approximation for computational simplicity, following
+    standard practice in chemical kinetics literature.
 
     Examples
     --------
@@ -811,21 +833,27 @@ def jacobian_related_statistics(
     -----
     **Covariance Matrix Formulas:**
 
+    Since the residual function returns weighted residuals r = (y - f) * w,
+    the Jacobian J already contains the weights: J = dr/dtheta = w * df/dtheta.
+    Therefore, both cases use the same formula:
+
     1. **Unweighted case** (weights=None):
         Uncertainties are UNKNOWN, estimate from residuals:
 
         .. math::
             \\mathrm{Cov}(\\theta) = \\hat{\\sigma}^2 (J^T J)^{-1}
 
-        where $\\hat{\\sigma}^2 = \\sum r_i^2 / (n - p)$ is the residual variance.
+        where hat{sigma}^2 = sum(r_i^2) / (n - p) is the residual variance.
 
     2. **Weighted case** (weights provided):
-        Uncertainties are KNOWN, use weighted formula:
+        Uncertainties are KNOWN, use:
 
         .. math::
-            \\mathrm{Cov}(\\theta) = (J^T W J)^{-1}
+            \\mathrm{Cov}(\\theta) = (J^T J)^{-1}
 
-        where $W = \\mathrm{diag}(w_1^2, ..., w_n^2)$ is the weight matrix.
+        where J is the Jacobian of the weighted residuals. This is mathematically
+        equivalent to (J_unweighted^T W^2 J_unweighted)^{-1} where W = diag(w_i)
+        and J_weighted = W * J_unweighted.
 
     **Goodness of Fit:**
 
@@ -872,7 +900,7 @@ def jacobian_related_statistics(
             # Check condition number
             cond_number = float(jnp.linalg.cond(JtJ))
             if cond_number > 1e12:
-                print(f" *** Warning: Ill-conditioned Hessian (κ = {cond_number:.2e})")
+                print(f" *** Warning: Ill-conditioned Hessian (cond = {cond_number:.2e})")
                 print("              Parameters may be poorly identified or highly correlated")
 
             # Invert with fallback to pseudo-inverse
@@ -884,35 +912,38 @@ def jacobian_related_statistics(
 
         else:
             # WEIGHTED CASE: Uncertainties are known
-            # Formula: Cov = (J^T W J)^{-1}
-            W = jnp.diag(weights**2)  # Weight matrix
-            JtWJ = J.T @ W @ J
+            # Since residuals are already weighted (r = (y - f) * w), the Jacobian
+            # J = dr/dtheta already contains the weights. So we use:
+            # Cov = (J^T J)^{-1}
+            # This is equivalent to (J_unweighted^T W^2 J_unweighted)^{-1} because
+            # J_weighted = W * J_unweighted
+            JtJ = J.T @ J
 
             # Check condition number
-            cond_number = float(jnp.linalg.cond(JtWJ))
+            cond_number = float(jnp.linalg.cond(JtJ))
             if cond_number > 1e12:
-                print(f" *** Warning: Ill-conditioned weighted Hessian (κ = {cond_number:.2e})")
+                print(f" *** Warning: Ill-conditioned Hessian (cond = {cond_number:.2e})")
                 print("              Parameters may be poorly identified or highly correlated")
 
             # Invert with fallback to pseudo-inverse
             try:
-                cov_matrix = jnp.linalg.inv(JtWJ)
+                cov_matrix = jnp.linalg.inv(JtJ)
             except (jnp.linalg.LinAlgError, ValueError):
-                print(" *** Warning: Singular weighted Hessian - using pseudo-inverse")
-                cov_matrix = jnp.linalg.pinv(JtWJ)
+                print(" *** Warning: Singular Hessian - using pseudo-inverse")
+                cov_matrix = jnp.linalg.pinv(JtJ)
 
             # Compute reduced chi-squared for goodness of fit
             chi2 = float(jnp.sum(residuals**2))  # Residuals already weighted
             reduced_chi2 = chi2 / dof
 
             print(" * Goodness of Fit:")
-            print(f"    χ²         = {chi2:.4f}")
-            print(f"    Reduced χ² = {reduced_chi2:.4f} (expect ~1.0 for good fit)")
+            print(f"    Chi-squared         = {chi2:.4f}")
+            print(f"    Reduced chi-squared = {reduced_chi2:.4f} (expect ~1.0 for good fit)")
 
             if reduced_chi2 > 2.0:
-                print(" *** Warning: χ² >> 1 suggests poor fit or underestimated uncertainties")
+                print(" *** Warning: Chi-squared >> 1 suggests poor fit or underestimated uncertainties")
             elif reduced_chi2 < 0.5:
-                print(" *** Warning: χ² << 1 suggests overestimated uncertainties")
+                print(" *** Warning: Chi-squared << 1 suggests overestimated uncertainties")
 
         # Transform covariance from [A, n, Ea] to [ln(A), n, Ea/R] space (Turányi-Nagy)
         if result_params is not None:
