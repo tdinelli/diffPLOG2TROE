@@ -50,24 +50,26 @@ class TestPlog(unittest.TestCase):
         # Shape: (300 pressures, 300 temperatures) matching reference data
         calculated_rates = self.reaction.rate_constant(self.T_range, self.P_range)
 
-        # Validate against reference data pressure-by-pressure
-        # Iterate over pressure levels (axis 0 of output)
-        for i, calculated_rate in enumerate(calculated_rates):
-            # Compare calculated k(T, P_i) against reference k(T, P_i)
-            # at all 300 temperatures simultaneously
-            self.assertTrue(
-                jnp.allclose(
-                    calculated_rate,      # Our computed values at pressure P_i
-                    self.expected_rate[i],  # Cantera reference at pressure P_i
-                    atol=1e-10,
-                    rtol=1e-8,
-                ),
-                f"Rate constant mismatch at pressure index {i} "
-                f"(P = {float(self.P_range[i]):.4f} atm). "
-                f"Max error: {float(jnp.max(jnp.abs(calculated_rate - self.expected_rate[i]))):.2e}"
-                f"\n * KiRATE:  {float(calculated_rate)}"
-                f"\n * Cantera: {self.expected_rate[i]}",
+        # Calculate relative errors for reporting
+        rel_errors = jnp.abs(calculated_rates - self.expected_rate) / jnp.abs(self.expected_rate)
+        max_rel_error = jnp.max(rel_errors)
+        max_error_idx = jnp.unravel_index(jnp.argmax(rel_errors), rel_errors.shape)
+
+        # Check if all values are close
+        is_close = jnp.allclose(calculated_rates, self.expected_rate, atol=1e-10, rtol=1e-8)
+
+        if not is_close:
+            p_idx, t_idx = max_error_idx
+            error_msg = (
+                f"Max relative error: {max_rel_error:.6e} at "
+                f"P_idx={p_idx} (P={self.P_range[p_idx].item():.6f}atm), "
+                f"T_idx={t_idx} (T={self.T_range[t_idx].item():.2f}K), "
+                f"calculated={calculated_rates[p_idx, t_idx].item():.6e}, "
+                f"expected={self.expected_rate[p_idx, t_idx].item():.6e}"
             )
+            self.fail(error_msg)
+
+        self.assertTrue(is_close)
 
 
 if __name__ == "__main__":
