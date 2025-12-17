@@ -311,7 +311,7 @@ class Plog(eqx.Module):
         # Stack results into a single array for vectorized operations
         # Shape: (num_p_levels,) if T is scalar, (num_p_levels, nt) if T is vector
         all_lnk = jnp.stack([
-            jnp.log(k_level.rate_constant(T))
+            k_level.log_rate_constant(T)
             for k_level in self._k_levels
         ])
 
