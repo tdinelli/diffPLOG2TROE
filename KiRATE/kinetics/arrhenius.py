@@ -52,6 +52,10 @@ class Arrhenius(eqx.Module):
         Temperature exponent stored as JAX scalar
     _Ea : Float64[Array, ""]
         Activation energy stored as JAX scalar
+    _lnA : Float64[Array, ""]
+        Natural logarithm of the pre-exponential factor stored as JAX scalar
+    _EaR : Float64[Array, ""]
+        Activation energy divided by the ideal gas constant stored as JAX scalar
     _name : str
         Reaction name for identification (static field)
     """
@@ -59,6 +63,10 @@ class Arrhenius(eqx.Module):
     _A: Float64[Array, ""]
     _n: Float64[Array, ""]
     _Ea: Float64[Array, ""]
+
+    _lnA: Float64[Array, ""]
+    _EaR: Float64[Array, ""]
+
     _name: str = eqx.field(static=True, default="")
 
     def __init__(self, parameters: dict[str, float], name: str = "") -> None:
@@ -87,9 +95,14 @@ class Arrhenius(eqx.Module):
         # Parameters validation
         validate_arrhenius_parameters(parameters)
 
+        # Parameters storage
         self._A = jnp.float64(parameters["A"])
         self._n = jnp.float64(parameters["n"])
         self._Ea = jnp.float64(parameters["Ea"])
+
+        # Additional parameters
+        self._lnA = jnp.log(parameters["A"])
+        self._EaR = jnp.float64(parameters["Ea"]) / constants.R_cal_mol
 
     @classmethod
     def from_chemkin(cls, input_string: str) -> "Arrhenius":
@@ -119,6 +132,8 @@ class Arrhenius(eqx.Module):
 
         return cls(name=name, parameters=params)
 
+    # ==================================================================================
+    # Rate constant methods
     @eqx.filter_jit
     def rate_constant(
         self,
@@ -159,6 +174,47 @@ class Arrhenius(eqx.Module):
         T = jnp.asarray(T, dtype=jnp.float64)
 
         return self._A * jnp.power(T, self._n) * jnp.exp(-self._Ea / constants.R_cal_mol / T)
+
+    @eqx.filter_jit
+    def log_rate_constant(
+        self,
+        T: float | Float64[Array, ""] | Float64[Array, "n"],
+    ) -> Float64[Array, ""] | Float64[Array, "n"]:
+        """
+        Calculate the logarithm of the Arrhenius rate constant at given temperature(s).
+
+        This method implements the core Arrhenius equation with automatic broadcasting
+        for vector inputs.
+
+        Parameters
+        ----------
+        T : float | Float64[Array, ""] | Float64[Array, "n"]
+            Temperature(s) in Kelvin. Accepts:
+
+            - Python float: Single temperature
+            - JAX scalar array: Single temperature as array
+            - JAX 1D array: Multiple temperatures
+
+            Note: Python floats are automatically promoted by JAX, but explicit
+            array conversion may be needed for gradient operations.
+
+        Returns
+        -------
+        Float64[Array, ""] | Float64[Array, "n"]
+            Natural logarithm of the rate constant(s) at the specified temperature(s).
+
+            - Units depend on reaction order and pre-exponential factor A
+            - Shape matches input temperature array
+            - Always returned as JAX arrays for consistency
+
+        Notes
+        -----
+        - This method is JIT-compiled
+        - This method supports automatic differentiation w.r.t. both T and parameters
+        """
+        T = jnp.asarray(T, dtype=jnp.float64)
+
+        return self._lnA + self._n * jnp.log(T) - self._EaR / T
 
     # ==================================================================================
     # Automatic Differentiation Methods
@@ -254,6 +310,303 @@ class Arrhenius(eqx.Module):
             return eqx.filter_grad(wrapper_function)(self, T_jax)
         else:
             return vmap(lambda t: eqx.filter_grad(wrapper_function)(self, t))(T_jax)
+
+    @eqx.filter_jit
+    def grad_ln_k_transformed_params(
+        self,
+        T: float | Float64[Array, ""] | Float64[Array, "n"],
+    ) -> Float64[Array, "3"] | Float64[Array, "n 3"]:
+        """
+        Compute gradient of ln(k) with respect to transformed parameters
+        (i.e., [ln(A), n, Ea/R]).
+
+        .. math::
+            \\nabla_{\\theta'} \\ln k(T) = \\begin{bmatrix}
+                \\frac{\\partial \\ln k}{\\partial \\ln A} \\\\
+                \\frac{\\partial \\ln k}{\\partial n} \\\\
+                \\frac{\\partial \\ln k}{\\partial (E_a/R)}
+            \\end{bmatrix}
+
+        where :math:`\\theta' = (\\ln A, n, E_a/R)` are the transformed parameters.
+
+        Parameters
+        ----------
+        T : float | Float64[Array, ""] | Float64[Array, "n"]
+            Temperature(s) in Kelvin at which to evaluate the gradients.
+
+        Returns
+        -------
+        Float64[Array, "3"] | Float64[Array, "n 3"]
+            Gradient vector(s) in transformed parameter space:
+
+            - Shape (3,) for scalar T: [∂ln(k)/∂ln(A), ∂ln(k)/∂n, ∂ln(k)/∂(Ea/R)]
+            - Shape (n, 3) for vector T: gradient at each temperature
+
+        Notes
+        -----
+        Eventough we are working in jax and automatic differntiation is available I
+        think that for this specific use case its simpler to use the analytical version.
+
+        The analytical result for the gradient is:
+
+        .. math::
+            \\mathbf{g}(T) = \\begin{bmatrix} 1 \\\\ \\ln(T) \\\\ -1/T \\end{bmatrix}
+
+        This gradient vector is used in the delta method for uncertainty propagation:
+
+        .. math::
+            \\sigma^2[\\ln k(T)] = \\mathbf{g}(T)^T \\boldsymbol{\\Sigma}' \\mathbf{g}(T)
+
+
+        """
+        T_array = jnp.asarray(T, dtype=jnp.float64)
+        scalar_input = T_array.ndim == 0 or (T_array.ndim == 1 and T_array.shape[0] == 1)
+
+        # Analytical gradient formula
+        g = jnp.stack(
+            [
+                jnp.ones_like(T_array),  # ∂ln(k)/∂ln(A) = 1
+                jnp.log(T_array),  # ∂ln(k)/∂n = ln(T)
+                -1.0 / T_array,  # ∂ln(k)/∂(Ea/R) = -1/T
+            ],
+            axis=-1,
+        )
+
+        # Return scalar if input was scalar
+        if scalar_input:
+            return g.squeeze()
+        else:
+            return g
+
+    # ==================================================================================
+    # Uncertainty quantification/propagation methods
+    def rate_constant_uncertainty(
+        self,
+        temperature: float | Float64[Array, ""] | Float64[Array, "n"],
+        cov_matrix: Float64[Array, "n_params n_params"],
+    ) -> Float64[Array, ""] | Float64[Array, "n"]:
+        """
+        Compute uncertainty in ln(k) using covariance matrix (delta method).
+
+        This method propagates parameter uncertainties from a covariance matrix
+        to compute the standard deviation of ln(k) at given temperature(s).
+
+        Parameters
+        ----------
+        temperature : float | Float64[Array, "n"]
+            Temperature(s) in Kelvin at which to evaluate uncertainty
+        cov_matrix : Float64[Array, "n_params n_params"]
+            Covariance matrix in transformed parameter space [ln(A), n, Ea/R]
+
+        Returns
+        -------
+        Float64[Array, ""] | Float64[Array, "n"]
+            Standard deviation σ(ln k) at each temperature
+
+        Notes
+        -----
+        Uses the delta method to propagate parameter uncertainties:
+
+        .. math::
+            \\sigma^2[\\ln k(T)] = \\mathbf{g}(T)^T \\boldsymbol{\\Sigma} \\mathbf{g}(T)
+
+        where :math:`\\mathbf{g}(T) = [1, \\ln(T), -1/T]` is the gradient vector
+        from ``grad_ln_k_transformed_params()`` and :math:`\\boldsymbol{\\Sigma}` is
+        the covariance matrix.
+
+        When performing Monte Carlo sampling from the covariance matrix,
+        Nagy and Turányi (2011) recommend truncating the distribution at
+        :math:`\\pm 2 \\sigma` or :math:`\\pm 3 \\sigma` to avoid physically
+        unrealistic parameter combinations (e.g., negative activation
+        energies, extremely large pre-exponential factors).
+
+        References
+        ----------
+        .. [1] T. Nagy and T. Turányi, "Uncertainty of Arrhenius parameters",
+               Int. J. Chem. Kinet., 43, 359-378 (2011). DOI: 10.1002/kin.20551
+        """
+        T = jnp.asarray(temperature, dtype=jnp.float64)
+
+        # Delta method: σ²(ln k) = g^T Σ g
+        g = self.grad_ln_k_transformed_params(T)
+        var_ln_k = jnp.sum(g @ cov_matrix * g, axis=1)
+        sigma_ln_k = jnp.sqrt(var_ln_k)
+
+        return sigma_ln_k
+
+    def rate_constant_bounds(
+        self,
+        temperature: float | Float64[Array, ""] | Float64[Array, "n"],
+        uncertainty_factor: float,
+    ) -> tuple[Float64[Array, ""] | Float64[Array, "n"], Float64[Array, ""] | Float64[Array, "n"]]:
+        """
+        Compute direct bounds on k(T) from uncertainty factor.
+
+        Applies the uncertainty factor directly to the rate constant:
+
+        .. math::
+            k_{lower}(T) = k_{nominal}(T) / 10^f
+
+            k_{upper}(T) = k_{nominal}(T) \\times 10^f
+
+        Parameters
+        ----------
+        temperature : float | Float64[Array, "n"]
+            Temperature(s) in Kelvin
+        uncertainty_factor : float
+            Multiplicative uncertainty factor (base 10). For example, f=2 means
+            k can vary by a factor of 100 (10^2).
+
+        Returns
+        -------
+        k_lower, k_upper : tuple of Float64 arrays
+            Lower and upper bounds on k(T) at each temperature
+
+        Notes
+        -----
+        This is the simplest approach for uncertainty - it assumes the uncertainty
+        factor applies uniformly to k(T) at all temperatures. Commonly used when
+        parameter uncertainties are unknown but an overall uncertainty factor is specified.
+        """
+        k_nominal = self.rate_constant(temperature)
+        factor = 10.0**uncertainty_factor
+        return k_nominal / factor, k_nominal * factor
+
+    def parameter_bounds(
+        self,
+        uncertainty_factor: float,
+        method: str = "correlated",
+        T_low: float = 300,
+        T_high: float = 2500.0,
+    ) -> dict[str, tuple[Float64[Array, ""], Float64[Array, ""]]]:
+        """
+        Compute parameter bounds for optimization/sampling from uncertainty factor.
+
+        These bounds constrain parameter space during optimization or provide
+        sampling ranges for Monte Carlo uncertainty propagation.
+
+        Parameters
+        ----------
+        uncertainty_factor : float
+            Multiplicative uncertainty factor (base 10)
+        method : str, default="correlated"
+            Method for computing bounds:
+
+            - "correlated": Correlated bounds accounting for compensation effects
+            - "independent": Independent parameter perturbations
+
+        T_low : float, default=300.0
+            Lower reference temperature (K)
+        T_high : float, default=2500.0
+            Upper reference temperature (K)
+
+        Returns
+        -------
+        dict[str, tuple[Float64[Array, ""], Float64[Array, ""]]]
+            Parameter bounds with keys:
+
+            - "lnA": (min, max) bounds on ln(A)
+            - "n": (min, max) bounds on n
+            - "EaR": (min, max) bounds on Ea/R
+
+        Notes
+        -----
+        **Correlated method**: Back-calculates parameter bounds ensuring k(T) stays
+        within the uncertainty factor at T_low and T_high, accounting for
+        parameter compensation. Gives wider bounds.
+
+        **Independent method**: Independent perturbations to each parameter:
+
+        .. math::
+            \\ln(A) &\\in [\\ln(A_0) \\pm f\\ln(10)] \\\\
+            n &\\in [n_0 \\pm f\\ln(10)/\\ln(T_{high})] \\\\
+            E_a/R &\\in [(E_a/R)_0 \\pm f\\ln(10) \\cdot T_{low}]
+        """
+        if method == "correlated":
+            return self._parameter_bounds_correlated(uncertainty_factor, T_low, T_high)
+        elif method == "independent":
+            return self._parameter_bounds_independent(uncertainty_factor, T_low, T_high)
+        else:
+            raise ValueError(f"Unknown method '{method}'. Choose from: 'correlated', 'independent'")
+
+    def _parameter_bounds_correlated(
+        self,
+        f: float,
+        T_low: float,
+        T_high: float,
+    ) -> dict[str, tuple[Float64[Array, ""], Float64[Array, ""]]]:
+        """Correlated method: parameter bounds accounting for compensation effects."""
+
+        def log_rate(
+            lnA: Float64[Array, ""],
+            n: Float64[Array, ""],
+            EaR: Float64[Array, ""],
+            T: Float64[Array, "2"],
+        ) -> Float64[Array, "2"]:
+            """"""
+            return lnA + n * jnp.log(T) - EaR / T
+
+        T_range = jnp.array([T_low, T_high], dtype=jnp.float64)
+
+        # Step 1: Bounds on ln(A)
+        delta_ln_A = f * jnp.log(10.0)
+        lnA_min = self._lnA - delta_ln_A
+        lnA_max = self._lnA + delta_ln_A
+
+        # Step 2: Limiting rate constants
+        lnk_lb_Tlow, lnk_ub_Tlow = log_rate(lnA_min, self._n, self._EaR, T_range)
+        lnk_lb_Thigh, lnk_ub_Thigh = log_rate(lnA_max, self._n, self._EaR, T_range)
+
+        # Step 3: Back-calculate n bounds
+        n_1 = (lnk_ub_Tlow - lnk_lb_Thigh - self._EaR * (1.0 / T_range[0] - 1.0 / T_range[1])) / (
+            jnp.log(T_range[0]) - jnp.log(T_range[1])
+        )
+        n_2 = (lnk_lb_Tlow - lnk_ub_Thigh - self._EaR * (1.0 / T_range[0] - 1.0 / T_range[1])) / (
+            jnp.log(T_range[0]) - jnp.log(T_range[1])
+        )
+        n_min = jnp.minimum(n_1, n_2)
+        n_max = jnp.maximum(n_1, n_2)
+
+        # Step 4: Back-calculate Ea/R bounds
+        lnA_1 = (
+            lnk_lb_Thigh
+            - (T_range[0] / T_range[1]) * lnk_ub_Tlow
+            - self._n * (jnp.log(T_range[1]) - (T_range[0] / T_range[1]) * jnp.log(T_range[0]))
+        ) / (1.0 - T_range[0] / T_range[1])
+        EaR_1 = lnA_1 * T_range[0] + T_range[0] * self._n * jnp.log(T_range[0]) - lnk_ub_Tlow * T_range[0]
+
+        lnA_2 = (
+            lnk_ub_Thigh
+            - (T_range[0] / T_range[1]) * lnk_lb_Tlow
+            - self._n * (jnp.log(T_range[1]) - (T_range[0] / T_range[1]) * jnp.log(T_range[0]))
+        ) / (1.0 - T_range[0] / T_range[1])
+        EaR_2 = lnA_2 * T_range[0] + T_range[0] * self._n * jnp.log(T_range[0]) - lnk_lb_Tlow * T_range[0]
+
+        EaR_min = jnp.minimum(EaR_1, EaR_2)
+        EaR_max = jnp.maximum(EaR_1, EaR_2)
+
+        return {
+            "lnA": (lnA_min, lnA_max),
+            "n": (n_min, n_max),
+            "EaR": (EaR_min, EaR_max),
+        }
+
+    def _parameter_bounds_independent(
+        self,
+        f: float,
+        T_low: float,
+        T_high: float,
+    ) -> dict[str, tuple[Float64[Array, ""], Float64[Array, ""]]]:
+        """Independent method: independent parameter perturbations."""
+        delta_lnA = f * jnp.log(10.0)
+        delta_n = delta_lnA / jnp.log(T_high)
+        delta_EaR = delta_lnA * T_low
+
+        return {
+            "lnA": (self._lnA - delta_lnA, self._lnA + delta_lnA),
+            "n": (self._n - delta_n, self._n + delta_n),
+            "EaR": (self._EaR - delta_EaR, self._EaR + delta_EaR),
+        }
 
     # ==================================================================================
     # String representations and debugging

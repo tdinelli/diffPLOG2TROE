@@ -61,8 +61,8 @@ class TestArrhenius(unittest.TestCase):
         data = np.loadtxt(data_file, delimiter=";")
         data = jnp.array(data)
 
-        # Cantera returns the rate constant in m³/kmol·s so the conversion is:
-        # cm³/(mol·s) = m³/(kmol·s) × 10⁶ / 1000 = m³/(kmol·s) × 10³
+        # Cantera returns the rate constant in m3/kmol·s so the conversion is:
+        # cm3/(mol·s) = m3/(kmol·s) x 10^6 / 1000 = m3/(kmol·s) x 10^3
         self.expected_rate = data[:, 1] * 1000
 
         # ==============================================================================
@@ -74,6 +74,19 @@ class TestArrhenius(unittest.TestCase):
     def test_arrhenius_rate_constant(self):
         """Test direct rate constant calculation against reference data."""
         calculated_rates = self.reaction.rate_constant(self.T_range)
+
+        self.assertTrue(
+            jnp.allclose(
+                calculated_rates,
+                self.expected_rate,
+                atol=1e-10,
+                rtol=1e-10,
+            ),
+            "Calculated rate constants (from the direct function) for the Arrhenius case don't match reference data",
+        )
+
+    def test_log_arrhenius_rate_constant(self):
+        calculated_rates = jnp.exp(self.reaction.log_rate_constant(self.T_range))
 
         self.assertTrue(
             jnp.allclose(
