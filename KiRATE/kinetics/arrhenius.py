@@ -666,6 +666,20 @@ class Arrhenius(eqx.Module):
         return self._A
 
     @property
+    def lnA(self) -> Float64[Array, ""]:
+        """
+        Natural logarithm of the pre-exponential factor.
+
+        Returns
+        -------
+        Float64[Array, ""]
+            Natural logarithm of the pre-exponential factor A
+            from the Arrhenius equation. Units depend on the
+            reaction order.
+        """
+        return self._lnA
+
+    @property
     def n(self) -> Float64[Array, ""]:
         """
         Temperature exponent (modified Arrhenius parameter).
@@ -688,6 +702,19 @@ class Arrhenius(eqx.Module):
             Activation energy Ea in cal/mol.
         """
         return self._Ea
+
+    @property
+    def EaR(self) -> Float64[Array, ""]:
+        """
+        Activation energy divided by the ideal gas constant.
+
+        Returns
+        -------
+        Float64[Array, ""]
+            Activation energy divide by the ideal gas constant
+            Ea/R in K.
+        """
+        return self._EaR
 
     @property
     def name(self) -> str:
