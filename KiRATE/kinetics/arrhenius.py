@@ -100,9 +100,9 @@ class Arrhenius(eqx.Module):
         self._n = jnp.float64(parameters["n"])
         self._Ea = jnp.float64(parameters["Ea"])
 
-        # Additional parameters
-        self._lnA = jnp.log(parameters["A"])
-        self._EaR = jnp.float64(parameters["Ea"]) / constants.R_cal_mol
+        # Additional parameters (cached transformed values)
+        self._lnA = jnp.log(self._A)
+        self._EaR = self._Ea / constants.R_cal_mol
 
     @classmethod
     def from_chemkin(cls, input_string: str) -> "Arrhenius":
