@@ -12,6 +12,7 @@ from jaxtyping import Array, Float64
 
 from KiRATE.kinetics.arrhenius import Arrhenius
 from KiRATE.kinetics.broadening_functions import compute_broadening_factor
+from KiRATE.kinetics.utils import validate_broadening_parameters, validate_efficiencies
 from KiRATE.utilities import calculate_effective_concentration
 
 
@@ -52,13 +53,7 @@ class CABR(eqx.Module):
     cabr_type : str
         Type of broadening factor: "lindemann", "troe", "sri", or "tsang"
     cabr_parameters : dict[str, float], optional
-        Broadening factor parameters (type-dependent):
-
-        - **Troe**: {"A": alpha, "T3": T3, "T1": T1, "T2": T2}
-        - **SRI**: {"a": a, "b": b, "c": c, "d": d, "e": e}
-        - **Tsang**: {"A": A, "B": B}
-        - **Lindemann**: None (F = 1.0)
-
+        Broadening factor parameters (type-dependent)
     efficiencies : dict[str, float], optional
         Third-body collision efficiencies: {"species_name": efficiency}
         Default efficiency is 1.0 for species not listed
@@ -145,6 +140,7 @@ class CABR(eqx.Module):
 
         # Validate and store broadening factor parameters
         if cabr_parameters is not None:
+            validate_broadening_parameters(cabr_type, cabr_parameters)
             # Convert to JAX arrays for differentiability
             self._cabr_parameters = {key: jnp.float64(value) for key, value in cabr_parameters.items()}
         else:
@@ -152,11 +148,33 @@ class CABR(eqx.Module):
 
         # Validate and store third-body efficiencies
         if efficiencies is not None:
+            validate_efficiencies(efficiencies)
             # Convert to JAX arrays for differentiability
             self._efficiencies = {key: jnp.float64(value) for key, value in efficiencies.items()}
         else:
             self._efficiencies = None
 
+    # ==================================================================================
+    # CHEMKIN string parser
+    @classmethod
+    def from_chemkin(cls, input_string: str) -> "CABR":
+        """
+        Parse a CHEMKIN-format CABR entry (not yet implemented).
+
+        Parameters
+        ----------
+        input_string : str
+            CHEMKIN-formatted CABR reaction string
+
+        Raises
+        ------
+        NotImplementedError
+            This method is a placeholder for future implementation
+        """
+        raise NotImplementedError("CHEMKIN parsing for CABR is not yet implemented")
+
+    # ==================================================================================
+    # Rate constant methods
     @eqx.filter_jit
     def rate_constant(
         self,
@@ -187,10 +205,10 @@ class CABR(eqx.Module):
         Float64[Array, ""] | Float64[Array, "nt"] | Float64[Array, "np"] | Float64[Array, "nt np"]
             CABR rate constant(s) with shape matching input broadcasting:
 
-            - Scalar T, Scalar P = Scalar output
-            - Vector T, Scalar P = Vector output (length nt)
-            - Scalar T, Vector P = Vector output (length np)
-            - Vector T, Vector P = Matrix output (shape: np x nt)
+            - Scalar T, Scalar P -> Scalar output
+            - Vector T, Scalar P -> Vector output (length nt)
+            - Scalar T, Vector P -> Vector output (length np)
+            - Vector T, Vector P -> Matrix output (shape: np x nt)
 
             Units depend on reaction order (typically cm3/(mol s) for bimolecular).
 
@@ -221,15 +239,16 @@ class CABR(eqx.Module):
 
         # Convert composition to JAX arrays for differentiability
         jax_composition = (
-            {key: jnp.float64(value) for key, value in composition.items()} if composition is not None else None
+            {key: jnp.float64(value) for key, value in composition.items()}
+            if composition is not None
+            else None
         )
 
         # Compute high-pressure and low-pressure limit rate constants
         k_hpl = self._hpl.rate_constant(T)  # High-pressure limit [cm3/(mol s)]
         k_lpl = self._lpl.rate_constant(T)  # Low-pressure limit [cm6/(mol2 s)]
 
-        if jnp.isscalar(P) or P.ndim == 0:
-            # Scalar pressure - evaluate directly
+        if jnp.isscalar(P) or P.ndim == 0: # Scalar pressure - evaluate directly
             return self._single_P_rate_constant(
                 T,
                 P,
@@ -237,8 +256,7 @@ class CABR(eqx.Module):
                 k_hpl,
                 jax_composition,
             )
-        else:
-            # Vector pressure - vectorize over pressure dimension
+        else: # Vector pressure - vectorize over pressure dimension
             vec_func = vmap(
                 lambda p: self._single_P_rate_constant(
                     T,
@@ -328,25 +346,6 @@ class CABR(eqx.Module):
         return lpl * (1 / (1 + Pr)) * F
 
     # ==================================================================================
-    # CHEMKIN string parser
-    @staticmethod
-    def parse_chemkin_entry(input_string: str):
-        """
-        Parse a CHEMKIN-format CABR entry (not yet implemented).
-
-        Parameters
-        ----------
-        input_string : str
-            CHEMKIN-formatted CABR reaction string
-
-        Raises
-        ------
-        NotImplementedError
-            This method is a placeholder for future implementation
-        """
-        raise NotImplementedError("CHEMKIN parsing for CABR is not yet implemented")
-
-    # ==================================================================================
     # String Representations and Debugging
     def __str__(self) -> str:
         """
@@ -410,6 +409,9 @@ class CABR(eqx.Module):
 
         return representation
 
+    def __repr__(self) -> str:
+        raise NotImplementedError("'__repr__' method not implemented yet!")
+
     # ==================================================================================
     # Properties for parameters access
     @property
@@ -420,8 +422,7 @@ class CABR(eqx.Module):
         Returns
         -------
         str
-            The reaction name string, typically in chemical equation format
-            with (+M) notation indicating pressure-dependence.
+            The reaction name string.
         """
         return self._name
 
@@ -440,37 +441,24 @@ class CABR(eqx.Module):
     @property
     def hpl(self) -> Arrhenius:
         """
-        High-pressure limit (k_∞) Arrhenius object.
+        High-pressure limit (:math:`k_\\infty`) Arrhenius object.
 
         Returns
         -------
         Arrhenius
             Arrhenius object representing the high-pressure limit rate constant.
-
-        Notes
-        -----
-        For CABR, the high-pressure limit represents the minimum rate constant
-        when collisions are so frequent that the activated complex is stabilized
-        before dissociating to products. At high pressures, k(T,P) -> (k_inf /[M]) F.
         """
         return self._hpl
 
     @property
     def lpl(self) -> Arrhenius:
         """
-        Low-pressure limit (k0) Arrhenius object.
+        Low-pressure limit (:math:`k_0`) Arrhenius object.
 
         Returns
         -------
         Arrhenius
             Arrhenius object representing the low-pressure limit rate constant.
-
-        Notes
-        -----
-        For CABR, the low-pressure limit represents the maximum rate constant
-        when collisions are rare and the activated complex dissociates to products
-        before being stabilized. At low pressures, k(T,P) -> k0 F. This is the
-        dominant term in the CABR formula.
         """
         return self._lpl
 
@@ -500,11 +488,6 @@ class CABR(eqx.Module):
             Dictionary mapping species names to collision efficiencies.
             All values are JAX float64 arrays. Returns None if no
             efficiencies were specified (default efficiency 1.0 for all).
-
-        Notes
-        -----
-        Collision efficiencies (:math:`\\epsilon_i`) account for the varying effectiveness of
-        different bath gas species in stabilizing the activated complex.
         """
         if self._efficiencies is not None:
             return self._efficiencies
