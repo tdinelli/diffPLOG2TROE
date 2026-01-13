@@ -44,13 +44,7 @@ class FallOff(eqx.Module):
     falloff_type : str
         Type of broadening factor: "lindemann", "troe", "sri", or "tsang"
     falloff_parameters : dict[str, float], optional
-        Broadening factor parameters (type-dependent):
-
-        - **Troe**: {"A": alpha, "T3": T3, "T1": T1, "T2": T2}
-        - **SRI**: {"a": a, "b": b, "c": c, "d": d, "e": e}
-        - **Tsang**: {"A": A, "B": B}
-        - **Lindemann**: None (F = 1.0)
-
+        Broadening factor parameters (type-dependent).
     efficiencies : dict[str, float], optional
         Third-body collision efficiencies: {"species_name": efficiency}
         Default efficiency is 1.0 for species not listed
@@ -132,12 +126,6 @@ class FallOff(eqx.Module):
             If broadening parameters are invalid for the specified falloff_type
         UserWarning
             If efficiency values are outside typical ranges
-
-        Notes
-        -----
-        - All parameters are converted to JAX float64 arrays for differentiability
-        - HPL and LPL Arrhenius objects are created internally
-        - Validation is performed on broadening parameters and efficiencies
         """
         self._name = name
         self._falloff_type = falloff_type
@@ -162,6 +150,56 @@ class FallOff(eqx.Module):
         else:
             self._efficiencies = None
 
+    @classmethod
+    def from_chemkin(cls, input_string: str) -> "FallOff":
+        """
+        Create a FallOff instance from a CHEMKIN format string.
+
+        This class method provides a convenient way to construct FallOff objects
+        directly from CHEMKIN-style input strings, which are the standard format
+        used in combustion and chemical kinetics databases.
+
+        Parameters
+        ----------
+        input_string : str
+            CHEMKIN-formatted string containing reaction name, high-pressure limit,
+            low-pressure limit, broadening parameters, and optionally third-body
+            efficiencies. The format is:
+
+            .. code-block:: text
+
+                REACTION_NAME    A_hpl   n_hpl   Ea_hpl
+                  LOW  /         A_lpl   n_lpl   Ea_lpl /
+                  TROE / alpha   T3   T1   T2           / ! or SRI / a b c d e /
+                  SPECIES / efficiency / ... / ...      / ! optional
+
+        Returns
+        -------
+        FallOff
+            New FallOff instance with parsed parameters, reaction name, and efficiencies.
+
+        Raises
+        ------
+        ValueError
+            If the input string cannot be parsed or contains invalid parameters.
+        """
+        # Parse CHEMKIN input string to extract all parameters
+        reaction_name, hpl_params, lpl_params, falloff_type, falloff_params, efficiencies = parse_falloff(
+            input_string
+        )
+
+        # Construct FallOff object with parsed parameters
+        return cls(
+            hpl_parameters=hpl_params,
+            lpl_parameters=lpl_params,
+            falloff_type=falloff_type,
+            falloff_parameters=falloff_params,
+            efficiencies=efficiencies,
+            name=reaction_name,
+        )
+
+    # ==================================================================================
+    # Rate constant methods
     @eqx.filter_jit
     def rate_constant(
         self,
@@ -172,9 +210,9 @@ class FallOff(eqx.Module):
         """
         Calculate the fall-off rate constant at given temperature(s) and pressure(s).
 
-        This method implements the Lindemann-Hinshelwood fall-off formalism with
-        broadening factor corrections, automatically handling third-body effects
-        and vectorized evaluation.
+        This method implements the fall-off formalism with broadening factor
+        corrections, automatically handling third-body effects and vectorized
+        evaluation.
 
         Parameters
         ----------
@@ -192,12 +230,10 @@ class FallOff(eqx.Module):
         Float64[Array, ""] | Float64[Array, "nt"] | Float64[Array, "np"] | Float64[Array, "nt np"]
             Fall-off rate constant(s) with shape matching input broadcasting:
 
-            - Scalar T, Scalar P = Scalar output
-            - Vector T, Scalar P = Vector output (length nt)
-            - Scalar T, Vector P = Vector output (length np)
-            - Vector T, Vector P = Matrix output (shape: np x nt)
-
-            Units depend on reaction order (typically cm3/(mol s) for bimolecular HPL).
+            - Scalar T, Scalar P -> Scalar output
+            - Vector T, Scalar P -> Vector output (length nt)
+            - Scalar T, Vector P -> Vector output (length np)
+            - Vector T, Vector P -> Matrix output (shape: np x nt)
 
         Notes
         -----
@@ -215,26 +251,22 @@ class FallOff(eqx.Module):
 
         .. math::
             [M]_{eff} = [M] \\cdot \\sum_i \\epsilon_i x_i
-
-        **Performance:**
-
-        - Fully differentiable w.r.t. T, P, and all parameters
-        - Vectorization over temperature and pressure arrays
         """
         T = jnp.asarray(T, dtype=jnp.float64)
         P = jnp.asarray(P, dtype=jnp.float64)
 
         # Convert composition to JAX arrays for differentiability
         jax_composition = (
-            {key: jnp.float64(value) for key, value in composition.items()} if composition is not None else None
+            {key: jnp.float64(value) for key, value in composition.items()}
+            if composition is not None
+            else None
         )
 
         # Compute high-pressure and low-pressure limit rate constants
-        k_hpl = self._hpl.rate_constant(T)  # High-pressure limit [cm3/(mol s)]
-        k_lpl = self._lpl.rate_constant(T)  # Low-pressure limit [cm6/(mol2 s)]
+        k_hpl = self._hpl.rate_constant(T)  # High-pressure limit [cm3/mol/s]
+        k_lpl = self._lpl.rate_constant(T)  # Low-pressure limit [cm6/mol2/s]
 
-        if jnp.isscalar(P) or P.ndim == 0:
-            # Scalar pressure - evaluate directly
+        if jnp.isscalar(P) or P.ndim == 0: # Scalar pressure - evaluate directly
             return self._single_P_rate_constant(
                 T,
                 P,
@@ -242,8 +274,7 @@ class FallOff(eqx.Module):
                 k_hpl,
                 jax_composition,
             )
-        else:
-            # Vector pressure - vectorize over pressure dimension
+        else: # Vector pressure - vectorize over pressure dimension
             vec_func = vmap(
                 lambda p: self._single_P_rate_constant(
                     T,
@@ -267,9 +298,9 @@ class FallOff(eqx.Module):
         """
         Calculate fall-off rate constant at a single pressure and one or more temperatures.
 
-        This internal method implements the core Lindemann-Hinshelwood fall-off calculation
-        with broadening factor corrections. It is called by `rate_constant()` and should not
-        be invoked directly by users.
+        This internal method implements the core fall-off calculation
+        with broadening factor corrections. It is called by
+        `rate_constant()` and should not be invoked directly by users.
 
         Parameters
         ----------
@@ -279,10 +310,10 @@ class FallOff(eqx.Module):
             Single pressure value in bar (scalar)
         lpl : Float64[Array, ""] | Float64[Array, "nt"]
             Pre-computed low-pressure limit rate constant(s) k0(T)
-            Units: cm6/(mol2 s)
+            Units: cm6/mol2/s
         hpl : Float64[Array, ""] | Float64[Array, "nt"]
             Pre-computed high-pressure limit rate constant(s) k_inf(T)
-            Units: cm3/(mol s) for typical bimolecular reactions
+            Units: cm3/mol/s for typical bimolecular reactions
         composition : dict[str, Float64[Array, ""]], optional
             Gas composition as mole fractions with JAX arrays
 
@@ -340,65 +371,6 @@ class FallOff(eqx.Module):
 
         # Step 4: Apply FallOff formula
         return hpl * (Pr / (1 + Pr)) * F
-
-    @classmethod
-    def from_chemkin(cls, input_string: str) -> "FallOff":
-        """
-        Create a FallOff instance from a CHEMKIN format string.
-
-        This class method provides a convenient way to construct FallOff objects
-        directly from CHEMKIN-style input strings, which are the standard format
-        used in combustion and chemical kinetics databases.
-
-        Parameters
-        ----------
-        input_string : str
-            CHEMKIN-formatted string containing reaction name, high-pressure limit,
-            low-pressure limit, broadening parameters, and optionally third-body
-            efficiencies. The format is:
-
-            .. code-block:: text
-
-                REACTION_NAME    A_hpl   n_hpl   Ea_hpl
-                  LOW  /         A_lpl   n_lpl   Ea_lpl /
-                  TROE / alpha   T3   T1   T2           / ! or SRI / a b c d e /
-                  SPECIES / efficiency / ... / ...      / ! optional
-
-        Returns
-        -------
-        FallOff
-            New FallOff instance with parsed parameters, reaction name, and efficiencies.
-
-        Raises
-        ------
-        ValueError
-            If the input string cannot be parsed or contains invalid parameters.
-
-        Notes
-        -----
-        The parser automatically detects the broadening factor type (TROE, SRI, TSANG,
-        or Lindemann) based on the keywords present in the input string. If no
-        broadening parameters are specified, Lindemann formulation (F=1) is assumed.
-
-        The CHEMKIN format uses the following conventions:
-        - Activation energy Ea is in cal/mol
-        - Pre-exponential factors A have units depending on reaction order
-        - Efficiencies default to 1.0 for species not listed
-        """
-        # Parse CHEMKIN input string to extract all parameters
-        reaction_name, hpl_params, lpl_params, falloff_type, falloff_params, efficiencies = parse_falloff(
-            input_string
-        )
-
-        # Construct FallOff object with parsed parameters
-        return cls(
-            hpl_parameters=hpl_params,
-            lpl_parameters=lpl_params,
-            falloff_type=falloff_type,
-            falloff_parameters=falloff_params,
-            efficiencies=efficiencies,
-            name=reaction_name,
-        )
 
     # ==================================================================================
     # String Representations and Debugging
@@ -502,8 +474,7 @@ class FallOff(eqx.Module):
         Returns
         -------
         str
-            The reaction name string, typically in chemical equation format
-            with (+M) notation indicating pressure-dependence.
+            The reaction name string.
         """
         return self._name
 
@@ -552,12 +523,6 @@ class FallOff(eqx.Module):
         -------
         dict[str, Float64[Array, ""]] or None
             Dictionary of broadening parameters (type-dependent):
-
-        Notes
-        -----
-        These parameters are fully differentiable and can be optimized using
-        gradient-based methods. They control the shape of the broadening factor
-        F(T, P_r) which corrects for non-Lindemann behavior in the transition region.
         """
         if self._falloff_parameters is not None:
             return self._falloff_parameters
@@ -575,17 +540,6 @@ class FallOff(eqx.Module):
             Dictionary mapping species names to collision efficiencies.
             All values are JAX float64 arrays. Returns None if no
             efficiencies were specified (default efficiency 1.0 for all).
-
-        Notes
-        -----
-        Collision efficiencies (:math:`\\eps_i`) account for the varying effectiveness of
-        different bath gas species in stabilizing the activated complex. The
-        effective third-body concentration is:
-
-        .. math::
-            [M]_{eff} = [M] \\cdot \\sum_i \\epsilon_i x_i
-
-        These values are differentiable and can be optimized if needed.
         """
         if self._efficiencies is not None:
             return self._efficiencies

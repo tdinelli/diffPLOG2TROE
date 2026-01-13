@@ -266,8 +266,8 @@ def validate_chebyshev_parameters(
 
         - **Coefficient array**:
             - Must be 2D
-            - Both dimensions must be ≥ 1 (at least constant term)
-            - All values must be finite (no NaN or ±∞)
+            - Both dimensions must be >= 1 (at least constant term)
+            - All values must be finite (no NaN or :math:`\\pm \\infty`)
 
         - **Temperature limits**:
             - T_min must be positive (> 0 K)
@@ -289,44 +289,22 @@ def validate_chebyshev_parameters(
         \\log_{10} k(T, P) = \\sum_{t=0}^{N_T-1} \\sum_{p=0}^{N_P-1} \\alpha_{tp} \\phi_t(\\tilde{T}) \\phi_p(\\tilde{P})
 
     where:
-        - α_tp are the Chebyshev coefficients
-        - φ_n(x) = cos(n·arccos(x)) are Chebyshev polynomials of the first kind
-        - T̃ and P̃ are reduced temperature and pressure mapped to [-1, 1]
+        - :math:`\\alpha_{t, p} are the Chebyshev coefficients
+        - :math:`\\phi_n (x) = cos(n \\cdot arccos(x))` are Chebyshev polynomials of the first kind
+        - :math:`\\tilde{T}` and :math:`\\tilde{P}` are reduced temperature and pressure mapped to [-1, 1]
 
     **Parameter Requirements:**
 
-    - **Minimum order**: N_T ≥ 1, N_P ≥ 1 (at least constant term)
+    - **Minimum order**: N_T >= 1, N_P >= 1 (at least constant term)
     - **Typical orders**: N_T = 4-8, N_P = 3-5 (balance accuracy vs. cost)
-    - **Coefficient magnitude**: No strict bounds, but |α| > 100 may indicate issues
+    - **Coefficient magnitude**: No strict bounds, but :math:`|\\alpha| > 100`
+        may indicate issues
 
     **Extrapolation Warning:**
 
     Chebyshev polynomials are only defined on [-1, 1]. Extrapolation outside
-    [T_min, T_max] × [P_min, P_max] is strongly discouraged and may produce
+    [T_min, T_max] x [P_min, P_max] is strongly discouraged and may produce
     unphysical results.
-
-    Examples
-    --------
-    >>> # Valid parameters
-    >>> coeffs = jnp.array([[1.0, 0.5], [0.2, 0.1]])
-    >>> T_limits = (300.0, 2500.0)
-    >>> P_limits = (0.01, 100.0)
-    >>> validate_chebyshev_parameters(coeffs, T_limits, P_limits)  # No error
-
-    >>> # Invalid (non-positive T_min)
-    >>> validate_chebyshev_parameters(coeffs, (0.0, 2500.0), P_limits)  # Raises ValueError
-
-    >>> # Invalid (T_min > T_max)
-    >>> validate_chebyshev_parameters(coeffs, (3000.0, 2500.0), P_limits)  # Raises ValueError
-
-    >>> # Invalid (non-finite coefficient)
-    >>> bad_coeffs = jnp.array([[1.0, jnp.nan], [0.2, 0.1]])
-    >>> validate_chebyshev_parameters(bad_coeffs, T_limits, P_limits)  # Raises ValueError
-
-    See Also
-    --------
-    validate_arrhenius_parameters : Validator for Arrhenius rate constants
-    validate_broadening_parameters : Validator for broadening factors
 
     References
     ----------
@@ -335,7 +313,6 @@ def validate_chebyshev_parameters(
     """
     # =================================================================================
     # Validate Coefficient Matrix
-    # =================================================================================
     # Check array is 2D
     if coefficients.ndim != 2:
         raise ValueError(
@@ -357,9 +334,7 @@ def validate_chebyshev_parameters(
             f"Found {jnp.sum(~jnp.isfinite(coefficients))} non-finite values."
         )
 
-    # =================================================================================
     # Validate Temperature Limits
-    # =================================================================================
     T_min, T_max = T_limits
 
     # Check T_min is positive (absolute temperature must be > 0)
@@ -379,9 +354,7 @@ def validate_chebyshev_parameters(
             f"Temperature limits must be finite, got T_min = {T_min} K, T_max = {T_max} K"
         )
 
-    # =================================================================================
     # Validate Pressure Limits
-    # =================================================================================
     P_min, P_max = P_limits
 
     # Check P_min is positive (pressure must be > 0)

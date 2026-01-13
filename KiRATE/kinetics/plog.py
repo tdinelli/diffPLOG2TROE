@@ -73,9 +73,9 @@ class Plog(eqx.Module):
 
     References
     ----------
-    .. [1] Kee, R. J., et al. "CHEMKIN-III: A Fortran chemical kinetics package
+    .. [1] TODO add the proper PLOG reference
+    .. [2] Kee, R. J., et al. "CHEMKIN-III: A Fortran chemical kinetics package
            for the analysis of gas-phase chemical and plasma kinetics." (1996).
-    .. [2] TODO add the proper PLOG reference
     """
 
     _k_levels: list[Arrhenius]
@@ -204,18 +204,9 @@ class Plog(eqx.Module):
         Parameters
         ----------
         T : float | Float64[Array, ""] | Float64[Array, "nt"]
-            Temperature(s) in Kelvin. Accepts:
-
-            - Python float: Single temperature
-            - JAX scalar array: Single temperature as array
-            - JAX 1D array: Multiple temperatures
-
+            Temperature(s) in Kelvin.
         P : float | Float64[Array, ""] | Float64[Array, "np"]
-            Pressure(s) in atmospheres. Accepts:
-
-            - Python float: Single pressure
-            - JAX scalar array: Single pressure as array
-            - JAX 1D array: Multiple pressures
+            Pressure(s) in atmospheres.
 
         Returns
         -------
@@ -225,10 +216,10 @@ class Plog(eqx.Module):
             - Units depend on reaction order and pre-exponential factor A
             - Shape follows broadcasting rules:
 
-              - Scalar T, Scalar P = Scalar output
-              - Vector T, Scalar P = Vector output (length nt)
-              - Scalar T, Vector P = Vector output (length np)
-              - Vector T, Vector P = Matrix output (shape: np × nt)
+              - Scalar T, Scalar P -> Scalar output
+              - Vector T, Scalar P -> Vector output (length nt)
+              - Scalar T, Vector P -> Vector output (length np)
+              - Vector T, Vector P -> Matrix output (shape: np × nt)
 
             - Always returned as JAX arrays for consistency
 
@@ -244,11 +235,9 @@ class Plog(eqx.Module):
         T = jnp.asarray(T, dtype=jnp.float64)
         P = jnp.asarray(P, dtype=jnp.float64)
 
-        if jnp.isscalar(P) or P.ndim == 0:
-            # Scalar pressure - evaluate directly
+        if jnp.isscalar(P) or P.ndim == 0: # Scalar pressure - evaluate directly
             return self._single_P_rate_constant(T, P)
-        else:
-            # Vector pressure - vectorize over pressure dimension
+        else: # Vector pressure - vectorize over pressure dimension
             vec_func = vmap(lambda p: self._single_P_rate_constant(T, p))
             return vec_func(P)
 
