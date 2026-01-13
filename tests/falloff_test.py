@@ -10,7 +10,7 @@ from KiRATE.kinetics import FallOff
 class TestFallOff(unittest.TestCase):
     def setUp(self):
         self.T_range = jnp.linspace(300, 3000, 300)
-        self.P_range = jnp.logspace(jnp.log10(0.01), jnp.log10(100), 300)
+        self.P_range = jnp.logspace(jnp.log10(0.01), jnp.log10(100), 300) * 1.01325  # atm -> bar
 
         self.reaction = FallOff(
             lpl_parameters={"A": 6.366e20, "n": -1.72, "Ea": 524.8},

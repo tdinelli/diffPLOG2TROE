@@ -10,7 +10,7 @@ from KiRATE.kinetics import CABR
 class TestCabr(unittest.TestCase):
     def setUp(self):
         self.T_range = jnp.linspace(300, 3000, 300)
-        self.P_range = jnp.logspace(jnp.log10(0.01), jnp.log10(100), 300)
+        self.P_range = jnp.logspace(jnp.log10(0.01), jnp.log10(100), 300) * 1.01325  # atm -> bar
 
         self.reaction = CABR(
             hpl_parameters={"A": 5.88e-14, "n": 6.721, "Ea": -3022.227},
