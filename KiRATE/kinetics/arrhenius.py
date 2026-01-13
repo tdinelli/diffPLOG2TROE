@@ -165,11 +165,6 @@ class Arrhenius(eqx.Module):
             - Units depend on reaction order and pre-exponential factor A
             - Shape matches input temperature array
             - Always returned as JAX arrays for consistency
-
-        Notes
-        -----
-        - This method is JIT-compiled
-        - This method supports automatic differentiation w.r.t. both T and parameters
         """
         T = jnp.asarray(T, dtype=jnp.float64)
 
@@ -206,11 +201,6 @@ class Arrhenius(eqx.Module):
             - Units depend on reaction order and pre-exponential factor A
             - Shape matches input temperature array
             - Always returned as JAX arrays for consistency
-
-        Notes
-        -----
-        - This method is JIT-compiled
-        - This method supports automatic differentiation w.r.t. both T and parameters
         """
         T = jnp.asarray(T, dtype=jnp.float64)
 
@@ -356,27 +346,17 @@ class Arrhenius(eqx.Module):
 
         .. math::
             \\sigma^2[\\ln k(T)] = \\mathbf{g}(T)^T \\boldsymbol{\\Sigma}' \\mathbf{g}(T)
-
-
         """
         T_array = jnp.asarray(T, dtype=jnp.float64)
-        scalar_input = T_array.ndim == 0 or (T_array.ndim == 1 and T_array.shape[0] == 1)
 
-        # Analytical gradient formula
+        # Analytical gradient formula: [1, ln(T), -1/T]
         g = jnp.stack(
-            [
-                jnp.ones_like(T_array),  # ∂ln(k)/∂ln(A) = 1
-                jnp.log(T_array),  # ∂ln(k)/∂n = ln(T)
-                -1.0 / T_array,  # ∂ln(k)/∂(Ea/R) = -1/T
-            ],
-            axis=-1,
+            [jnp.ones_like(T_array), jnp.log(T_array), -jnp.reciprocal(T_array)], 
+            axis=-1
         )
 
-        # Return scalar if input was scalar
-        if scalar_input:
-            return g.squeeze()
-        else:
-            return g
+        # For scalar input, return shape (3,); for vector input, return shape (n, 3)
+        return jnp.squeeze(g) if T_array.ndim == 0 else g
 
     # ==================================================================================
     # Uncertainty quantification/propagation methods
@@ -427,7 +407,7 @@ class Arrhenius(eqx.Module):
         """
         T = jnp.asarray(temperature, dtype=jnp.float64)
 
-        # Delta method: σ²(ln k) = g^T Σ g
+        # Delta method: sigma^2(ln k) = g^T Σ g
         g = self.grad_ln_k_transformed_params(T)
         var_ln_k = jnp.sum(g @ cov_matrix * g, axis=1)
         sigma_ln_k = jnp.sqrt(var_ln_k)
@@ -537,50 +517,45 @@ class Arrhenius(eqx.Module):
     ) -> dict[str, tuple[Float64[Array, ""], Float64[Array, ""]]]:
         """Correlated method: parameter bounds accounting for compensation effects."""
 
-        def log_rate(
-            lnA: Float64[Array, ""],
-            n: Float64[Array, ""],
-            EaR: Float64[Array, ""],
-            T: Float64[Array, "2"],
-        ) -> Float64[Array, "2"]:
-            """"""
-            return lnA + n * jnp.log(T) - EaR / T
-
         T_range = jnp.array([T_low, T_high], dtype=jnp.float64)
+        log_T = jnp.log(T_range)
+        inv_T = 1.0 / T_range
+
+        # Precompute common terms
+        delta_ln_A = f * jnp.log(10.0)
+        log_T_diff = log_T[0] - log_T[1]
+        inv_T_diff = inv_T[0] - inv_T[1]
+        T_ratio = T_range[0] / T_range[1]
 
         # Step 1: Bounds on ln(A)
-        delta_ln_A = f * jnp.log(10.0)
         lnA_min = self._lnA - delta_ln_A
         lnA_max = self._lnA + delta_ln_A
 
-        # Step 2: Limiting rate constants
-        lnk_lb_Tlow, lnk_ub_Tlow = log_rate(lnA_min, self._n, self._EaR, T_range)
-        lnk_lb_Thigh, lnk_ub_Thigh = log_rate(lnA_max, self._n, self._EaR, T_range)
+        # Step 2: Limiting rate constants at both temperatures
+        # Using lnA_min gives lower bounds at T_low and T_high
+        lnk_with_lnA_min = lnA_min + self._n * log_T - self._EaR * inv_T
+        lnk_lb_Tlow, lnk_ub_Tlow = lnk_with_lnA_min[0], lnk_with_lnA_min[1]
+
+        # Using lnA_max gives upper bounds at T_low and T_high
+        lnk_with_lnA_max = lnA_max + self._n * log_T - self._EaR * inv_T
+        lnk_lb_Thigh, lnk_ub_Thigh = lnk_with_lnA_max[0], lnk_with_lnA_max[1]
 
         # Step 3: Back-calculate n bounds
-        n_1 = (lnk_ub_Tlow - lnk_lb_Thigh - self._EaR * (1.0 / T_range[0] - 1.0 / T_range[1])) / (
-            jnp.log(T_range[0]) - jnp.log(T_range[1])
-        )
-        n_2 = (lnk_lb_Tlow - lnk_ub_Thigh - self._EaR * (1.0 / T_range[0] - 1.0 / T_range[1])) / (
-            jnp.log(T_range[0]) - jnp.log(T_range[1])
-        )
+        EaR_term = self._EaR * inv_T_diff
+        n_1 = (lnk_ub_Tlow - lnk_lb_Thigh - EaR_term) / log_T_diff
+        n_2 = (lnk_lb_Tlow - lnk_ub_Thigh - EaR_term) / log_T_diff
         n_min = jnp.minimum(n_1, n_2)
         n_max = jnp.maximum(n_1, n_2)
 
         # Step 4: Back-calculate Ea/R bounds
-        lnA_1 = (
-            lnk_lb_Thigh
-            - (T_range[0] / T_range[1]) * lnk_ub_Tlow
-            - self._n * (jnp.log(T_range[1]) - (T_range[0] / T_range[1]) * jnp.log(T_range[0]))
-        ) / (1.0 - T_range[0] / T_range[1])
-        EaR_1 = lnA_1 * T_range[0] + T_range[0] * self._n * jnp.log(T_range[0]) - lnk_ub_Tlow * T_range[0]
+        common_n_term = self._n * (log_T[1] - T_ratio * log_T[0])
+        inv_T_factor = 1.0 / (1.0 - T_ratio)
 
-        lnA_2 = (
-            lnk_ub_Thigh
-            - (T_range[0] / T_range[1]) * lnk_lb_Tlow
-            - self._n * (jnp.log(T_range[1]) - (T_range[0] / T_range[1]) * jnp.log(T_range[0]))
-        ) / (1.0 - T_range[0] / T_range[1])
-        EaR_2 = lnA_2 * T_range[0] + T_range[0] * self._n * jnp.log(T_range[0]) - lnk_lb_Tlow * T_range[0]
+        lnA_1 = (lnk_lb_Thigh - T_ratio * lnk_ub_Tlow - common_n_term) * inv_T_factor
+        lnA_2 = (lnk_ub_Thigh - T_ratio * lnk_lb_Tlow - common_n_term) * inv_T_factor
+
+        EaR_1 = T_range[0] * (lnA_1 + self._n * log_T[0] - lnk_ub_Tlow)
+        EaR_2 = T_range[0] * (lnA_2 + self._n * log_T[0] - lnk_lb_Tlow)
 
         EaR_min = jnp.minimum(EaR_1, EaR_2)
         EaR_max = jnp.maximum(EaR_1, EaR_2)
@@ -724,13 +699,6 @@ class Arrhenius(eqx.Module):
         Returns
         -------
         str
-            The reaction name string, typically in chemical equation format.
-
-        Notes
-        -----
-        - Static field that doesn't participate in JAX transformations
-        - Used for identification and output formatting
-        - Can contain operators: =, =>, <=> for different reaction types
-        - Empty string by default if not specified during initialization
+            The reaction name.
         """
         return self._name
