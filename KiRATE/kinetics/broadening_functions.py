@@ -52,15 +52,6 @@ def compute_broadening_factor(
     ------
     ValueError
         If broadening_type is not recognized or if required parameters are missing
-
-    Notes
-    -----
-    The broadening factor corrects the simple Lindemann fall-off formula to match
-    experimental data more accurately. It accounts for:
-
-    - Energy transfer inefficiencies (weak collision effects)
-    - Quantum effects at low temperatures
-    - Angular momentum conservation
     """
     if broadening_type == "lindemann":
         return lindemann(T)
@@ -91,13 +82,6 @@ def lindemann(T: Float64[Array, ""] | Float64[Array, "nt"]) -> Float64[Array, ""
     -------
     Float64[Array, ""] | Float64[Array, "nt"]
         F = 1.0 for all temperatures (shape matches input)
-
-    Notes
-    -----
-    The Lindemann model represents the earliest theoretical treatment of unimolecular
-    reactions, treating all collisions as equally effective at energy transfer (strong
-    collision assumption). While simple, it typically shows systematic deviations from
-    experimental data at intermediate pressures.
 
     References
     ----------
@@ -159,12 +143,6 @@ def troe(
         f_1 &= \\frac{\\log_{10} P_r + C}{N - 0.14 (\\log_{10} P_r + C)} \\\\
         C &= -0.4 - 0.67 \\log_{10} F_{\\text{cent}} \\\\
         N &= 0.75 - 1.27 \\log_{10} F_{\\text{cent}}
-
-    **Parameter Ranges**:
-
-    - :math:`\\alpha`: typically 0.1 - 0.9 (controls shape asymmetry)
-    - :math:`T_3, T_1`: typically 10 - 10000 K (control temperature dependence)
-    - :math:`T_2`: typically 0 or 1000 - 10000 K (often set to 0 for 3-parameter form)
 
     References
     ----------
