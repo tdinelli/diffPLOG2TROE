@@ -44,11 +44,12 @@ class Chebyshev(eqx.Module):
     chebyshev_coefficients : Float64[Array, "nt np"]
         2D array of Chebyshev coefficients α_tp with shape (N_T, N_P).
         The shape determines the polynomial orders automatically.
-        Typical shapes: (4-8, 3-5) for temperature and pressure orders.
     T_limits : tuple[float, float], optional
-        Temperature range (T_min, T_max) in Kelvin, by default (300.0, 2500.0)
+        Temperature range (T_min, T_max) in Kelvin, by default (300.0, 2500.0),
+        these default values are the same one adopted by CHEMKIN.
     P_limits : tuple[float, float], optional
-        Pressure range (P_min, P_max) in bar, by default (0.001, 100.0)
+        Pressure range (P_min, P_max) in bar, by default (0.001, 100.0),
+        these default values are the same one adopted by CHEMKIN.
     name : str, optional
         Human-readable reaction name, by default ""
 
@@ -107,7 +108,7 @@ class Chebyshev(eqx.Module):
         name: str = "",
     ) -> None:
         """
-        Initialize the Chebyshev rate constant calculator.
+        Initialize the Chebyshev rate constant representation.
 
         Parameters
         ----------
@@ -148,6 +149,27 @@ class Chebyshev(eqx.Module):
         self._log10P_min = jnp.log10(self._P_min)
         self._log10P_max = jnp.log10(self._P_max)
 
+    # ==================================================================================
+    # CHEMKIN string parser
+    @classmethod
+    def from_chemkin(cls, input_string: str) -> "Chebyshev":
+        """
+        Parse a CHEMKIN-format Chebyshev entry (not yet implemented).
+
+        Parameters
+        ----------
+        input_string : str
+            CHEMKIN-formatted Chebyshev reaction string
+
+        Raises
+        ------
+        NotImplementedError
+            This method is a placeholder for future implementation
+        """
+        raise NotImplementedError("CHEMKIN parsing for Chebyshev s not yet implemented")
+
+    # ==================================================================================
+    # Rate constant methods
     @eqx.filter_jit
     def rate_constant(
         self,
@@ -243,7 +265,7 @@ class Chebyshev(eqx.Module):
         Evaluate Chebyshev rate constant for a single pressure value.
 
         This internal method computes the bivariate Chebyshev polynomial expansion
-        for a fixed pressure. It is called by rate_constant() and vectorized over
+        for a fixed pressure. It is called by `rate_constant()` and vectorized over
         pressure when needed.
 
         Parameters
@@ -370,6 +392,8 @@ class Chebyshev(eqx.Module):
         # T_n(x) = cos(n * arccos(x))
         return jnp.cos(n * jnp.arccos(x_clipped))
 
+    # ==================================================================================
+    # String Representations and Debugging
     def __str__(self) -> str:
         """
         Generate CHEMKIN-format string representation of Chebyshev reaction.
