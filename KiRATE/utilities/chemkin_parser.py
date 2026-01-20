@@ -1,5 +1,5 @@
 """
-Copyright (c) 2025 Timoteo Dinelli
+Copyright (c) 2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
@@ -12,7 +12,7 @@ def check_reaction_name(reaction_name: str, m_is_allowed: bool = False) -> None:
     in the sense that if the reaction type is not of a threebody or a falloff or a cabr
     it should not contain any species named M or (+M)
     """
-    to_be_controlled = ["M", "(+M)"]
+    to_be_controlled = ["M", "+M", "(+M)"]
 
     if not m_is_allowed:
         for species in to_be_controlled:
@@ -377,8 +377,80 @@ def parse_falloff(
     return reaction_name, hpl_coefficients, lpl_coefficients, falloff_type, falloff_params, efficiencies
 
 
-# def main():
-#     pass
-#
-# if __name__ == "__main__":
-#     main()
+def parse_threebody(input_string: str) -> tuple[str, dict[str, float], dict[str, float] | None]:
+    """
+    Parse a CHEMKIN-format three-body (termolecular) reaction.
+
+    This function extracts the reaction name, third-order rate constant parameters,
+    and optional collision efficiency factors from a CHEMKIN-formatted string.
+
+    Parameters
+    ----------
+    input_string : str
+        CHEMKIN-formatted three-body reaction string with the following format:
+
+        .. code-block:: text
+
+            REACTION_NAME    A   n   Ea
+            SPECIES / efficiency / ... / ...      / ! optional
+
+        Example:
+            H+OH+M=H2O+M  2.2E+22  -2.0  0.0
+            H2O/6.0/ AR/0.38/
+
+        Where:
+            - REACTION_NAME contains the species and '+M' indicator
+            - A, n, Ea are the modified Arrhenius parameters for k₀(T)
+            - efficiency lines specify collision partner efficiencies (optional)
+            - Species not listed default to efficiency = 1.0
+
+    Returns
+    -------
+    tuple[str, dict[str, float], dict[str, float] | None]
+        A 3-tuple containing:
+            - reaction_name (str): Normalized reaction equation (e.g., "H+OH+M=H2O+M")
+            - k0_params (dict[str, float]): Third-order rate constant parameters
+              {"A": pre-exponential, "n": temperature exponent, "Ea": activation energy}
+            - efficiencies (dict[str, float] | None): Collision efficiency factors
+              Maps species names to dimensionless efficiency values, or None if not specified
+
+    Raises
+    ------
+    ValueError
+        If the input string is empty, malformed, or missing required parameters
+    """
+    lines = input_string.strip().split("\n")
+    if not lines:
+        raise ValueError("Empty CHEMKIN threebody representation")
+
+    main_line = lines[0].strip()
+    if not main_line:
+        raise ValueError("First line must contain reaction equation")
+
+    # Extract reaction name and third-order rate constant parameters
+    reaction_name, k0_coefficients = parse_reaction_line(main_line, True)
+
+    # Initialize variables
+    efficiencies = None
+    efficiency_pattern = re.compile(r"(\w+)\s*/\s*([\d.eE+-]+)\s*/")
+    for line in lines[1:]:
+        line = line.strip()
+
+        # Remove comments (everything after '!')
+        if "!" in line:
+            line = line.split("!")[0].strip()
+
+        # Skip empty lines
+        if not line:
+            continue
+
+        # Parse collision efficiencies (e.g., H2O/12.0/ H2/2.0/)
+        # Check if line contains efficiency specifications
+        matches = efficiency_pattern.findall(line)
+        if matches:
+            if efficiencies is None:
+                efficiencies = {}
+            for species, efficiency in matches:
+                efficiencies[species] = float(efficiency)
+
+    return reaction_name, k0_coefficients, efficiencies

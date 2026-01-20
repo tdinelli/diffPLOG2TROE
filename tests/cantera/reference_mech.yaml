@@ -8,7 +8,7 @@ phases:
   thermo: ideal-gas
   elements: [C, H, O, N, He, Ar]
   species:
-  - {gri30.yaml/species: [CH4, CH3, CH2O]}
+  - {gri30.yaml/species: [CH4, CH3, CH2O, C2H6]}
   - {example_data/ammonia-CO-H2-Alzueta-2023.yaml/species: [H, O2, HO2, O, OH,
         AR, CO, CO2, H2, H2O, N2, HONO, NO]}
   kinetics: gas
@@ -71,10 +71,19 @@ reactions:
 # -----------------------------------------
 # CHEMICALLY ACTIVATED
 # -----------------------------------------
-- equation: CH3 + OH (+M) <=> CH2O + H2 (+M)
+- equation: CH3 + OH (+M) <=> CH2O + H2 (+M) # Reaction 5 (CABR)
   type: chemically-activated
   high-P-rate-constant: [5.88E-14, 6.721, -3022.227]
   low-P-rate-constant: [282320.078, 1.46878, -3270.56495]
+
+# -----------------------------------------
+# Threebody reaction
+# -----------------------------------------
+- equation: O + H + M <=> OH + M # Reaction 6 (3 body)
+  type: three-body
+  rate-constant: {A: 5.0e+17, b: -1.0, Ea: 0.0}
+  efficiencies: {H2: 2.0, H2O: 6.0, CH4: 2.0, CO: 1.5, CO2: 2.0, C2H6: 3.0,
+    AR: 0.7}
 
 # Reaction 5-7: Separate reactions, but calculated on the full mixture concentration.
 # These are the rates needed to compute the Chemkin-style mole-fraction based weighting
