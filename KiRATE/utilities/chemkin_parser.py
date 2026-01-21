@@ -24,6 +24,16 @@ def check_reaction_name(reaction_name: str, m_is_allowed: bool = False) -> None:
                 )
 
 
+def fort_float(s: str) -> float:
+    """
+    Convert a string representation of a floating point value to a float,
+    allowing for some of the peculiarities of allowable Fortran representations.
+
+    CANTERA Hacky thing :)
+    """
+    return float(s.strip().lower().replace("d", "e").replace("e ", "e+"))
+
+
 def parse_reaction_line(input_string: str, m_is_allowed: bool = False) -> tuple[str, dict[str, float]]:
     """
     Parse a CHEMKIN-formatted string into reaction name and parameters.
@@ -454,3 +464,152 @@ def parse_threebody(input_string: str) -> tuple[str, dict[str, float], dict[str,
                 efficiencies[species] = float(efficiency)
 
     return reaction_name, k0_coefficients, efficiencies
+
+
+def parse_species(thermo_string: str) -> tuple[str, dict[str, int], str, float, float, float, list[float], list[float]]:
+    """
+    Parse CHEMKIN NASA 7-coefficient polynomial thermodynamic data for a species.
+
+    The NASA polynomial format uses a 4-line representation to store thermodynamic
+    properties as temperature-dependent polynomials. Two sets of 7 coefficients
+    cover different temperature ranges (typically split around 1000K).
+
+    Parameters
+    ----------
+    thermo_string : str
+        4-line CHEMKIN NASA thermo format string with the following structure:
+
+        .. code-block:: text
+
+            Line 1: Species_name    Elements  Phase  Tmin   Tmax   Tmid
+            Line 2: a1_high  a2_high  a3_high  a4_high  a5_high
+            Line 3: a6_high  a7_high  a1_low   a2_low   a3_low
+            Line 4: a4_low   a5_low   a6_low   a7_low
+
+        Where each numeric field is 15 characters wide in Fortran format.
+
+    Returns
+    -------
+    species_name : str
+        Chemical species identifier (e.g., "H2O", "CH4")
+    elemental_composition : dict[str, int]
+        Elemental composition mapping element symbols to atom counts
+        (e.g., {"H": 2, "O": 1} for H2O)
+    phase : str
+        Phase indicator: "G" (gas), "L" (liquid), or "S" (solid)
+    Tmin : float
+        Minimum valid temperature [K] for polynomial data
+    Tmax : float
+        Maximum valid temperature [K] for polynomial data
+    Tmid : float
+        Temperature [K] separating low and high polynomial ranges
+    high_coeffs : list[float]
+        7 NASA polynomial coefficients valid for T ∈ [Tmid, Tmax]
+    low_coeffs : list[float]
+        7 NASA polynomial coefficients valid for T ∈ [Tmin, Tmid]
+
+    Raises
+    ------
+    ValueError
+        If input does not contain exactly 4 lines or parsing fails
+
+    References
+    ----------
+    - NASA Technical Memorandum 4513 (1993)
+    - CHEMKIN-II Manual (Sandia Report SAND89-8009)
+    """
+    # Parse thermodynamic data
+    # Split by newline and filter out empty lines
+    raw_lines = thermo_string.strip().split("\n")
+    lines = [line for line in raw_lines if line.strip()]
+
+    if len(lines) != 4:
+        raise ValueError(f"Expected 4 lines in CHEMKIN thermo format, got {len(lines)}")
+
+    # Remove leading/trailing whitespace but preserve internal structure
+    # The CHEMKIN format uses fixed-width fields, so we need to preserve column positions
+    # Strip only trailing whitespace, keep leading spaces if present
+    lines = [line.rstrip() for line in lines]
+
+    # Parse header line
+    header = lines[0]
+    species_name = header[0:24].split()[0].strip()
+
+    # Parse elemental composition
+    elemental_composition = parse_composition(header[24:44], 4, 5)
+
+    # Extract phase
+    phase = header[44] if len(header) > 44 else "G"
+
+    # Extract temperature ranges
+    Tmin = fort_float(header[45:55])
+    Tmax = fort_float(header[55:65])
+    Tmid = fort_float(header[65:75])
+
+    # Extract NASA polynomial coefficients (high-T first!)
+    # CHEMKIN format allows numbers to be written without spaces between them
+    # (e.g., "1.23E+02-4.56E-03" is valid). Therefore, we use regex to extract
+    # all numbers from each line.
+
+    import re
+    # Pattern matches: optional sign, digits with optional decimal, optional exponent
+    number_pattern = re.compile(r'[-+]?(?:\d+\.?\d*|\.\d+)(?:[eEdD][-+]?\d+)?')
+
+    # Extract all numbers from lines 2-4
+    line2_numbers = []
+    for match in number_pattern.findall(lines[1]):
+        # Handle Fortran 'D' notation
+        num_str = match.replace('D', 'E').replace('d', 'e')
+        line2_numbers.append(float(num_str))
+
+    line3_numbers = []
+    for match in number_pattern.findall(lines[2]):
+        num_str = match.replace('D', 'E').replace('d', 'e')
+        line3_numbers.append(float(num_str))
+
+    line4_numbers = []
+    for match in number_pattern.findall(lines[3]):
+        num_str = match.replace('D', 'E').replace('d', 'e')
+        line4_numbers.append(float(num_str))
+
+    # Validate we have the right number of coefficients
+    if len(line2_numbers) < 5:
+        raise ValueError(f"Line 2 must contain at least 5 coefficients, found {len(line2_numbers)}")
+    if len(line3_numbers) < 5:
+        raise ValueError(f"Line 3 must contain at least 5 coefficients, found {len(line3_numbers)}")
+    if len(line4_numbers) < 4:
+        raise ValueError(f"Line 4 must contain at least 4 coefficients, found {len(line4_numbers)}")
+
+    # High-T coefficients: 5 from line 2, 2 from line 3
+    high_coeffs = line2_numbers[:5] + line3_numbers[:2]
+
+    # Low-T coefficients: last 3 from line 3, first 4 from line 4
+    low_coeffs = line3_numbers[2:5] + line4_numbers[:4]
+
+    return (
+        species_name,
+        elemental_composition,
+        phase,
+        Tmin,
+        Tmax,
+        Tmid,
+        high_coeffs,
+        low_coeffs,
+    )
+
+
+def parse_composition(elements, nElements, width):
+    """Parse elemental composition from NASA polynomial entry"""
+    composition = {}
+    for i in range(nElements):
+        symbol = elements[width * i : width * i + 2].strip()
+        count = elements[width * i + 2 : width * i + width].strip()
+        if not symbol:
+            continue
+        try:
+            count = int(float(count))
+            if count:
+                composition[symbol.capitalize()] = count
+        except ValueError:
+            pass
+    return composition

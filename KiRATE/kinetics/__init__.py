@@ -4,10 +4,21 @@ Licensed under the MIT License - see LICENSE file for details
 """
 
 from .arrhenius import Arrhenius
-from .reparametrized_arrhenius import ReparametrizedArrhenius
 from .cabr import CABR
 from .chebyshev import Chebyshev
 from .falloff import FallOff
-from .plog import Plog
 from .mixture_rule import MixtureRule
+from .plog import Plog
+from .reparametrized_arrhenius import ReparametrizedArrhenius
 from .three_body import Threebody
+
+__all__ = [
+    "Arrhenius",
+    "CABR",
+    "Chebyshev",
+    "FallOff",
+    "MixtureRule",
+    "Plog",
+    "ReparametrizedArrhenius",
+    "Threebody",
+]

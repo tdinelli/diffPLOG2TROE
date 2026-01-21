@@ -1,5 +1,5 @@
 """
-Copyright (c) 2025 Timoteo Dinelli
+Copyright (c) 2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
@@ -350,10 +350,7 @@ class Arrhenius(eqx.Module):
         T_array = jnp.asarray(T, dtype=jnp.float64)
 
         # Analytical gradient formula: [1, ln(T), -1/T]
-        g = jnp.stack(
-            [jnp.ones_like(T_array), jnp.log(T_array), -jnp.reciprocal(T_array)], 
-            axis=-1
-        )
+        g = jnp.stack([jnp.ones_like(T_array), jnp.log(T_array), -jnp.reciprocal(T_array)], axis=-1)
 
         # For scalar input, return shape (3,); for vector input, return shape (n, 3)
         return jnp.squeeze(g) if T_array.ndim == 0 else g
@@ -582,6 +579,56 @@ class Arrhenius(eqx.Module):
             "n": (self._n - delta_n, self._n + delta_n),
             "EaR": (self._EaR - delta_EaR, self._EaR + delta_EaR),
         }
+
+    # ==================================================================================
+    # Utilities methods
+    def convert_to_standard_arrhenius(self) -> "Arrhenius":
+        """
+        Convert a three-parameter Arrhenius model to standard two-parameter form.
+
+        This method fits the current three-parameter model (A, n, Ea) to a
+        two-parameter model (A', 0, Ea') using least squares regression over
+        a temperature range. Useful for compatibility with systems that only
+        support standard Arrhenius form.
+
+        Returns
+        -------
+        TODO
+
+        Raises
+        ------
+        ValueError
+            If the current model already has n≈0 (within numerical tolerance)
+        """
+        # Check if conversion is needed
+        if jnp.isclose(self._n, 0.0):
+            raise ValueError(f"Model already in standard Arrhenius form (n = {self._n:.5f}). Conversion is not needed!")
+
+        # Generate temperature points for refitting
+        T = jnp.linspace(300.0, 3000.0, 300)
+
+        # Calculate rate constants using current model
+        k_original = self.rate_constant(T)
+        log_k = jnp.log(k_original)
+        inv_T = 1.0 / T
+
+        # Set up design matrix for 2-parameter fit (n=0)
+        X = jnp.vstack([jnp.ones_like(inv_T), -inv_T]).T
+
+        # Perform least squares regression
+        beta, *_ = jnp.linalg.lstsq(X, log_k, rcond=None)
+
+        # Extract fitted parameters: ln(A) and Ea/R
+        refitted_A = jnp.exp(beta[0])
+        refitted_Ea = beta[1] * constants.R_cal_mol
+
+        # Create new Arrhenius instance
+        refitted_arrhenius = Arrhenius(
+            parameters={"A": float(refitted_A), "n": 0.0, "Ea": float(refitted_Ea)},
+            name=self._name,
+        )
+
+        return refitted_arrhenius
 
     # ==================================================================================
     # String representations and debugging
