@@ -15,7 +15,7 @@ def assert_rate_constants_close(
     T_range=None,
     P_range=None,
     atol=1e-10,
-    rtol=1e-8,
+    rtol=1e-10,
     test_name="Rate constant comparison",
 ):
     """
@@ -70,15 +70,15 @@ def assert_rate_constants_close(
         if calculated.ndim == 1:
             # 1D case (temperature only)
             idx = max_error_idx[0] if isinstance(max_error_idx, tuple) else max_error_idx
-            error_parts = [f"Max relative error: {max_rel_error:.6e}"]
+            error_parts = [f"Max relative error: {max_rel_error:.12e}"]
 
             if T_range is not None:
                 error_parts.append(f"at T_idx={idx} (T={T_range[idx].item():.2f}K)")
             else:
                 error_parts.append(f"at index={idx}")
 
-            error_parts.append(f"calculated={calculated[idx].item():.6e}")
-            error_parts.append(f"expected={expected[idx].item():.6e}")
+            error_parts.append(f"calculated={calculated[idx].item():.12e}")
+            error_parts.append(f"expected={expected[idx].item():.12e}")
 
         elif calculated.ndim == 2:
             # 2D case (pressure and temperature)
@@ -97,19 +97,19 @@ def assert_rate_constants_close(
                 location_parts.append(f"T_idx={t_idx}")
 
             error_parts.append(f"at {', '.join(location_parts)}")
-            error_parts.append(f"calculated={calculated[p_idx, t_idx].item():.6e}")
-            error_parts.append(f"expected={expected[p_idx, t_idx].item():.6e}")
+            error_parts.append(f"calculated={calculated[p_idx, t_idx].item():.12e}")
+            error_parts.append(f"expected={expected[p_idx, t_idx].item():.12e}")
 
         else:
             # Generic case for higher dimensions
             error_parts = [
-                f"Max relative error: {max_rel_error:.6e}",
+                f"Max relative error: {max_rel_error:.12e}",
                 f"at index {max_error_idx}",
-                f"calculated={calculated[max_error_idx].item():.6e}",
-                f"expected={expected[max_error_idx].item():.6e}",
+                f"calculated={calculated[max_error_idx].item():.12e}",
+                f"expected={expected[max_error_idx].item():.12e}",
             ]
 
-        error_msg = f"{test_name}: " + " | ".join(error_parts)
+        error_msg = f"{test_name}: " + "\n ".join(error_parts)
         test_case.fail(error_msg)
 
     # Final assertion
