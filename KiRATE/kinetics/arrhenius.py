@@ -739,6 +739,18 @@ class Arrhenius(eqx.Module):
         return self._EaR
 
     @property
+    def parameters(self) -> dict[str, float]:
+        """
+        Dictionary containing the entire set of arrhenius parameters.
+
+        Returns
+        -------
+        dict[str, float]
+            Dictionary of arrhenius parameters: {"A": ..., "n": ..., "Ea": ...}
+        """
+        return {"A": float(self._A), "n": float(self._n), "Ea": float(self._Ea)}
+
+    @property
     def name(self) -> str:
         """
         Human-readable reaction name.
