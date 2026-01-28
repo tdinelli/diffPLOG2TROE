@@ -1,7 +1,8 @@
 """
-Copyright (c) 2025 Timoteo Dinelli
+Copyright (c) 2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
+
 from typing import Optional
 
 import equinox as eqx
@@ -75,13 +76,27 @@ class FallOff(eqx.Module):
 
     References
     ----------
-    .. [1] Gilbert, R. G., et al. "Theory of thermal unimolecular reactions in the
-           fall-off range. I. Strong collision rate constants." Ber. Bunsenges. Phys.
-           Chem. 87.2 (1983): 169-177.
-    .. [2] Troe, J. "Predictive possibilities of unimolecular rate theory." J. Phys.
-           Chem. 83.1 (1979): 114-126.
-    .. [3] Stewart, P. H., et al. "Pressure and temperature dependence of reactions
-           proceeding via a bound complex. 2." J. Phys. Chem. 93.8 (1989): 3557-3561.
+    .. [1] F. Lindemann. Discussion on “the radiation theory of chemical action”.
+           Trans. Faraday Soc., 17:598, 1922.
+           URL: https://dx.doi.org/10.1039/TF9221700598, doi:10.1039/TF9221700598.
+    .. [2] R. G. Gilbert, K. Luther, and J. Troe. Theory of thermal unimolecular
+           reactions in the fall-off range. II. weak collision rate constants.
+           Berichte der Bunsengesellschaft für physikalische Chemie, 87(2):169–175,
+           1983. URL:
+           https://doi.org/10.1002/bbpc.19830870218, doi:10.1002/bbpc.19830870218.
+    .. [3] W. Tsang and J. T. Herron. Chemical kinetic data base for propellant
+           combustion I. reactions involving NO, NO2, HNO, HNO2, HCN and N2O.
+           Journal of Physical and Chemical Reference Data, 20(3):779–798, 1991.
+           URL: https://dx.doi.org/10.1063/1.555890, doi:10.1063/1.555890.
+    .. [4] P. H. Stewart, C. W. Larson, and D. Golden. Pressure and temperature
+           dependence of reactions proceeding via a bound complex. 2. application
+           to 2 CH3 -> C2H5 + H. Combustion and Flame, 75(1):25–40, 1989. URL:
+           https://doi.org/10.1016/0010-2180(89)90084-9,
+           doi:10.1016/0010-2180(89)90084-9.
+    .. [5] R. J. Kee, F. M. Rupley, and J. A. Miller. Chemkin-II: a fortran chemical
+           kinetics package for the analysis of gas-phase chemical kinetics.
+           Technical Report SAND89-8009, Sandia National Laboratories, 1989. URL:
+           https://www.osti.gov/biblio/5681118.
     """
 
     _hpl: Arrhenius
@@ -184,9 +199,7 @@ class FallOff(eqx.Module):
             If the input string cannot be parsed or contains invalid parameters.
         """
         # Parse CHEMKIN input string to extract all parameters
-        reaction_name, hpl_params, lpl_params, falloff_type, falloff_params, efficiencies = parse_falloff(
-            input_string
-        )
+        reaction_name, hpl_params, lpl_params, falloff_type, falloff_params, efficiencies = parse_falloff(input_string)
 
         # Construct FallOff object with parsed parameters
         return cls(
@@ -266,24 +279,10 @@ class FallOff(eqx.Module):
         k_hpl = self._hpl.rate_constant(T)  # High-pressure limit [cm3/mol/s]
         k_lpl = self._lpl.rate_constant(T)  # Low-pressure limit [cm6/mol2/s]
 
-        if jnp.isscalar(P) or P.ndim == 0: # Scalar pressure - evaluate directly
-            return self._single_P_rate_constant(
-                T,
-                P,
-                k_lpl,
-                k_hpl,
-                jax_composition,
-            )
-        else: # Vector pressure - vectorize over pressure dimension
-            vec_func = vmap(
-                lambda p: self._single_P_rate_constant(
-                    T,
-                    p,
-                    k_lpl,
-                    k_hpl,
-                    jax_composition,
-                )
-            )
+        if jnp.isscalar(P) or P.ndim == 0:  # Scalar pressure - evaluate directly
+            return self._single_P_rate_constant(T, P, k_lpl, k_hpl, jax_composition)
+        else:  # Vector pressure - vectorize over pressure dimension
+            vec_func = vmap(lambda p: self._single_P_rate_constant(T, p, k_lpl, k_hpl, jax_composition))
             return vec_func(P)
 
     @eqx.filter_jit
@@ -419,7 +418,7 @@ class FallOff(eqx.Module):
 
         if self._efficiencies is not None:
             for species, efficiency in self._efficiencies.items():
-                representation += " {} / {:.5E} /".format(species, float(efficiency))
+                representation += " {} / {:.5F} /".format(species, float(efficiency))
 
         return representation
 
@@ -524,10 +523,7 @@ class FallOff(eqx.Module):
         dict[str, Float64[Array, ""]] or None
             Dictionary of broadening parameters (type-dependent):
         """
-        if self._falloff_parameters is not None:
-            return self._falloff_parameters
-        else:
-            return None
+        return self._falloff_parameters
 
     @property
     def efficiencies(self) -> Optional[dict[str, Float64[Array, ""]]]:
@@ -541,7 +537,4 @@ class FallOff(eqx.Module):
             All values are JAX float64 arrays. Returns None if no
             efficiencies were specified (default efficiency 1.0 for all).
         """
-        if self._efficiencies is not None:
-            return self._efficiencies
-        else:
-            return None
+        return self._efficiencies

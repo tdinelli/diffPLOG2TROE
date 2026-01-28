@@ -1,5 +1,5 @@
 """
-Copyright (c) 2025 Timoteo Dinelli
+Copyright (c) 2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
@@ -85,8 +85,9 @@ def lindemann(T: Float64[Array, ""] | Float64[Array, "nt"]) -> Float64[Array, ""
 
     References
     ----------
-    .. [1] Lindemann, F. A. "Discussion on 'the radiation theory of chemical action'."
+    .. [1] F. Lindemann. Discussion on “the radiation theory of chemical action”.
            Trans. Faraday Soc., 17:598, 1922.
+           URL: https://dx.doi.org/10.1039/TF9221700598, doi:10.1039/TF9221700598.
     """
     return jnp.ones_like(T, dtype=jnp.float64)
 
@@ -146,9 +147,11 @@ def troe(
 
     References
     ----------
-    .. [1] Gilbert, R. G., Luther, K., and Troe, J. "Theory of thermal unimolecular
-           reactions in the fall-off range. II. weak collision rate constants."
-           Berichte der Bunsengesellschaft für physikalische Chemie, 87(2):169-175, 1983.
+    .. [1] R. G. Gilbert, K. Luther, and J. Troe. Theory of thermal unimolecular
+           reactions in the fall-off range. II. weak collision rate constants.
+           Berichte der Bunsengesellschaft für physikalische Chemie, 87(2):169–175,
+           1983. URL:
+           https://doi.org/10.1002/bbpc.19830870218, doi:10.1002/bbpc.19830870218.
     """
     # Extract Troe parameters from dictionary
     alpha, T3, T1, T2 = parameters["A"], parameters["T3"], parameters["T1"], parameters["T2"]
@@ -241,12 +244,15 @@ def sri(
 
     References
     ----------
-    .. [1] Stewart, P. H., Larson, C. W., and Golden, D. "Pressure and temperature
-           dependence of reactions proceeding via a bound complex. 2. application to
-           2 CH3 -> C2H5 + H." Combustion and Flame, 75(1):25-40, 1989.
-    .. [2] Kee, R. J., Rupley, F. M., and Miller, J. A. "Chemkin-II: A Fortran
-           chemical kinetics package for the analysis of gas-phase chemical kinetics."
-           Sandia National Labs Report SAND-89-8009, 1989.
+    .. [1] P. H. Stewart, C. W. Larson, and D. Golden. Pressure and temperature
+           dependence of reactions proceeding via a bound complex. 2. application
+           to 2 CH3 -> C2H5 + H. Combustion and Flame, 75(1):25–40, 1989. URL:
+           https://doi.org/10.1016/0010-2180(89)90084-9,
+           doi:10.1016/0010-2180(89)90084-9.
+    .. [2] R. J. Kee, F. M. Rupley, and J. A. Miller. Chemkin-II: a fortran chemical
+           kinetics package for the analysis of gas-phase chemical kinetics.
+           Technical Report SAND89-8009, Sandia National Laboratories, 1989. URL:
+           https://www.osti.gov/biblio/5681118.
     """
     # Extract SRI parameters from dictionary
     a, b, c, d, e = parameters["a"], parameters["b"], parameters["c"], parameters["d"], parameters["e"]
@@ -314,9 +320,10 @@ def tsang(
 
     References
     ----------
-    .. [1] Tsang, W. and Herron, J. T. "Chemical kinetic data base for propellant
-           combustion I. reactions involving NO, NO2, HNO, HNO2, HCN and N2O."
-           Journal of Physical and Chemical Reference Data, 20(3):779-798, 1991.
+    .. [1] W. Tsang and J. T. Herron. Chemical kinetic data base for propellant
+           combustion I. reactions involving NO, NO2, HNO, HNO2, HCN and N2O.
+           Journal of Physical and Chemical Reference Data, 20(3):779–798, 1991.
+           URL: https://dx.doi.org/10.1063/1.555890, doi:10.1063/1.555890.
     """
     # Extract Tsang parameters from dictionary
     A, B = parameters["A"], parameters["B"]

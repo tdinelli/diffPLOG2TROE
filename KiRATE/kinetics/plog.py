@@ -1,5 +1,5 @@
 """
-Copyright (c) 2025 Timoteo Dinelli
+Copyright (c) 2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
@@ -54,11 +54,12 @@ class Plog(eqx.Module):
     name : str, optional
         Human-readable name for the reaction, by default ""
     k0_parameters : dict[str, float], optional
-        Nominal Arrhenius parameters for CHEMKIN compatibility, by default None
+        Low pressure limit rate constant this is needed only for the Mixture
+        Rule treatment and is not a standard in CHEMKIN or elsewhere.
 
     Attributes
     ----------
-    _k_levels : list[Arrhenius]
+    _arrhenius_levels : list[Arrhenius]
         List of Arrhenius objects at each pressure level
     _p_levels : Float64[Array, "np"]
         Array of pressure levels [atm] in ascending order
@@ -67,18 +68,18 @@ class Plog(eqx.Module):
     _num_p_levels : Int64[Array, ""]
         Number of pressure levels
     _k0 : Optional[Arrhenius]
-        Nominal Arrhenius object
+        Low pressure limit rate constant
     _name : str
         Reaction name for identification (static field)
 
     References
     ----------
-    .. [1] TODO add the proper PLOG reference
-    .. [2] Kee, R. J., et al. "CHEMKIN-III: A Fortran chemical kinetics package
-           for the analysis of gas-phase chemical and plasma kinetics." (1996).
+    .. [1] X. Gou, J. A. Miller, W. Sun, and Y. Ju. Implementation of PLOG
+           function in Chemkin II and III.
+           https://engine.princeton.edu/model-reduction/, 2011.
     """
 
-    _k_levels: list[Arrhenius]
+    _arrhenius_levels: list[Arrhenius]
     _p_levels: Float64[Array, "np"]
     _lnp_levels: Float64[Array, "np"]
     _num_p_levels: Int64[Array, ""]
@@ -106,7 +107,7 @@ class Plog(eqx.Module):
         name : str, optional
             Human-readable name for the reaction, by default ""
         k0_parameters : dict[str, float], optional
-            Nominal Arrhenius parameters, by default None
+            Low pressure limit rate constant, by default None
 
         Raises
         ------
@@ -134,9 +135,9 @@ class Plog(eqx.Module):
         for p, params in parameters.items():
             arrhenius_objects.append(Arrhenius(parameters=params, name=f"{name} ({p})"))
 
-        self._k_levels = arrhenius_objects
+        self._arrhenius_levels = arrhenius_objects
 
-        # Optional nominal rate constant (CHEMKIN format compatibility)
+        # Optional low pressure limit rate constant
         if k0_parameters is not None:
             self._k0 = Arrhenius(parameters=k0_parameters, name=f"{name} (k0)")
         else:
@@ -300,8 +301,8 @@ class Plog(eqx.Module):
         # Stack results into a single array for vectorized operations
         # Shape: (num_p_levels,) if T is scalar, (num_p_levels, nt) if T is vector
         all_lnk = jnp.stack([
-            k_level.log_rate_constant(T)
-            for k_level in self._k_levels
+            arrhenius_level.log_rate_constant(T)
+            for arrhenius_level in self._arrhenius_levels
         ])
 
         # ==============================================================================
@@ -369,113 +370,6 @@ class Plog(eqx.Module):
         return jnp.exp(lnk)
 
     # ==================================================================================
-    # Automatic Differentiation Methods
-    @eqx.filter_jit
-    def grad_temperature(
-        self,
-        T: float | Float64[Array, ""] | Float64[Array, "nt"],
-        P: float | Float64[Array, ""] | Float64[Array, "np"],
-    ) -> Float64[Array, ""] | Float64[Array, "nt"] | Float64[Array, "np"] | Float64[Array, "nt np"]:
-        """
-        Calculate the derivative of the rate constant with respect to temperature
-        (dk/dT) using automatic differentiation.
-
-        Parameters
-        ----------
-        T : float | Float64[Array, ""] | Float64[Array, "nt"]
-            Temperature(s) in Kelvin at which to evaluate the gradient
-        P : float | Float64[Array, ""] | Float64[Array, "np"]
-            Pressure(s) in atm at which to evaluate the gradient
-
-        Returns
-        -------
-        Float64[Array, ""] | Float64[Array, "nt"] | Float64[Array, "np"] | Float64[Array, "nt np"]
-            Temperature gradient dk/dT at the specified temperature(s) and pressure(s)
-
-        Notes
-        -----
-        This method supports automatic differentiation thanks to the fully
-        differentiable implementation using soft interpolation.
-
-        The gradient is computed element-wise:
-        - Scalar T, Scalar P = Scalar gradient
-        - Vector T, Scalar P = Vector gradient (one per T)
-        - Scalar T, Vector P = Vector gradient (one per P)
-        - Vector T, Vector P = Matrix gradient (grid of T x P)
-        """
-        T_jax = jnp.asarray(T, dtype=jnp.float64)
-        P_jax = jnp.asarray(P, dtype=jnp.float64)
-
-        # Define gradient function for a single (T, P) pair
-        def single_grad(t, p):
-            return eqx.filter_grad(lambda t_: self.rate_constant(t_, p))(t)
-
-        if T_jax.ndim == 0 and P_jax.ndim == 0:
-            # Both scalar
-            return single_grad(T_jax, P_jax)
-        elif T_jax.ndim > 0 and P_jax.ndim == 0:
-            # Vector T, scalar P
-            return vmap(lambda t: single_grad(t, P_jax))(T_jax)
-        elif T_jax.ndim == 0 and P_jax.ndim > 0:
-            # Scalar T, vector P
-            return vmap(lambda p: single_grad(T_jax, p))(P_jax)
-        else:
-            # Both vectors - create grid
-            return vmap(lambda p: vmap(lambda t: single_grad(t, p))(T_jax))(P_jax)
-
-    @eqx.filter_jit
-    def grad_params(
-        self,
-        T: float | Float64[Array, ""] | Float64[Array, "nt"],
-        P: float | Float64[Array, ""] | Float64[Array, "np"],
-    ) -> "Plog":
-        """
-        Calculate the gradient of the rate constant with respect to parameters using
-        automatic differentiation.
-
-        Computes the parameter sensitivity for all Arrhenius parameters at all
-        pressure levels:
-
-        .. math::
-            \\nabla_{\\theta} k(T, P) = \\begin{bmatrix}
-                \\frac{\\partial k}{\\partial A_1}, \\frac{\\partial k}{\\partial n_1}, \\frac{\\partial k}{\\partial E_{a,1}} \\\\
-                \\vdots \\\\
-                \\frac{\\partial k}{\\partial A_n}, \\frac{\\partial k}{\\partial n_n}, \\frac{\\partial k}{\\partial E_{a,n}}
-            \\end{bmatrix}
-
-        Parameters
-        ----------
-        T : float | Float64[Array, ""] | Float64[Array, "nt"]
-            Temperature(s) in Kelvin at which to evaluate the parameter gradients
-        P : float | Float64[Array, ""] | Float64[Array, "np"]
-            Pressure(s) in atm at which to evaluate the parameter gradients
-
-        Returns
-        -------
-        Plog
-            A Plog object with gradients stored in place of parameters.
-            Each Arrhenius object in k_levels contains gradients:
-
-            - ``result.k_levels[i].A``: :math:`\\frac{\\partial k}{\\partial A_i}`
-            - ``result.k_levels[i].n``: :math:`\\frac{\\partial k}{\\partial n_i}`
-            - ``result.k_levels[i].Ea``: :math:`\\frac{\\partial k}{\\partial E_{a,i}}`
-
-        Notes
-        -----
-        - For vector T or P inputs, computes gradient of :math:`\\sum_{i,j} k(T_i, P_j)`
-        - This sum-over-points is useful for parameter fitting with multiple data points
-        - Gradients account for the interpolation weights in the PLOG formulation
-        """
-        T_jax = jnp.asarray(T, dtype=jnp.float64)
-        P_jax = jnp.asarray(P, dtype=jnp.float64)
-
-        # Wrapper function to enable differentiation w.r.t. module parameters
-        # Use sum to handle vectorized inputs
-        wrapper_function = lambda m, t, p: jnp.sum(m.rate_constant(t, p))
-
-        return eqx.filter_grad(wrapper_function)(self, T_jax, P_jax)
-
-    # ==================================================================================
     # String Representations and Debugging
     def __str__(self) -> str:
         """
@@ -495,7 +389,7 @@ class Plog(eqx.Module):
             str_obj = f"{self.name}\t\t{0.0:.5E} {0.0:.5E} {0.0:.5E}\n"
 
         for i in range(int(self._num_p_levels)):
-            arrhenius = self._k_levels[i]
+            arrhenius = self._arrhenius_levels[i]
             str_obj += f" PLOG / {float(self._p_levels[i]):.5E}\t{float(arrhenius.A):.5E} {float(arrhenius.n):.5E} {float(arrhenius.Ea):.5E} /\n"
         return str_obj
 
@@ -519,7 +413,7 @@ class Plog(eqx.Module):
             lines.append(f"  P = {float(self._p_levels[i]):.5e} atm:")
 
             # Reuse Arrhenius __repr__ and indent it
-            arr_repr = repr(self._k_levels[i])
+            arr_repr = repr(self._arrhenius_levels[i])
             lines.append("   " + arr_repr.replace("\n", "\n   "))
         lines.append(" ]")
         lines.append(")")
@@ -576,7 +470,7 @@ class Plog(eqx.Module):
         return self._num_p_levels
 
     @property
-    def k_levels(self) -> list[Arrhenius]:
+    def arrhenius_levels(self) -> list[Arrhenius]:
         """
         List of Arrhenius objects at each pressure level.
 
@@ -585,24 +479,23 @@ class Plog(eqx.Module):
         list[Arrhenius]
             Ordered list of Arrhenius rate constant calculators, one per pressure level.
         """
-        return self._k_levels
+        return self._arrhenius_levels
 
     @property
     def k0(self) -> Optional[Arrhenius]:
         """
-        Nominal Arrhenius rate constant (CHEMKIN compatibility).
+        Low pressure limit Arrhenius rate constant.
 
         Returns
         -------
         Optional[Arrhenius]
-            Arrhenius object for nominal parameters, or None if not provided.
+            Arrhenius object, or None if not provided.
 
         Notes
         -----
-        This parameter does not exist in CHEMKIN format and is not directly
-        used in rate constant calculations.
+        This is used for the Mixture Rule treatment and is not a standard
+        in CHEMKIN format. It is not directly used in PLOG rate constant
+        calculations but may be useful for compatibility with certain kinetics
+        frameworks.
         """
-        if self._k0 is not None:
-            return self._k0
-        else:
-            return None
+        return self._k0
