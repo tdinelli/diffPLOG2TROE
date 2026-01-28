@@ -1,13 +1,16 @@
 """
-Copyright (c) 2025 Timoteo Dinelli
+Copyright (c) 2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
+
+from typing import Optional
 
 import equinox as eqx
 import jax.numpy as jnp
 from jax import vmap
 from jaxtyping import Array, Float64
 
+from KiRATE.kinetics import Arrhenius
 from KiRATE.kinetics.utils import validate_chebyshev_parameters
 
 
@@ -42,8 +45,8 @@ class Chebyshev(eqx.Module):
     Parameters
     ----------
     chebyshev_coefficients : Float64[Array, "nt np"]
-        2D array of Chebyshev coefficients α_tp with shape (N_T, N_P).
-        The shape determines the polynomial orders automatically.
+        2D array of Chebyshev coefficients :math:`\\alpha_{t, p}` with shape
+        (N_T, N_P). The shape determines the polynomial orders automatically.
     T_limits : tuple[float, float], optional
         Temperature range (T_min, T_max) in Kelvin, by default (300.0, 2500.0),
         these default values are the same one adopted by CHEMKIN.
@@ -85,10 +88,9 @@ class Chebyshev(eqx.Module):
 
     References
     ----------
-    .. [1] Cantera Documentation: Chebyshev Reaction Rate Expressions.
-           https://cantera.org/stable/reference/kinetics/rate-constants.html
-    .. [2] Venkatesh, P. K., et al. "Chebyshev polynomial parameterizations for
-           k(T,P) relations." J. Phys. Chem. 104.9 (2000): 2012-2020.
+    .. [1] This is what is reported in the CHEMKIN manual
+           Jeff Ing, Chad Sheng, and Joseph W. Bozzelli,
+           personal communication, 2002.
     """
 
     _chebyshev_coefficients: Float64[Array, "nt np"]
@@ -99,12 +101,14 @@ class Chebyshev(eqx.Module):
     _P_min: Float64[Array, ""]
     _P_max: Float64[Array, ""]
     _name: str = eqx.field(static=True, default="")
+    _k0: Optional[Arrhenius] = None
 
     def __init__(
         self,
         chebyshev_coefficients: Float64[Array, "nt np"],
         T_limits: tuple[float, float] = (300.0, 2500.0),
         P_limits: tuple[float, float] = (0.001, 100.0),
+        k0_parameters: Optional[dict[str, float]] = None,
         name: str = "",
     ) -> None:
         """
@@ -123,6 +127,8 @@ class Chebyshev(eqx.Module):
         P_limits : tuple[float, float], optional
             Pressure range (P_min, P_max) in bar, by default (0.001, 100.0).
             Defines the valid interpolation range.
+        k0_parameters : dict[str, float], optional
+            Low pressure limit rate constant, by default None
         name : str, optional
             Human-readable reaction name, by default ""
 
@@ -148,6 +154,12 @@ class Chebyshev(eqx.Module):
         # Pre-compute log10 of pressure limits (used in every rate constant evaluation)
         self._log10P_min = jnp.log10(self._P_min)
         self._log10P_max = jnp.log10(self._P_max)
+
+        # Optional low pressure limit rate constant
+        if k0_parameters is not None:
+            self._k0 = Arrhenius(parameters=k0_parameters, name=f"{name} (k0)")
+        else:
+            self._k0 = None
 
     # ==================================================================================
     # CHEMKIN string parser
@@ -547,3 +559,22 @@ class Chebyshev(eqx.Module):
             Human-readable reaction name
         """
         return self._name
+
+    @property
+    def k0(self) -> Optional[Arrhenius]:
+        """
+        Low pressure limit Arrhenius rate constant.
+
+        Returns
+        -------
+        Optional[Arrhenius]
+            Arrhenius object, or None if not provided.
+
+        Notes
+        -----
+        This is used for the Mixture Rule treatment and is not a standard
+        in CHEMKIN format. It is not directly used in PLOG rate constant
+        calculations but may be useful for compatibility with certain kinetics
+        frameworks.
+        """
+        return self._k0
