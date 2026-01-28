@@ -1,5 +1,5 @@
 """
-Copyright (c) 2025 Timoteo Dinelli
+Copyright (c) 2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
@@ -13,7 +13,7 @@ from jaxtyping import Array, Float64
 from KiRATE.kinetics.arrhenius import Arrhenius
 from KiRATE.kinetics.broadening_functions import compute_broadening_factor
 from KiRATE.kinetics.utils import validate_broadening_parameters, validate_efficiencies
-from KiRATE.utilities import calculate_effective_concentration
+from KiRATE.utilities import calculate_effective_concentration, parse_cabr
 
 
 class CABR(eqx.Module):
@@ -168,10 +168,19 @@ class CABR(eqx.Module):
 
         Raises
         ------
-        NotImplementedError
-            This method is a placeholder for future implementation
         """
-        raise NotImplementedError("CHEMKIN parsing for CABR is not yet implemented")
+        # Parse CHEMKIN input string to extract all parameters
+        reaction_name, hpl_params, lpl_params, cabr_type, cabr_params, efficiencies = parse_cabr(input_string)
+
+        # Construct FallOff object with parsed parameters
+        return cls(
+            hpl_parameters=hpl_params,
+            lpl_parameters=lpl_params,
+            cabr_type=cabr_type,
+            cabr_parameters=cabr_params,
+            efficiencies=efficiencies,
+            name=reaction_name,
+        )
 
     # ==================================================================================
     # Rate constant methods
@@ -248,24 +257,10 @@ class CABR(eqx.Module):
         k_hpl = self._hpl.rate_constant(T)  # High-pressure limit [cm3/(mol s)]
         k_lpl = self._lpl.rate_constant(T)  # Low-pressure limit [cm6/(mol2 s)]
 
-        if jnp.isscalar(P) or P.ndim == 0: # Scalar pressure - evaluate directly
-            return self._single_P_rate_constant(
-                T,
-                P,
-                k_lpl,
-                k_hpl,
-                jax_composition,
-            )
-        else: # Vector pressure - vectorize over pressure dimension
-            vec_func = vmap(
-                lambda p: self._single_P_rate_constant(
-                    T,
-                    p,
-                    k_lpl,
-                    k_hpl,
-                    jax_composition,
-                )
-            )
+        if jnp.isscalar(P) or P.ndim == 0:  # Scalar pressure - evaluate directly
+            return self._single_P_rate_constant(T, P, k_lpl, k_hpl, jax_composition)
+        else:  # Vector pressure - vectorize over pressure dimension
+            vec_func = vmap(lambda p: self._single_P_rate_constant(T, p, k_lpl, k_hpl, jax_composition))
             return vec_func(P)
 
     @eqx.filter_jit
@@ -472,10 +467,7 @@ class CABR(eqx.Module):
         dict[str, Float64[Array, ""]] or None
             Dictionary of broadening parameters
         """
-        if self._cabr_parameters is not None:
-            return self._cabr_parameters
-        else:
-            return None
+        return self._cabr_parameters
 
     @property
     def efficiencies(self) -> Optional[dict[str, Float64[Array, ""]]]:
@@ -489,7 +481,4 @@ class CABR(eqx.Module):
             All values are JAX float64 arrays. Returns None if no
             efficiencies were specified (default efficiency 1.0 for all).
         """
-        if self._efficiencies is not None:
-            return self._efficiencies
-        else:
-            return None
+        return self._efficiencies

@@ -387,6 +387,139 @@ def parse_falloff(
     return reaction_name, hpl_coefficients, lpl_coefficients, falloff_type, falloff_params, efficiencies
 
 
+def parse_cabr(
+    input_string: str,
+) -> tuple[str, dict[str, float], dict[str, float], str, dict[str, float] | None, dict[str, float] | None]:
+    """
+    Parse a CHEMKIN-format CABR reaction.
+
+    Parameters
+    ----------
+    input_string : str
+        CHEMKIN-formatted cabr reaction string
+
+    Returns
+    -------
+    tuple
+        (reaction_name, hpl_params, lpl_params, cabr_type, cabr_params, efficiencies)
+    """
+    lines = input_string.strip().split("\n")
+    if not lines:
+        raise ValueError("Empty CHEMKIN CABR representation")
+
+    main_line = lines[0].strip()
+    if not main_line:
+        raise ValueError("First line must contain reaction equation")
+
+    # Extract reaction name and high-pressure limit parameters
+    reaction_name, lpl_coefficients = parse_reaction_line(main_line, True)
+
+    number_pattern = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
+
+    # Initialize variables
+    hpl_coefficients = None
+    cabr_type = "lindemann"  # Default cabr type
+    cabr_params = None
+    efficiencies = None
+
+    for line in lines[1:]:
+        line = line.strip()
+
+        # Remove comments (everything after '!')
+        if "!" in line:
+            line = line.split("!")[0].strip()
+
+        # Skip empty lines
+        if not line:
+            continue
+
+        if "HIGH" in line:
+            # Parse HIGH pressure limit coefficients
+            tokens = line.split("/")
+            if len(tokens) < 2:
+                raise ValueError(f"Invalid HIGH line format (expected '/ data /'): {line}")
+
+            high_data_str = tokens[1].strip()
+
+            try:
+                high_coefficients = [float(x) for x in number_pattern.findall(high_data_str)]
+            except ValueError as e:
+                raise ValueError(f"Error parsing numeric values in HIGH line: {line}") from e
+
+            if len(high_coefficients) != 3:
+                raise ValueError(f"Expected 3 values (A, n, Ea) in high line, got {len(high_coefficients)}: {line}")
+
+            hpl_coefficients = {"A": high_coefficients[0], "n": high_coefficients[1], "Ea": high_coefficients[2]}
+
+        elif "TROE" in line:
+            # Parse TROE parameters
+            cabr_type = "troe"
+            tokens = line.split("/")
+            if len(tokens) < 2:
+                raise ValueError(f"Invalid TROE line format (expected '/ data /'): {line}")
+
+            troe_data_str = tokens[1].strip()
+
+            try:
+                troe_values = [float(x) for x in number_pattern.findall(troe_data_str)]
+            except ValueError as e:
+                raise ValueError(f"Error parsing numeric values in TROE line: {line}") from e
+
+            if len(troe_values) not in [3, 4]:
+                raise ValueError(f"Expected 3 or 4 values in TROE line, got {len(troe_values)}: {line}")
+
+            # TROE format: A T3 T1 [T2]
+            cabr_params = {
+                "A": troe_values[0],
+                "T3": troe_values[1],
+                "T1": troe_values[2],
+                "T2": troe_values[3] if len(troe_values) == 4 else 0.0,
+            }
+
+        elif "SRI" in line:
+            # Parse SRI parameters
+            cabr_type = "sri"
+            tokens = line.split("/")
+            if len(tokens) < 2:
+                raise ValueError(f"Invalid SRI line format (expected '/ data /'): {line}")
+
+            sri_data_str = tokens[1].strip()
+
+            try:
+                sri_values = [float(x) for x in number_pattern.findall(sri_data_str)]
+            except ValueError as e:
+                raise ValueError(f"Error parsing numeric values in SRI line: {line}") from e
+
+            if len(sri_values) not in [3, 5]:
+                raise ValueError(f"Expected 3 or 5 values in SRI line, got {len(sri_values)}: {line}")
+
+            # SRI format: a b c [d e]
+            cabr_params = {
+                "a": sri_values[0],
+                "b": sri_values[1],
+                "c": sri_values[2],
+                "d": sri_values[3] if len(sri_values) == 5 else 1.0,
+                "e": sri_values[4] if len(sri_values) == 5 else 0.0,
+            }
+
+        else:
+            # Parse collision efficiencies (e.g., H2O/12.0/ H2/2.0/)
+            # Check if line contains efficiency specifications
+            efficiency_pattern = re.compile(r"(\w+)\s*/\s*([\d.eE+-]+)\s*/")
+            matches = efficiency_pattern.findall(line)
+            if matches:
+                if efficiencies is None:
+                    efficiencies = {}
+                for species, efficiency in matches:
+                    efficiencies[species] = float(efficiency)
+
+    # Validate that HIGH was provided
+    if hpl_coefficients is None:
+        raise ValueError("CABR reaction must contain HIGH pressure limit parameters")
+
+    return reaction_name, hpl_coefficients, lpl_coefficients, cabr_type, cabr_params, efficiencies
+
+
 def parse_threebody(input_string: str) -> tuple[str, dict[str, float], dict[str, float] | None]:
     """
     Parse a CHEMKIN-format three-body (termolecular) reaction.
@@ -552,24 +685,25 @@ def parse_species(thermo_string: str) -> tuple[str, dict[str, int], str, float, 
     # all numbers from each line.
 
     import re
+
     # Pattern matches: optional sign, digits with optional decimal, optional exponent
-    number_pattern = re.compile(r'[-+]?(?:\d+\.?\d*|\.\d+)(?:[eEdD][-+]?\d+)?')
+    number_pattern = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eEdD][-+]?\d+)?")
 
     # Extract all numbers from lines 2-4
     line2_numbers = []
     for match in number_pattern.findall(lines[1]):
         # Handle Fortran 'D' notation
-        num_str = match.replace('D', 'E').replace('d', 'e')
+        num_str = match.replace("D", "E").replace("d", "e")
         line2_numbers.append(float(num_str))
 
     line3_numbers = []
     for match in number_pattern.findall(lines[2]):
-        num_str = match.replace('D', 'E').replace('d', 'e')
+        num_str = match.replace("D", "E").replace("d", "e")
         line3_numbers.append(float(num_str))
 
     line4_numbers = []
     for match in number_pattern.findall(lines[3]):
-        num_str = match.replace('D', 'E').replace('d', 'e')
+        num_str = match.replace("D", "E").replace("d", "e")
         line4_numbers.append(float(num_str))
 
     # Validate we have the right number of coefficients
