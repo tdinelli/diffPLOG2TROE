@@ -63,3 +63,53 @@ if not os.path.isdir(data_directory):
     os.makedirs(data_directory)
 
 np.savetxt(os.path.join(data_directory, "lmrr_n2arhe.csv"), k_matrix, delimiter=";", fmt="%.15e")
+
+# From hereinafter we are computing the rate constant still using the LMRR formalism but with
+# some explicit rate constants defined for one collider.
+reaction_index = 7
+
+k_matrix = np.zeros((len(P_range), len(T_range)))
+print(f"Extracting rate constants for (LMR-R) reaction: {gas.reaction(reaction_index).equation}")
+print(f" - Temperature range: {T_range[0]:.1f} - {T_range[-1]:.1f} K")
+print(f" - Pressure range: {P_range[0]:.3f} - {P_range[-1]:.1f} atm")
+print(" - Mixture 100% N2")
+for t_idx, t in enumerate(T_range):
+    for p_idx, p in enumerate(P_range):
+        gas.TPX = t, p * ct.one_atm, "N2:1"
+        k_matrix[p_idx, t_idx] = gas.forward_rate_constants[reaction_index]
+data_directory = os.path.join(current_dir, "cantera_data", str(ct_version))
+if not os.path.isdir(data_directory):
+    os.makedirs(data_directory)
+np.savetxt(os.path.join(data_directory, "lmrr2_n2.csv"), k_matrix, delimiter=";", fmt="%.15e")
+
+k_matrix = np.zeros((len(P_range), len(T_range)))
+print(f"Extracting rate constants for (LMR-R) reaction: {gas.reaction(reaction_index).equation}")
+print(f" - Temperature range: {T_range[0]:.1f} - {T_range[-1]:.1f} K")
+print(f" - Pressure range: {P_range[0]:.3f} - {P_range[-1]:.1f} atm")
+print(" - Mixture 30% N2, 20% He, 50% AR")
+for t_idx, t in enumerate(T_range):
+    for p_idx, p in enumerate(P_range):
+        gas.TPX = t, p * ct.one_atm, "N2:0.3, HE: 0.2, AR: 0.5"
+        k_matrix[p_idx, t_idx] = gas.forward_rate_constants[reaction_index]
+
+data_directory = os.path.join(current_dir, "cantera_data", str(ct_version))
+if not os.path.isdir(data_directory):
+    os.makedirs(data_directory)
+
+np.savetxt(os.path.join(data_directory, "lmrr2_n2arhe.csv"), k_matrix, delimiter=";", fmt="%.15e")
+
+k_matrix = np.zeros((len(P_range), len(T_range)))
+print(f"Extracting rate constants for (LMR-R) reaction: {gas.reaction(reaction_index).equation}")
+print(f" - Temperature range: {T_range[0]:.1f} - {T_range[-1]:.1f} K")
+print(f" - Pressure range: {P_range[0]:.3f} - {P_range[-1]:.1f} atm")
+print(" - Mixture 30% N2, 20% He, 30% AR, 20% NH3")
+for t_idx, t in enumerate(T_range):
+    for p_idx, p in enumerate(P_range):
+        gas.TPX = t, p * ct.one_atm, "N2:0.3, HE: 0.2, AR: 0.3, NH3: 0.2"
+        k_matrix[p_idx, t_idx] = gas.forward_rate_constants[reaction_index]
+
+data_directory = os.path.join(current_dir, "cantera_data", str(ct_version))
+if not os.path.isdir(data_directory):
+    os.makedirs(data_directory)
+
+np.savetxt(os.path.join(data_directory, "lmrr2_n2arhenh3.csv"), k_matrix, delimiter=";", fmt="%.15e")

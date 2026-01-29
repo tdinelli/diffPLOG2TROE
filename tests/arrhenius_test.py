@@ -2,6 +2,7 @@ import os
 import unittest
 
 import jax.numpy as jnp
+from jaxlib.xla_client import ArrayCopySemantics
 import numpy as np
 
 from KiRATE.kinetics import Arrhenius
@@ -208,6 +209,18 @@ class TestArrhenius(unittest.TestCase):
             jnp.allclose(autodiff_dkdT, analytical_dkdT, rtol=1e-10, atol=1e-10),
             "Vectorized dk/dT mismatch",
         )
+
+    def test_chemkin_parsing(self):
+        """Test that the CHEMKIN parser works correctly"""
+        chemkin_string = """
+            H2+O = H+OH 1.000e+14   0.0     1.5286e+04
+        """
+        test_reaction = Arrhenius.from_chemkin(input_string=chemkin_string)
+
+        self.assertEqual(test_reaction.A, self.reaction.A)
+        self.assertEqual(test_reaction.n, self.reaction.n)
+        self.assertEqual(test_reaction.Ea, self.reaction.Ea)
+        self.assertEqual(test_reaction.name, self.reaction.name)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ phases:
   species:
   - {gri30.yaml/species: [CH4, CH3, CH2O, C2H6]}
   - {example_data/ammonia-CO-H2-Alzueta-2023.yaml/species: [H, O2, HO2, O, OH,
-        AR, CO, CO2, H2, H2O, N2, HONO, NO, HE]}
+        AR, CO, CO2, H2, H2O, N2, HONO, NO, HE, NH3]}
   kinetics: gas
   state: {T: 300.0, P: 1 atm}
 
@@ -90,6 +90,7 @@ reactions:
 # -----------------------------------------
 - equation: H + O2 (+M) <=> HO2 (+M) # Reaction 7 (LMR-R)
   type: linear-Burke
+  duplicate: true
   colliders:
   - name: M
     type: pressure-dependent-Arrhenius
@@ -114,6 +115,54 @@ reactions:
     efficiency: {A: 4.97750e+00, b: 1.64855e-01, Ea: -2.80351e+02}
   - name: H2O
     efficiency: {A: 3.69146e+01, b: -7.12902e-02, Ea: 3.19087e+01}
+
+# -----------------------------------------
+# LMR-R: From Stagni, A. and Dinelli, T. doi: https://doi.org/10.1016/j.cej.2025.170737
+# -----------------------------------------
+- equation: H + O2 (+M) <=> HO2 (+M)  # Reaction 8 (LMR-R)
+  type: linear-Burke
+  duplicate: true
+  colliders:
+  - name: M
+    type: falloff
+    high-P-rate-constant: {A: 4.66000000E+12, b: 4.40000000E-01, Ea: 0.00000000}
+    low-P-rate-constant: {A: 4.06620000E+19, b: -1.40000000, Ea: -1.80537000E+02}
+    Troe: {A: 0.5, T3: 1.0, T1: 1.0E+10, T2: 1.0E+30}
+  - name: N2 
+    type: falloff
+    high-P-rate-constant: {A: 4.66000000E+12, b: 4.40000000E-01, Ea: 0.00000000}
+    low-P-rate-constant: {A: 1.91000000E+20, b: -1.55680000, Ea: 2.53860000E+02}
+    Troe: {A: 0.5, T3: 1.0, T1: 1.0E+10, T2: 1.0E+30}
+    efficiency: {A: 4.6973, b: -0.157, Ea: 434.4}
+  - name: H2
+    efficiency: {A: 2.0, b: 0, Ea: 0}
+  - name: H2O 
+    efficiency: {A: 17.6, b: 0, Ea: 0}
+  - name: O2 
+    efficiency: {A: 1.0, b: 0, Ea: 0}
+  - name: NH3
+    efficiency: {A: 0.0927, b: 0.6872, Ea: -614.0}
+  - name: HE
+    type: falloff
+    high-P-rate-constant: {A: 4.66000000E+12, b: 4.40000000E-01, Ea: 0.00000000}
+    low-P-rate-constant: {A: 1.216E+19, b: -1.23000000, Ea: 0.0}
+    Troe: {A: 0.67, T3: 1.0E-30, T1: 1.0E+30, T2: 1.0E+30}
+    efficiency: {A: 0.2991, b: 0.170, Ea: 180.5}
+  - name: AR
+    type: pressure-dependent-Arrhenius
+    rate-constants:
+    - {P: 1.00000000E-02 atm, A: 8.45360E+14, b: -2.19120, Ea: 1.14078E+01}
+    - {P: 1.00000000E-01 atm, A: 8.26120E+15, b: -2.18930, Ea: 2.35054E+01}
+    - {P: 1.00000000E+00 atm, A: 8.39046E+16, b: -2.19250, Ea: 6.13437E+01}
+    - {P: 5.00000000E+00 atm, A: 4.94439E+17, b: -2.21410, Ea: 1.48419E+02}
+    - {P: 1.00000000E+01 atm, A: 1.20063E+18, b: -2.23890, Ea: 2.28993E+02}
+    - {P: 2.00000000E+01 atm, A: 3.35001E+18, b: -2.28080, Ea: 3.58971E+02}
+    - {P: 3.00000000E+01 atm, A: 9.75402E+19, b: -2.67880, Ea: 6.10486E+02}
+    - {P: 4.00000000E+01 atm, A: 1.89318E+20, b: -2.72520, Ea: 7.46275E+02}
+    - {P: 5.00000000E+01 atm, A: 3.11736E+20, b: -2.75890, Ea: 8.57089E+02}
+    - {P: 1.00000000E+02 atm, A: 1.06227E+21, b: -2.81950, Ea: 1.19199E+03}
+    - {P: 3.00000000E+02 atm, A: 1.06233E+21, b: -2.66310, Ea: 1.49349E+03}
+    efficiency: {A: 0.1706, b: 0.2090, Ea: 191.9}
 
 # Reaction 5-7: Separate reactions, but calculated on the full mixture concentration.
 # These are the rates needed to compute the Chemkin-style mole-fraction based weighting
