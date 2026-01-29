@@ -1,0 +1,13 @@
+/* Custom CSS for KiRATE documentation */
+
+/* Resize the logo in the sidebar */
+.wy-side-nav-search .wy-dropdown > a img.logo,
+.wy-side-nav-search > a img.logo {
+    width: 150px !important;
+    max-width: 150px !important;
+}
+
+/* Adjust logo container padding if needed */
+.wy-side-nav-search {
+    padding: 0.5em !important;
+}
