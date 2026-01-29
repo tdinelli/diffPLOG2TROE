@@ -3,7 +3,7 @@ Copyright (c) 2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
-from typing import Optional, Union
+from typing import Union
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -67,7 +67,7 @@ class Plog(eqx.Module):
         Natural logarithm of pressure levels for efficient interpolation
     _num_p_levels : Int64[Array, ""]
         Number of pressure levels
-    _k0 : Optional[Arrhenius]
+    _k0 : Arrhenius | None
         Low pressure limit rate constant
     _name : str
         Reaction name for identification (static field)
@@ -83,14 +83,14 @@ class Plog(eqx.Module):
     _p_levels: Float64[Array, "np"]
     _lnp_levels: Float64[Array, "np"]
     _num_p_levels: Int64[Array, ""]
-    _k0: Optional[Arrhenius] = None
+    _k0: Arrhenius | None = None
     _name: str = eqx.field(static=True, default="")
 
     def __init__(
         self,
         parameters: dict[float, dict[str, float]],
         name: str = "",
-        k0_parameters: Optional[dict[str, float]] = None,
+        k0_parameters: dict[str, float] | None = None,
     ) -> None:
         """
         Initialize the PLOG rate constant calculator.
@@ -236,9 +236,9 @@ class Plog(eqx.Module):
         T = jnp.asarray(T, dtype=jnp.float64)
         P = jnp.asarray(P, dtype=jnp.float64)
 
-        if jnp.isscalar(P) or P.ndim == 0: # Scalar pressure - evaluate directly
+        if jnp.isscalar(P) or P.ndim == 0:  # Scalar pressure - evaluate directly
             return self._single_P_rate_constant(T, P)
-        else: # Vector pressure - vectorize over pressure dimension
+        else:  # Vector pressure - vectorize over pressure dimension
             vec_func = vmap(lambda p: self._single_P_rate_constant(T, p))
             return vec_func(P)
 
@@ -300,10 +300,7 @@ class Plog(eqx.Module):
         # For each pressure level P_i, compute k_i(T) using the Arrhenius equation
         # Stack results into a single array for vectorized operations
         # Shape: (num_p_levels,) if T is scalar, (num_p_levels, nt) if T is vector
-        all_lnk = jnp.stack([
-            arrhenius_level.log_rate_constant(T)
-            for arrhenius_level in self._arrhenius_levels
-        ])
+        all_lnk = jnp.stack([arrhenius_level.log_rate_constant(T) for arrhenius_level in self._arrhenius_levels])
 
         # ==============================================================================
         # Step 2: Handle extrapolation using differentiable clamping
@@ -319,7 +316,7 @@ class Plog(eqx.Module):
         # Step 3: Compute interpolation weights for all intervals simultaneously
         # Define pressure intervals: [P_i, P_{i+1}] for i = 0, ..., N-2
         lnP_lower = self._lnp_levels[:-1]  # [lnP_0, lnP_1, ..., lnP_{N-2}]
-        lnP_upper = self._lnp_levels[1:]   # [lnP_1, lnP_2, ..., lnP_{N-1}]
+        lnP_upper = self._lnp_levels[1:]  # [lnP_1, lnP_2, ..., lnP_{N-1}]
 
         # Compute interpolation fraction alpha in [0, 1] for each interval
         # alpha = (lnP - lnP_i) / (lnP_{i+1} - lnP_i)
@@ -330,7 +327,7 @@ class Plog(eqx.Module):
         # Step 4: Perform linear interpolation in log-space for each interval
         # Extract ln(k) values at interval boundaries
         lnk_lower = all_lnk[:-1]  # ln(k) at P_i
-        lnk_upper = all_lnk[1:]   # ln(k) at P_{i+1}
+        lnk_upper = all_lnk[1:]  # ln(k) at P_{i+1}
 
         # Linear interpolation: ln(k_interp) = ln(k_i) + α · (ln(k_{i+1}) - ln(k_i))
         # Handle both scalar and vector T cases
@@ -482,13 +479,13 @@ class Plog(eqx.Module):
         return self._arrhenius_levels
 
     @property
-    def k0(self) -> Optional[Arrhenius]:
+    def k0(self) -> Arrhenius | None:
         """
         Low pressure limit Arrhenius rate constant.
 
         Returns
         -------
-        Optional[Arrhenius]
+        Arrhenius | None
             Arrhenius object, or None if not provided.
 
         Notes

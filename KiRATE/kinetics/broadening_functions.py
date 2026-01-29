@@ -4,7 +4,6 @@ Licensed under the MIT License - see LICENSE file for details
 """
 
 from functools import partial
-from typing import Optional
 
 import jax.numpy as jnp
 from jax import jit
@@ -16,7 +15,7 @@ def compute_broadening_factor(
     broadening_type: str,
     T: Float64[Array, ""] | Float64[Array, "nt"],
     Pr: Float64[Array, ""],
-    parameters: Optional[dict[str, Float64[Array, ""]]] = None,
+    parameters: dict[str, Float64[Array, ""]] | None = None,
 ) -> Float64[Array, ""] | Float64[Array, "nt"]:
     """
     Compute the broadening factor F(T, Pr) for fall-off reactions.

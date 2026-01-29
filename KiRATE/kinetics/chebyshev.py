@@ -3,8 +3,6 @@ Copyright (c) 2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
-from typing import Optional
-
 import equinox as eqx
 import jax.numpy as jnp
 from jax import vmap
@@ -51,7 +49,7 @@ class Chebyshev(eqx.Module):
         Temperature range (T_min, T_max) in Kelvin, by default (300.0, 2500.0),
         these default values are the same one adopted by CHEMKIN.
     P_limits : tuple[float, float], optional
-        Pressure range (P_min, P_max) in bar, by default (0.001, 100.0),
+        Pressure range (P_min, P_max) in atmospheres, by default (0.001, 100.0),
         these default values are the same one adopted by CHEMKIN.
     name : str, optional
         Human-readable reaction name, by default ""
@@ -63,7 +61,7 @@ class Chebyshev(eqx.Module):
     _T_min, _T_max : Float64[Array, ""]
         Temperature limits in Kelvin
     _P_min, _P_max : Float64[Array, ""]
-        Pressure limits in bar
+        Pressure limits in atmospheres
     _log10P_min, _log10P_max : Float64[Array, ""]
         Pre-computed log10 of pressure limits
     _name : str
@@ -101,14 +99,14 @@ class Chebyshev(eqx.Module):
     _P_min: Float64[Array, ""]
     _P_max: Float64[Array, ""]
     _name: str = eqx.field(static=True, default="")
-    _k0: Optional[Arrhenius] = None
+    _k0: Arrhenius | None = None
 
     def __init__(
         self,
         chebyshev_coefficients: Float64[Array, "nt np"],
         T_limits: tuple[float, float] = (300.0, 2500.0),
         P_limits: tuple[float, float] = (0.001, 100.0),
-        k0_parameters: Optional[dict[str, float]] = None,
+        k0_parameters: dict[str, float] | None = None,
         name: str = "",
     ) -> None:
         """
@@ -125,7 +123,7 @@ class Chebyshev(eqx.Module):
             Defines the valid interpolation range. Extrapolation outside this range
             is strongly discouraged.
         P_limits : tuple[float, float], optional
-            Pressure range (P_min, P_max) in bar, by default (0.001, 100.0).
+            Pressure range (P_min, P_max) in atmospheres, by default (0.001, 100.0).
             Defines the valid interpolation range.
         k0_parameters : dict[str, float], optional
             Low pressure limit rate constant, by default None
@@ -200,7 +198,7 @@ class Chebyshev(eqx.Module):
         T : float | Float64[Array, ""] | Float64[Array, "nt"]
             Temperature(s) in Kelvin. Accepts scalars or 1D arrays.
         P : float | Float64[Array, ""] | Float64[Array, "np"]
-            Pressure(s) in bar. Accepts scalars or 1D arrays.
+            Pressure(s) in atmospheres. Accepts scalars or 1D arrays.
         is_violation_allowed : bool, optional
             If True, clip T and P to valid ranges [T_min, T_max] and [P_min, P_max].
             If False, allow extrapolation (may produce unphysical results).
@@ -515,7 +513,7 @@ class Chebyshev(eqx.Module):
     @property
     def P_limits(self) -> tuple[Float64[Array, ""], Float64[Array, ""]]:
         """
-        Pressure range (P_min, P_max) in bar.
+        Pressure range (P_min, P_max) in atmospheres.
 
         Returns
         -------
@@ -561,13 +559,13 @@ class Chebyshev(eqx.Module):
         return self._name
 
     @property
-    def k0(self) -> Optional[Arrhenius]:
+    def k0(self) -> Arrhenius | None:
         """
         Low pressure limit Arrhenius rate constant.
 
         Returns
         -------
-        Optional[Arrhenius]
+        Arrhenius | None
             Arrhenius object, or None if not provided.
 
         Notes

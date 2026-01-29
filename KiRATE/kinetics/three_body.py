@@ -188,7 +188,7 @@ class Threebody(eqx.Module):
         T : float | Float64[Array, ""] | Float64[Array, "nt"]
             Temperature(s) in Kelvin. Accepts scalars or 1D arrays.
         P : float | Float64[Array, ""] | Float64[Array, "np"]
-            Pressure(s) in bar. Accepts scalars or 1D arrays.
+            Pressure(s) in atmospheres. Accepts scalars or 1D arrays.
         composition : dict[str, float], optional
             Gas composition as mole fractions: {"species": x_i}
             Used to calculate effective third-body concentration with efficiencies.

@@ -3,8 +3,6 @@ Copyright (c) 2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
-from typing import Optional
-
 import equinox as eqx
 import jax.numpy as jnp
 from jax import vmap
@@ -60,9 +58,9 @@ class FallOff(eqx.Module):
         Low-pressure limit Arrhenius object
     _falloff_type : str
         Broadening factor type (static field)
-    _falloff_parameters : Optional[dict[str, Float64[Array, ""]]]
+    _falloff_parameters : dict[str, Float64[Array, ""]] | None
         Broadening factor parameters as JAX arrays
-    _efficiencies : Optional[dict[str, Float64[Array, ""]]]
+    _efficiencies : dict[str, Float64[Array, ""]] | None
         Third-body efficiencies as JAX arrays
     _name : str
         Reaction name (static field)
@@ -102,8 +100,8 @@ class FallOff(eqx.Module):
     _hpl: Arrhenius
     _lpl: Arrhenius
     _falloff_type: str = eqx.field(static=True)
-    _falloff_parameters: Optional[dict[str, Float64[Array, ""]]] = None
-    _efficiencies: Optional[dict[str, Float64[Array, ""]]] = None
+    _falloff_parameters: dict[str, Float64[Array, ""]] | None = None
+    _efficiencies: dict[str, Float64[Array, ""]] | None = None
     _name: str = eqx.field(static=True, default="")
 
     def __init__(
@@ -111,8 +109,8 @@ class FallOff(eqx.Module):
         hpl_parameters: dict[str, float],
         lpl_parameters: dict[str, float],
         falloff_type: str,
-        falloff_parameters: Optional[dict[str, float]] = None,
-        efficiencies: Optional[dict[str, float]] = None,
+        falloff_parameters: dict[str, float] | None = None,
+        efficiencies: dict[str, float] | None = None,
         name: str = "",
     ) -> None:
         """
@@ -218,7 +216,7 @@ class FallOff(eqx.Module):
         self,
         T: float | Float64[Array, ""] | Float64[Array, "nt"],
         P: float | Float64[Array, ""] | Float64[Array, "np"],
-        composition: Optional[dict[str, float]] = None,
+        composition: dict[str, float] | None = None,
     ) -> Float64[Array, ""] | Float64[Array, "nt"] | Float64[Array, "np"] | Float64[Array, "nt np"]:
         """
         Calculate the fall-off rate constant at given temperature(s) and pressure(s).
@@ -232,7 +230,7 @@ class FallOff(eqx.Module):
         T : float | Float64[Array, ""] | Float64[Array, "nt"]
             Temperature(s) in Kelvin. Accepts scalars or 1D arrays.
         P : float | Float64[Array, ""] | Float64[Array, "np"]
-            Pressure(s) in bar. Accepts scalars or 1D arrays.
+            Pressure(s) in atmospheres. Accepts scalars or 1D arrays.
         composition : dict[str, float], optional
             Gas composition as mole fractions: {"species": x_i}
             Used to calculate effective third-body concentration with efficiencies.
@@ -270,9 +268,7 @@ class FallOff(eqx.Module):
 
         # Convert composition to JAX arrays for differentiability
         jax_composition = (
-            {key: jnp.float64(value) for key, value in composition.items()}
-            if composition is not None
-            else None
+            {key: jnp.float64(value) for key, value in composition.items()} if composition is not None else None
         )
 
         # Compute high-pressure and low-pressure limit rate constants
@@ -292,7 +288,7 @@ class FallOff(eqx.Module):
         P: Float64[Array, ""],
         lpl: Float64[Array, ""] | Float64[Array, "nt"],
         hpl: Float64[Array, ""] | Float64[Array, "nt"],
-        composition: Optional[dict[str, Float64[Array, ""]]] = None,
+        composition: dict[str, Float64[Array, ""]] | None = None,
     ) -> Float64[Array, ""] | Float64[Array, "nt"]:
         """
         Calculate fall-off rate constant at a single pressure and one or more temperatures.
@@ -306,7 +302,7 @@ class FallOff(eqx.Module):
         T : Float64[Array, ""] | Float64[Array, "nt"]
             Temperature(s) in Kelvin (scalar or 1D array)
         P : Float64[Array, ""]
-            Single pressure value in bar (scalar)
+            Single pressure value in atmospheres (scalar)
         lpl : Float64[Array, ""] | Float64[Array, "nt"]
             Pre-computed low-pressure limit rate constant(s) k0(T)
             Units: cm6/mol2/s
@@ -514,7 +510,7 @@ class FallOff(eqx.Module):
         return self._lpl
 
     @property
-    def falloff_parameters(self) -> Optional[dict[str, Float64[Array, ""]]]:
+    def falloff_parameters(self) -> dict[str, Float64[Array, ""]] | None:
         """
         Broadening factor parameters as JAX arrays.
 
@@ -526,7 +522,7 @@ class FallOff(eqx.Module):
         return self._falloff_parameters
 
     @property
-    def efficiencies(self) -> Optional[dict[str, Float64[Array, ""]]]:
+    def efficiencies(self) -> dict[str, Float64[Array, ""]] | None:
         """
         Third-body collision efficiencies as JAX arrays.
 
