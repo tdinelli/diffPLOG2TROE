@@ -1,4 +1,7 @@
-from typing import Optional
+"""
+Copyright (c) 2026 Timoteo Dinelli
+Licensed under the MIT License - see LICENSE file for details
+"""
 
 import jax.numpy as jnp
 from jax import jit
@@ -11,8 +14,8 @@ from KiRATE.utilities.physical_constants import constants
 def calculate_effective_concentration(
     T: Float64[Array, ""] | Float64[Array, "nt"],
     P: Float64[Array, ""] | Float64[Array, "np"],
-    composition: Optional[dict[str, Float64[Array, ""]]] = None,
-    efficiencies: Optional[dict[str, Float64[Array, ""]]] = None,
+    composition: dict[str, Float64[Array, ""]] | None = None,
+    efficiencies: dict[str, Float64[Array, ""]] | None = None,
 ) -> Float64[Array, ""] | Float64[Array, "nt"] | Float64[Array, "np"] | Float64[Array, "nt np"]:
     """
     Calculate effective third-body concentration for pressure-dependent reactions.
@@ -41,7 +44,7 @@ def calculate_effective_concentration(
         Temperature(s) in Kelvin.
 
     P : Float64[Array, ""] | Float64[Array, "np"]
-        Pressure(s) in bar.
+        Pressure(s) in atmospheres.
 
     composition : dict[str, Float64[Array, ""]], optional
         Dictionary mapping species names to their mole fractions [dimensionless].
@@ -118,11 +121,11 @@ def calculate_concentration(
         Temperature(s) in Kelvin.
 
     P : Float64[Array, ""] | Float64[Array, "np"]
-        Pressure(s) in bar.
+        Pressure(s) in atmospheres.
 
-        Note: Input pressure in bar is internally converted to Pascal
-        by multiplying by 100000 (1 bar = 10^5 Pa exactly).
-        Standard atmospheric pressure is approximately 1.01325 bar.
+        Note: Input pressure in atmospheres is internally converted to Pascal
+        by multiplying by 101325 (1 atm = 101325 Pa exactly).
+        Standard atmospheric pressure is 1 atm by definition.
 
     Returns
     -------
@@ -138,18 +141,18 @@ def calculate_concentration(
     -----
     **Unit conversions:**
 
-    - Pressure: bar -> Pa (multiply by 100000, since 1 bar = 10^5 Pa exactly)
+    - Pressure: atm -> Pa (multiply by 101325, since 1 atm = 101325 Pa exactly)
     - Volume: m3 -> cm3 (divide by 1e6)
     - Gas constant: R = 8.31446261815324 J/mol/K (CODATA 2018)
 
     The final concentration is computed as:
 
     .. math::
-        [M] = \\frac{P \\times 10^5}{R \\times T \\times 10^6} \\quad [\\text{mol/cm}^3]
+        [M] = \\frac{P \\times 101325}{R \\times T \\times 10^6} \\quad [\\text{mol/cm}^3]
     """
     T = jnp.asarray(T, dtype=jnp.float64)
     P = jnp.asarray(P, dtype=jnp.float64)
-    P = P * jnp.float64(100000.0)  # bar -> Pa (1 bar = 10^5 Pa)
+    P = P * jnp.float64(101325.0)  # atm -> Pa (1 atm = 101325 Pa)
 
     R = constants.R_J_mol_K  # [J/mol/K]
     conversion_factor = jnp.float64(1e6)  # from [m3] to [cm3]

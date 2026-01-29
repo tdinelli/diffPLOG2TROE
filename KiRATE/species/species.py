@@ -210,9 +210,9 @@ class Species(eqx.Module):
             .. code-block:: text
 
                 SPECIES_NAME      DATE  ELEMENTS      PHASE  TMIN   TMAX   TMID      1
-                 a1_high a2_high a3_high a4_high a5_high                              2
-                 a6_high a7_high a1_low  a2_low  a3_low  a4_low  a5_low               3
-                 a6_low  a7_low                                                       4
+                a1_high a2_high a3_high a4_high a5_high                              2
+                a6_high a7_high a1_low  a2_low  a3_low  a4_low  a5_low               3
+                a6_low  a7_low                                                       4
 
             Each line is fixed-width or space-separated with specific formatting.
             The coefficients define NASA 7-coefficient polynomials for two
