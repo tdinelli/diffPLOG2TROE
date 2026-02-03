@@ -1,5 +1,5 @@
 """
-Copyright (c) 2026 Timoteo Dinelli
+Copyright (c) 2024-2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
@@ -126,6 +126,8 @@ class Plog(eqx.Module):
         parameters = dict(sorted(parameters.items()))
 
         # Store pressure levels and their natural logarithms
+        # .keys() inherently remove the duplicate because in a dictionary you
+        # cant define multiple elements with the same key
         self._p_levels = jnp.array(list(parameters.keys()), dtype=jnp.float64)
         self._lnp_levels = jnp.log(self._p_levels)
         self._num_p_levels = jnp.int64(len(self._p_levels))
