@@ -1,5 +1,5 @@
 """
-Copyright (c) 2026 Timoteo Dinelli
+Copyright (c) 2024-2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
@@ -23,15 +23,15 @@ class FallOff(eqx.Module):
     kinetic behavior. The fall-off formulation is given by:
 
     .. math::
-        k(T, P, [M]) = k_\\infty(T) \\cdot \\frac{P_r}{1 + P_r} \\cdot F(T, P_r)
+        k(T, P, \\mathbf{x}) = k_\\infty(T) \\cdot \\frac{P_r}{1 + P_r} \\cdot F(T, P_r)
 
     where:
-        - k(T, P, [M]) is the pressure-dependent rate constant
+        - :math:`k(T, P, \\mathbf{x})` is the pressure-dependent rate constant
         - :math:`k_\\infty(T)` is the high-pressure limit (Arrhenius)
         - :math:`k_0(T)` is the low-pressure limit (Arrhenius)
         - :math:`P_r = k_0(T) \\cdot [M] / k_\\infty (T)` is the reduced pressure
-        - [M] is the effective third-body concentration with efficiencies
-        - F(T, Pr) is the broadening factor (Lindemann, Troe, SRI, or Tsang)
+        - :math:`[M]` is the effective third-body concentration with efficiencies
+        - :math:`F(T, Pr)` is the broadening factor (Lindemann, Troe, SRI, or Tsang)
 
     Parameters
     ----------
@@ -251,7 +251,7 @@ class FallOff(eqx.Module):
         **Fall-off Formula:**
 
         .. math::
-            k(T, P) = k_\\infty \\cdot \\frac{P_r}{1 + P_r} \\cdot F(T, P_r)
+            k(T, P, \\mathbf{x}) = k_\\infty \\cdot \\frac{P_r}{1 + P_r} \\cdot F(T, P_r)
 
         where :math:`P_r = k_0 \\cdot [M] / k_\\infty` is the reduced pressure.
 
@@ -268,7 +268,9 @@ class FallOff(eqx.Module):
 
         # Convert composition to JAX arrays for differentiability
         jax_composition = (
-            {key: jnp.float64(value) for key, value in composition.items()} if composition is not None else None
+            {key: jnp.float64(value) for key, value in composition.items()}
+            if composition is not None
+            else None
         )
 
         # Compute high-pressure and low-pressure limit rate constants
@@ -322,7 +324,7 @@ class FallOff(eqx.Module):
         **Algorithm Steps:**
 
         1. **Effective Concentration Calculation:**
-           Computes [M]_eff accounting for third-body efficiencies:
+           Computes :math:`[M]_{eff}` accounting for third-body efficiencies:
 
            .. math::
                [M]_{eff} = \\frac{P}{R \\cdot T} \\cdot \\sum_i \\epsilon_i x_i
@@ -334,7 +336,7 @@ class FallOff(eqx.Module):
                P_r = \\frac{k_0(T) \\cdot [M]_{eff}}{k_\\infty(T)}
 
         3. **Broadening Factor Evaluation:**
-           Computes F(T, Pr) using the specified formulation (Troe, SRI, etc.)
+           Computes :math:`F(T, Pr)` using the specified formulation (Troe, SRI, etc.)
 
         4. **Final Rate Constant:**
            Applies the Lindemann formula:
@@ -344,8 +346,8 @@ class FallOff(eqx.Module):
 
         **Physical Interpretation:**
 
-        - At low P_r (low pressure): :math:`k \\approx k_0·[M] \\cdot F` (third-order, collision-limited)
-        - At high P_r (high pressure): :math:`k \\approx k_\\infty \\cdot F` (second-order, stabilization-limited)
+        - At low :math:`P_r` (low pressure): :math:`k \\approx k_0·[M] \\cdot F` (third-order, collision-limited)
+        - At high :math:`P_r` (high pressure): :math:`k \\approx k_\\infty \\cdot F` (second-order, stabilization-limited)
         - The broadening factor F corrects for the non-Lindemann behavior in the transition region
         """
         # Step 1: Calculate effective third-body concentration [M]_eff
