@@ -1,37 +1,9 @@
 """
-Copyright (c) 2026 Timoteo Dinelli
+Copyright (c) 2024-2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
 import re
-
-
-def check_reaction_name(reaction_name: str, m_is_allowed: bool = False) -> None:
-    """
-    This function controls that a given reaction in the CHEMKIN standard has a valid name
-    in the sense that if the reaction type is not of a threebody or a falloff or a cabr
-    it should not contain any species named M or (+M)
-    """
-    to_be_controlled = ["M", "+M", "(+M)"]
-
-    if not m_is_allowed:
-        for species in to_be_controlled:
-            if species in reaction_name:
-                raise ValueError(
-                    f"Invalid reaction name: '{reaction_name}' contains '{species}' but "
-                    "this is only allowed for threebody, falloff, CABR or Mixture Ruled "
-                    "like reactions"
-                )
-
-
-def fort_float(s: str) -> float:
-    """
-    Convert a string representation of a floating point value to a float,
-    allowing for some of the peculiarities of allowable Fortran representations.
-
-    CANTERA Hacky thing :)
-    """
-    return float(s.strip().lower().replace("d", "e").replace("e ", "e+"))
 
 
 def parse_reaction_line(input_string: str, m_is_allowed: bool = False) -> tuple[str, dict[str, float]]:
@@ -54,10 +26,10 @@ def parse_reaction_line(input_string: str, m_is_allowed: bool = False) -> tuple[
 
     Returns
     -------
-    Tuple[str, Dict[str, float]]
+    tuple[str, dict[str, float]]
         A tuple containing:
         - reaction_name (str): Normalized reaction name
-        - parameters (Dict[str, float]): Dictionary with keys "A", "n", "Ea"
+        - parameters (dict[str, float]): Dictionary with keys "A", "n", "Ea"
 
     Raises
     ------
@@ -140,7 +112,7 @@ def parse_plog(
     reaction_name : str
         Chemical equation (e.g., "HOCO=OH+CO")
     plog_coefficients_1 : dict[float, dict[str, float]]
-        Primary PLOG coefficients mapping pressure [atm] → {"A": ..., "n": ..., "Ea": ...}
+        Primary PLOG coefficients mapping pressure [atm] -> {"A": ..., "n": ..., "Ea": ...}
     plog_coefficients_2 : dict[float, dict[str, float]] or None
         Secondary PLOG coefficients for duplicate reactions (only returned if duplicates
         exist). Structure matches ``plog_coefficients_1``.
@@ -258,17 +230,53 @@ def parse_falloff(
     input_string: str,
 ) -> tuple[str, dict[str, float], dict[str, float], str, dict[str, float] | None, dict[str, float] | None]:
     """
-    Parse a CHEMKIN-format falloff reaction.
+    Parse a CHEMKIN-format fall-off reaction with pressure-dependent kinetics.
+
+    This function extracts fall-off reaction parameters including high-pressure limit (HPL),
+    low-pressure limit (LPL), broadening factor type and parameters, and optional collision
+    efficiencies from a CHEMKIN-formatted string.
 
     Parameters
     ----------
     input_string : str
-        CHEMKIN-formatted falloff reaction string
+        CHEMKIN-formatted fall-off reaction string with the following structure:
+
+        .. code-block:: text
+
+            REACTION_NAME    A_hpl   n_hpl   Ea_hpl
+            LOW / A_lpl  n_lpl  Ea_lpl /
+            TROE / parameters... /           ! or SRI or omit for Lindemann
+            SPECIES / efficiency / ...       ! optional
+
+        Example:
+
+        .. code-block:: text
+
+            H+O2(+M)=HO2(+M)  1.48E+12  0.6  0.0
+            LOW / 6.37E+20  -1.72  524.8 /
+            TROE / 0.8 1E-30 1E+30 /
+            H2O/18.0/ AR/0.0/
 
     Returns
     -------
-    tuple
-        (reaction_name, hpl_params, lpl_params, falloff_type, falloff_params, efficiencies)
+    reaction_name : str
+        Chemical equation with (+M) indicator (e.g., "H+O2(+M)=HO2(+M)")
+    hpl_params : dict[str, float]
+        High-pressure limit Arrhenius parameters: {"A": ..., "n": ..., "Ea": ...}
+    lpl_params : dict[str, float]
+        Low-pressure limit Arrhenius parameters: {"A": ..., "n": ..., "Ea": ...}
+    falloff_type : str
+        Broadening factor type: "lindemann", "troe", "sri", or "tsang"
+    falloff_params : dict[str, float] | None
+        Broadening factor parameters (type-dependent), or None for Lindemann
+    efficiencies : dict[str, float] | None
+        Collision efficiency factors mapping species to dimensionless values,
+        or None if not specified (default efficiency = 1.0)
+
+    Raises
+    ------
+    ValueError
+        If input is empty, malformed, or missing required LOW parameters
     """
     lines = input_string.strip().split("\n")
     if not lines:
@@ -391,17 +399,54 @@ def parse_cabr(
     input_string: str,
 ) -> tuple[str, dict[str, float], dict[str, float], str, dict[str, float] | None, dict[str, float] | None]:
     """
-    Parse a CHEMKIN-format CABR reaction.
+    Parse a CHEMKIN-format Chemically Activated Bimolecular Reaction (CABR).
+
+    This function extracts CABR reaction parameters including low-pressure limit (LPL),
+    high-pressure limit (HPL), broadening factor type and parameters, and optional collision
+    efficiencies. CABR reactions are the inverse of fall-off reactions, where the main line
+    specifies the LPL and the HIGH keyword provides the HPL.
 
     Parameters
     ----------
     input_string : str
-        CHEMKIN-formatted cabr reaction string
+        CHEMKIN-formatted CABR reaction string with the following structure:
+
+        .. code-block:: text
+
+            REACTION_NAME    A_lpl   n_lpl   Ea_lpl
+            HIGH / A_hpl  n_hpl  Ea_hpl /
+            TROE / parameters... /           ! or SRI or omit for Lindemann
+            SPECIES / efficiency / ...       ! optional
+
+        Example:
+
+        .. code-block:: text
+
+            CH3+CH3(+M)=C2H6(+M)  9.2E+16  -1.17  636.0
+            HIGH / 1.8E+13  0.0  0.0 /
+            TROE / 0.405 1120.0 69.6 /
+            H2O/5.0/ CO2/3.0/
 
     Returns
     -------
-    tuple
-        (reaction_name, hpl_params, lpl_params, cabr_type, cabr_params, efficiencies)
+    reaction_name : str
+        Chemical equation with (+M) indicator (e.g., "CH3+CH3(+M)=C2H6(+M)")
+    hpl_params : dict[str, float]
+        High-pressure limit Arrhenius parameters: {"A": ..., "n": ..., "Ea": ...}
+    lpl_params : dict[str, float]
+        Low-pressure limit Arrhenius parameters: {"A": ..., "n": ..., "Ea": ...}
+    cabr_type : str
+        Broadening factor type: "lindemann", "troe", "sri", or "tsang"
+    cabr_params : dict[str, float] | None
+        Broadening factor parameters (type-dependent), or None for Lindemann
+    efficiencies : dict[str, float] | None
+        Collision efficiency factors mapping species to dimensionless values,
+        or None if not specified (default efficiency = 1.0)
+
+    Raises
+    ------
+    ValueError
+        If input is empty, malformed, or missing required HIGH parameters
     """
     lines = input_string.strip().split("\n")
     if not lines:
@@ -543,7 +588,7 @@ def parse_threebody(input_string: str) -> tuple[str, dict[str, float], dict[str,
 
         Where:
             - REACTION_NAME contains the species and '+M' indicator
-            - A, n, Ea are the modified Arrhenius parameters for k₀(T)
+            - A, n, Ea are the modified Arrhenius parameters for :math:`k_0(T)`
             - efficiency lines specify collision partner efficiencies (optional)
             - Species not listed default to efficiency = 1.0
 
@@ -599,6 +644,242 @@ def parse_threebody(input_string: str) -> tuple[str, dict[str, float], dict[str,
     return reaction_name, k0_coefficients, efficiencies
 
 
+def parse_stoichiometry(reaction_name: str) -> dict:
+    """
+    Parse a CHEMKIN-style reaction string and extract stoichiometric information.
+
+    This function decomposes a reaction string into its constituent species, stoichiometric
+    coefficients, and reversibility. It handles various CHEMKIN arrow conventions and
+    automatically removes third-body indicators (M, +M, (+M)).
+
+    Parameters
+    ----------
+    reaction_name : str
+        Reaction string in CHEMKIN format. Examples:
+
+        - "2O+M<=>O2+M" (reversible with third-body)
+        - "H+O2=>OH+O" (irreversible)
+        - "CH2(S)+H2=CH4" (reversible with excited state)
+        - "2.5O2+CH4=>2H2O+CO2" (with fractional stoichiometry)
+
+    Returns
+    -------
+    dict
+        Dictionary containing:
+
+        - **species** (list[str]): Unique species names participating in the reaction
+        - **reactants** (dict[str, float]): Mapping of reactant species to stoichiometric coefficients
+        - **products** (dict[str, float]): Mapping of product species to stoichiometric coefficients
+        - **reversible** (bool): True if reversible (= or <=>), False if irreversible (=>)
+
+    Raises
+    ------
+    ValueError
+        If no valid reaction arrow (=, =>, <=>) is found in the reaction string.
+
+    Notes
+    -----
+    The function handles several edge cases:
+
+    - Third-body indicators (M, +M, (+M)) are removed before parsing
+    - Duplicate species on the same side are accumulated (e.g., "O+O" becomes {"O": 2.0})
+    - Parentheses in species names are preserved (e.g., "CH2(S)" is kept intact)
+    - Stoichiometric coefficients can be integers or decimals
+    """
+    # Normalize and clean the reaction string
+    reaction_name = reaction_name.strip()
+    reaction_name = reaction_name.replace("(+M)", "").replace("+M", "")
+
+    # Split reaction into reactants and products based on arrow type
+    reactants_str, products_str, reversible = _split_reaction(reaction_name)
+
+    # Parse both sides
+    reactants = _parse_species_side(reactants_str)
+    products = _parse_species_side(products_str)
+
+    # Extract the species names that are part of the reaction
+    species = list(set(reactants.keys()) | set(products.keys()))
+    return {
+        "species": species,
+        "reactants": reactants,
+        "products": products,
+        "reversible": reversible,
+    }
+
+
+def _split_reaction(reaction_name: str) -> tuple[str, str, bool]:
+    """
+    Split reaction string into reactants, products, and determine reversibility.
+
+    This helper function identifies the reaction arrow type and splits the reaction
+    string accordingly. It checks for arrows in order of precedence: <=>, =>, =.
+
+    Parameters
+    ----------
+    reaction_name : str
+        Complete reaction string containing reactants, arrow, and products
+
+    Returns
+    -------
+    reactants_str : str
+        String containing reactant species (left side of arrow)
+    products_str : str
+        String containing product species (right side of arrow)
+    reversible : bool
+        True if arrow is = or <=>, False if arrow is =>
+
+    Raises
+    ------
+    ValueError
+        If no valid reaction arrow is found in the input string
+    """
+    if "<=>" in reaction_name:
+        parts = reaction_name.split("<=>", 1)
+        return parts[0], parts[1], True
+    elif "=>" in reaction_name:
+        parts = reaction_name.split("=>", 1)
+        return parts[0], parts[1], False
+    elif "=" in reaction_name:
+        parts = reaction_name.split("=", 1)
+        return parts[0], parts[1], True
+    else:
+        raise ValueError(f"No valid reaction arrow found in: {reaction_name}. Valid are: = | <=> | =>")
+
+
+def _parse_species_side(side_str: str) -> dict[str, float]:
+    """
+    Parse one side of the reaction (reactants or products) into stoichiometric coefficients.
+
+    This helper function processes a string containing multiple species (separated by +)
+    and extracts each species with its stoichiometric coefficient. If a species appears
+    multiple times, coefficients are accumulated.
+
+    Parameters
+    ----------
+    side_str : str
+        String containing species separated by '+' (e.g., "2H+O2" or "CH2(S)+H2")
+
+    Returns
+    -------
+    dict[str, float]
+        Dictionary mapping species names to their total stoichiometric coefficients.
+        Species appearing multiple times have their coefficients summed.
+
+    Notes
+    -----
+    Empty strings or whitespace-only entries are ignored. Parentheses in species
+    names are preserved during splitting.
+    """
+    stoich = {}
+    species_list = _split_species(side_str)
+
+    for species in species_list:
+        if not species:
+            continue
+
+        coeff, species_name = _parse_single_species(species)
+        stoich[species_name] = stoich.get(species_name, 0.0) + coeff
+
+    return stoich
+
+
+def _split_species(side_str: str) -> list[str]:
+    """
+    Split species string by '+' while respecting parentheses in species names.
+
+    This helper function intelligently splits species on '+' separators while preserving
+    parentheses that are part of species names (e.g., excited states, isomers).
+    It uses a parenthesis depth counter to avoid splitting inside parenthesized names.
+
+    Parameters
+    ----------
+    side_str : str
+        String containing multiple species separated by '+'. May include species
+        with parentheses in their names (e.g., "O+CH2(S)+H2")
+
+    Returns
+    -------
+    list[str]
+        List of individual species strings with leading/trailing whitespace removed.
+        Empty strings are excluded.
+
+    Notes
+    -----
+    The algorithm tracks parenthesis depth to distinguish between:
+
+    - Species separator: "+" at depth 0 (e.g., "H+O2" → ["H", "O2"])
+    - Part of species name: "+" at depth > 0 or parentheses (e.g., "CH2(S)" → ["CH2(S)"])
+    """
+    species_list = []
+    current = ""
+    paren_depth = 0
+
+    for char in side_str:
+        if char == "(":
+            paren_depth += 1
+            current += char
+        elif char == ")":
+            paren_depth -= 1
+            current += char
+        elif char == "+" and paren_depth == 0:
+            if current.strip():
+                species_list.append(current.strip())
+            current = ""
+        else:
+            current += char
+
+    if current.strip():
+        species_list.append(current.strip())
+
+    return species_list
+
+
+def _parse_single_species(species: str) -> tuple[float, str]:
+    """
+    Parse a single species string into stoichiometric coefficient and species name.
+
+    This helper function extracts the optional leading stoichiometric coefficient
+    from a species string. If no coefficient is present, it defaults to 1.0.
+
+    Parameters
+    ----------
+    species : str
+        Single species string, optionally prefixed with a stoichiometric coefficient.
+        Examples: "O", "2O", "1.5CH4", "CH2(S)"
+
+    Returns
+    -------
+    coefficient : float
+        Stoichiometric coefficient (defaults to 1.0 if not specified)
+    species_name : str
+        Species name with leading/trailing whitespace removed
+
+    Raises
+    ------
+    ValueError
+        If the species string does not match the expected format
+
+    Notes
+    -----
+    The function uses a regular expression to match the pattern:
+    ``^(\d+\.?\d*)?(.+)$``
+
+    This matches an optional numeric coefficient (integer or decimal) followed
+    by the species name. The species name must contain at least one character.
+    """
+    # Match optional coefficient followed by species name
+    match = re.match(r"^(\d+\.?\d*)?(.+)$", species)
+
+    if not match:
+        raise ValueError(f"Invalid species format: {species}")
+
+    coeff_str, species_name = match.groups()
+    coeff = float(coeff_str) if coeff_str else 1.0
+    species_name = species_name.strip()
+
+    return coeff, species_name
+
+
 def parse_species(thermo_string: str) -> tuple[str, dict[str, int], str, float, float, float, list[float], list[float]]:
     """
     Parse CHEMKIN NASA 7-coefficient polynomial thermodynamic data for a species.
@@ -645,11 +926,6 @@ def parse_species(thermo_string: str) -> tuple[str, dict[str, int], str, float, 
     ------
     ValueError
         If input does not contain exactly 4 lines or parsing fails
-
-    References
-    ----------
-    - NASA Technical Memorandum 4513 (1993)
-    - CHEMKIN-II Manual (Sandia Report SAND89-8009)
     """
     # Parse thermodynamic data
     # Split by newline and filter out empty lines
@@ -732,8 +1008,37 @@ def parse_species(thermo_string: str) -> tuple[str, dict[str, int], str, float, 
     )
 
 
-def parse_composition(elements, nElements, width):
-    """Parse elemental composition from NASA polynomial entry"""
+def parse_composition(elements: str, nElements: int, width: int) -> dict[str, int]:
+    """
+    Parse elemental composition from fixed-width NASA polynomial entry.
+
+    This helper function extracts elemental symbols and their atom counts from the
+    fixed-width format used in CHEMKIN NASA thermodynamic data files.
+
+    Parameters
+    ----------
+    elements : str
+        Fixed-width string containing elemental composition data
+        (e.g., "H 2O 1  " with width=5 per element)
+    nElements : int
+        Number of element entries to parse (typically 4)
+    width : int
+        Character width per element entry (typically 5)
+
+    Returns
+    -------
+    dict[str, int]
+        Dictionary mapping element symbols (capitalized) to atom counts.
+        Only non-zero counts are included.
+
+    Notes
+    -----
+    Each element entry in the string is formatted as:
+    - Positions [0:2]: Element symbol (e.g., "H ", "O ", "C ")
+    - Positions [2:width]: Atom count as integer or float
+
+    Empty entries and parsing errors are silently ignored.
+    """
     composition = {}
     for i in range(nElements):
         symbol = elements[width * i : width * i + 2].strip()
@@ -747,3 +1052,96 @@ def parse_composition(elements, nElements, width):
         except ValueError:
             pass
     return composition
+
+
+def check_reaction_name(reaction_name: str, m_is_allowed: bool = False) -> None:
+    """
+    Validate CHEMKIN reaction name for proper use of third-body indicators.
+
+    This function ensures that third-body indicators (M, +M, (+M)) are only used in
+    reaction types that support them, preventing invalid reaction specifications.
+
+    Parameters
+    ----------
+    reaction_name : str
+        CHEMKIN reaction equation to validate
+    m_is_allowed : bool, optional
+        If True, allows third-body indicators in the reaction name.
+        Set to True for threebody, fall-off, CABR, and mixture-rule reactions.
+        By default False (standard elementary reactions)
+
+    Raises
+    ------
+    ValueError
+        If ``m_is_allowed=False`` and the reaction name contains third-body
+        indicators (M, +M, or (+M))
+
+    Notes
+    -----
+    Third-body indicators are only valid for:
+
+    - Three-body reactions: ``H+OH+M=H2O+M``
+    - Fall-off reactions: ``H+O2(+M)=HO2(+M)``
+    - CABR reactions: ``CH3+CH3(+M)=C2H6(+M)``
+    - Mixture-rule reactions with pressure dependence
+
+    Standard elementary reactions should not include M as a species.
+    """
+    to_be_controlled = ["M", "+M", "(+M)"]
+
+    if not m_is_allowed:
+        for species in to_be_controlled:
+            if species in reaction_name:
+                raise ValueError(
+                    f"Invalid reaction name: '{reaction_name}' contains '{species}' but "
+                    "this is only allowed for threebody, falloff, CABR or Mixture Ruled "
+                    "like reactions"
+                )
+
+
+def fort_float(s: str) -> float:
+    """
+    Convert Fortran-formatted floating-point string to Python float.
+
+    This helper function handles numeric formats commonly found in CHEMKIN files that
+    originate from Fortran code, including non-standard exponent notations.
+
+    Parameters
+    ----------
+    s : str
+        String representation of a floating-point number, possibly in Fortran format.
+        Examples: "1.23E+02", "4.56D-03", "7.89E 10"
+
+    Returns
+    -------
+    float
+        Parsed floating-point value
+
+    Notes
+    -----
+    The function performs the following transformations:
+
+    1. **D exponent**: Converts Fortran double-precision exponent 'D' to 'E'
+       (e.g., "1.5D+10" → "1.5E+10")
+    2. **Space in exponent**: Adds '+' sign when space appears before exponent
+       (e.g., "1.5E 10" → "1.5E+10")
+    3. **Case normalization**: Converts to lowercase before parsing
+
+    These transformations ensure compatibility with Python's float() parser.
+
+    Examples
+    --------
+    >>> fort_float("1.23E+02")
+    123.0
+
+    >>> fort_float("4.56D-03")
+    0.00456
+
+    >>> fort_float("7.89E 10")
+    78900000000.0
+
+    References
+    ----------
+    Taken from Cantera CHEMKIN parser for handling legacy Fortran numeric formats.
+    """
+    return float(s.strip().lower().replace("d", "e").replace("e ", "e+"))
