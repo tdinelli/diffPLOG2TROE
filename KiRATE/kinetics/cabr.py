@@ -1,5 +1,5 @@
 """
-Copyright (c) 2026 Timoteo Dinelli
+Copyright (c) 2024-2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
@@ -27,15 +27,16 @@ class CABR(eqx.Module):
     The CABR formulation is given by:
 
     .. math::
-        k(T, P, [M]) = k_0(T) \\cdot \\frac{1}{1 + P_r} \\cdot F(T, P_r)
+        k(T, P, \\mathbf{x}) = k_0(T) \\cdot \\frac{1}{1 + P_r} \\cdot F(T, P_r)
 
     where:
-        - k(T, P, [M]) is the pressure-dependent rate constant
+        - :math:`k(T, P, \\mathbf{x})` is the pressure-dependent rate constant
         - :math:`k_0 (T)` is the low-pressure limit (Arrhenius) - **dominant at low P**
         - :math:`k_\\infty (T)` is the high-pressure limit (Arrhenius)
         - :math:`P_r = k_0(T) \\cdot [M] / k_\\infty (T)` is the reduced pressure
-        - [M] is the effective third-body concentration with efficiencies
-        - F(T, Pr) is the broadening factor (Lindemann, Troe, SRI, or Tsang)
+        - :math:`[M]` is the effective third-body concentration accounting for collision efficiencies
+        - :math:`F(T, Pr)` is the broadening function computed with one of the following
+            parametrizations (Lindemann, Troe, SRI, or Tsang)
 
     Physical Interpretation:
         At low pressure: Activated complex dissociates to products (fast)
