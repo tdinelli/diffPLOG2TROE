@@ -13,16 +13,6 @@ Install KiRATE from PyPI:
 pip install KiRATE
 ```
 
-This will install KiRATE and its core dependencies:
-- `numpy`
-- `jax` and `jaxlib`
-- `jaxtyping`
-- `chex`
-- `optax`
-- `optimistix`
-- `equinox`
-- `matplotlib`
-
 ## Development Installation
 
 For contributing or development work:
@@ -79,21 +69,7 @@ Test rate constant: 1.000e+13
 
 ## GPU Support
 
-KiRATE uses JAX which supports GPU acceleration. To use GPU:
-
-### CUDA (NVIDIA GPUs)
-
-```bash
-pip install --upgrade "jax[cuda12]"
-```
-
-### Metal (Apple Silicon)
-
-Metal support is experimental in JAX. Install with:
-
-```bash
-pip install --upgrade "jax[metal]"
-```
+TODO
 
 ## Troubleshooting
 
