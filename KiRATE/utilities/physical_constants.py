@@ -1,3 +1,8 @@
+"""
+Copyright (c) 2024-2026 Timoteo Dinelli
+Licensed under the MIT License - see LICENSE file for details
+"""
+
 import jax.numpy as jnp
 from jaxtyping import Array, Float64
 
