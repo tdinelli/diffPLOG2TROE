@@ -862,7 +862,7 @@ def _parse_single_species(species: str) -> tuple[float, str]:
     Notes
     -----
     The function uses a regular expression to match the pattern:
-    ``^(\d+\.?\d*)?(.+)$``
+    ``^(\\d+\\.?\\d*)?(.+)$``
 
     This matches an optional numeric coefficient (integer or decimal) followed
     by the species name. The species name must contain at least one character.
