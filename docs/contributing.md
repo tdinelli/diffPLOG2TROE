@@ -8,7 +8,7 @@ Thank you for your interest in contributing to KiRATE!
 2. Clone your fork locally:
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/KiRATE
+git clone https://github.com/YOUR-USERNAME/KiRATE.git
 cd KiRATE
 ```
 
@@ -38,20 +38,44 @@ pytest --cov=KiRATE tests/
 
 We follow Python best practices:
 
-- Type hints for all functions
-- NumPy-style docstrings
-- Black for code formatting
-- Maximum line length: 120 characters
+- **Type hints** for all function signatures
+- **NumPy-style docstrings** with full RST formatting (Parameters, Returns, Raises, Notes, Examples sections)
+- **Black** for code formatting (applied automatically)
+- **Maximum line length**: 120 characters
+- **Copyright headers** in all new files:
+  ```python
+  """
+  Copyright (c) 2024-2026 Timoteo Dinelli
+  Licensed under the MIT License - see LICENSE file for details
+  """
+  ```
 
 ## Documentation
 
-Build documentation locally:
+KiRATE uses Sphinx for documentation. Build documentation locally:
 
 ```bash
-mkdocs serve
+cd docs
+make html
 ```
 
-Then open http://127.0.0.1:8000 in your browser.
+Then open `docs/_build/html/index.html` in your browser.
+
+For live reload during development:
+
+```bash
+cd docs
+make livehtml
+```
+
+This will automatically rebuild the docs when files change and open your browser at http://127.0.0.1:8000.
+
+### Documentation Guidelines
+
+- All public functions and classes must have comprehensive NumPy-style docstrings
+- Include mathematical formulas using LaTeX notation (e.g., `:math:` role or `.. math::` directive)
+- Add code examples in docstrings where appropriate
+- Reference scientific papers using the References section
 
 ## Pull Request Process
 
@@ -60,25 +84,41 @@ Then open http://127.0.0.1:8000 in your browser.
    git checkout -b feature/your-feature-name
    ```
 
-2. Make your changes and commit:
+2. Make your changes and ensure:
+   - All tests pass (`pytest tests/`)
+   - Code is formatted (`black KiRATE/`)
+   - Type hints are present
+   - Documentation is updated
+
+3. Commit your changes with descriptive messages:
    ```bash
    git add .
-   git commit -m "Description of your changes"
+   git commit -m "Add feature: description of your changes"
    ```
 
-3. Push to your fork:
+4. Push to your fork:
    ```bash
    git push origin feature/your-feature-name
    ```
 
-4. Open a Pull Request on GitHub
+5. Open a Pull Request on GitHub with:
+   - Clear description of changes
+   - Link to relevant issues
+   - Screenshots/examples if applicable
 
 ## Reporting Issues
 
 Use the [GitHub issue tracker](https://github.com/tdinelli/KiRATE/issues) to report bugs or request features.
 
+When reporting bugs, please include:
+- KiRATE version
+- Python version
+- JAX version
+- Minimal reproducible example
+- Expected vs actual behavior
+
 ## Questions?
 
 Feel free to reach out:
-- GitHub Discussions
+- [GitHub Discussions](https://github.com/tdinelli/KiRATE/discussions)
 - Email: timoteo.dinelli@polimi.it
