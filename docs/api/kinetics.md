@@ -64,3 +64,11 @@ This page contains the complete API reference for KiRATE's kinetics module.
    :undoc-members:
    :show-inheritance:
 ```
+
+## Broadening functions
+```{eval-rst}
+.. automodule:: KiRATE.kinetics.broadening_functions
+   :members:
+   :undoc-members:
+   :show-inheritance:
+```
