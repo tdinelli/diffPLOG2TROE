@@ -6,7 +6,9 @@ This guide will get you up and running with KiRATE in 5 minutes.
 
 The simplest rate constant type is Arrhenius:
 
-\\[ k(T) = A T^n \\exp\\left(-\\frac{E_a}{RT}\\right) \\]
+$$
+k(T) = A T^n \exp\left(-\frac{E_a}{RT}\right)
+$$
 
 ```python
 from KiRATE.kinetics import Arrhenius
@@ -97,92 +99,6 @@ plt.xlabel('Pressure (atm)')
 plt.ylabel('Rate constant')
 plt.title('Falloff Curve at 1000 K')
 plt.show()
-```
-
-## Mixture Rules for Multi-Collider Systems
-
-For reactions with different collision partners:
-
-```python
-from KiRATE.kinetics import MixtureRule
-
-# Define collision efficiencies
-h2_eff = Arrhenius(parameters={"A": 2.0, "n": 0, "Ea": 0})
-h2o_eff = Arrhenius(parameters={"A": 17.6, "n": 0, "Ea": 0})
-
-# Create mixture rule
-mixture = MixtureRule(
-    name="H + O2 (+M) = HO2 (+M)",
-    default_rate_constant=falloff_rate,
-    efficiencies={"H2": h2_eff, "H2O": h2o_eff},
-    linear=True,
-    reduced_pressure=False  # LMR-P formulation
-)
-
-# Evaluate for specific gas composition
-composition = {"N2": 0.79, "O2": 0.19, "H2O": 0.02}
-k_mixture = mixture.rate_constant(T=1000.0, P=1.0, composition=composition)
-print(f"Mixed rate constant: {k_mixture:.3e}")
-```
-
-## Automatic Differentiation
-
-Compute gradients for optimization:
-
-```python
-import jax
-
-# Gradient with respect to temperature
-def rate_func(T):
-    return rate.rate_constant(T=T)
-
-grad_func = jax.grad(rate_func)
-dk_dT = grad_func(1000.0)
-print(f"dk/dT at 1000 K = {dk_dT:.3e}")
-
-# Gradient with respect to parameters
-def param_rate(A):
-    r = Arrhenius(parameters={"A": A, "n": 0.0, "Ea": 50000})
-    return r.rate_constant(T=1000.0)
-
-dkdA = jax.grad(param_rate)
-gradient = dkdA(1.0e13)
-print(f"dk/dA = {gradient:.3e}")
-```
-
-## Working with Experimental Data
-
-Fitting rate constants to data:
-
-```python
-import optax
-
-# Experimental data (T in K, k in cm³/mol/s)
-T_exp = jnp.array([800, 1000, 1200, 1400, 1600])
-k_exp = jnp.array([1.2e11, 4.5e11, 1.1e12, 2.3e12, 4.1e12])
-
-# Define loss function
-def loss(params):
-    A, n, Ea = params
-    rate = Arrhenius(parameters={"A": A, "n": n, "Ea": Ea})
-    k_pred = rate.rate_constant(T=T_exp)
-    return jnp.mean((jnp.log(k_pred) - jnp.log(k_exp))**2)
-
-# Optimize using optax
-optimizer = optax.adam(learning_rate=0.01)
-params = jnp.array([1e13, 0.0, 50000.0])
-opt_state = optimizer.init(params)
-
-for i in range(1000):
-    grads = jax.grad(loss)(params)
-    updates, opt_state = optimizer.update(grads, opt_state)
-    params = optax.apply_updates(params, updates)
-
-    if i % 100 == 0:
-        print(f"Step {i}: Loss = {loss(params):.6f}")
-
-print(f"\nOptimized parameters:")
-print(f"A = {params[0]:.3e}, n = {params[1]:.3f}, Ea = {params[2]:.1f}")
 ```
 
 ## Next Steps
