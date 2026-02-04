@@ -1059,7 +1059,9 @@ def check_reaction_name(reaction_name: str, m_is_allowed: bool = False) -> None:
     Validate CHEMKIN reaction name for proper use of third-body indicators.
 
     This function ensures that third-body indicators (M, +M, (+M)) are only used in
-    reaction types that support them, preventing invalid reaction specifications.
+    reaction types that support them, preventing invalid reaction specifications. The
+    validation uses tokenization to distinguish between standalone "M" as a third-body
+    indicator and "M" appearing within species names.
 
     Parameters
     ----------
@@ -1085,18 +1087,47 @@ def check_reaction_name(reaction_name: str, m_is_allowed: bool = False) -> None:
     - CABR reactions: ``CH3+CH3(+M)=C2H6(+M)``
     - Mixture-rule reactions with pressure dependence
 
-    Standard elementary reactions should not include M as a species.
-    """
-    to_be_controlled = ["M", "+M", "(+M)"]
+    Standard elementary reactions should not include M as a third-body indicator.
 
+    **Detection Strategy:**
+
+    The function tokenizes the reaction string by:
+
+    1. Replacing reaction arrows (=, =>, <=>) with ``+``
+    2. Splitting by ``+`` to get individual species tokens
+    3. Checking if ``"M"`` appears as a complete token
+
+    This approach correctly distinguishes:
+
+    - Valid: ``"H+B2M2=CH3+IC4H8"`` - "M" is part of "B2M2"
+    - Invalid: ``"H+M=H2"`` - "M" is a standalone token
+    - Valid: ``"CH3M+O2=products"`` - "M" is part of "CH3M"
+    - Invalid: ``"H+OH+M=H2O+M"`` - "M" appears as separate tokens
+    """
     if not m_is_allowed:
-        for species in to_be_controlled:
-            if species in reaction_name:
-                raise ValueError(
-                    f"Invalid reaction name: '{reaction_name}' contains '{species}' but "
-                    "this is only allowed for threebody, falloff, CABR or Mixture Ruled "
-                    "like reactions"
-                )
+        # Check for (+M) pattern (FallOff/CABR indicator)
+        if "(+M)" in reaction_name:
+            raise ValueError(
+                f"Invalid reaction name: '{reaction_name}' contains '(+M)' but "
+                "this is only allowed for FallOff, CABR or Mixture Rule "
+                "like reactions"
+            )
+
+        # Parse the reaction to get individual species tokens
+        # Split by reaction arrows first
+        reaction_temp = re.sub(r"(<=>|=>|=)", "+", reaction_name)
+
+        # Split by + to get individual species tokens (including +M)
+        species_tokens = [s.strip() for s in reaction_temp.split("+") if s.strip()]
+
+        # Check if standalone "M" appears as a species
+        # This will match "M" or "+M" but not "B2M2", "CH3M", etc.
+        if "M" in species_tokens:
+            raise ValueError(
+                f"Invalid reaction name: '{reaction_name}' contains standalone 'M' but "
+                "this is only allowed for Third Body, FallOff, CABR or Mixture Rule "
+                "like reactions"
+            )
 
 
 def fort_float(s: str) -> float:
