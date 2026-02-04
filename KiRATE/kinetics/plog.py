@@ -3,8 +3,6 @@ Copyright (c) 2024-2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
-from typing import Union
-
 import equinox as eqx
 import jax.numpy as jnp
 from jax import vmap
@@ -40,7 +38,7 @@ class Plog(eqx.Module):
 
     Parameters
     ----------
-    parameters : dict[float, dict[str, float]]
+    parameters : dict[float, dict[str, float] | list[dict[str, float]]]
         Dictionary mapping pressure levels [atm] to Arrhenius parameters:
 
         .. code-block:: python
@@ -51,6 +49,21 @@ class Plog(eqx.Module):
                 10.0: {"A": 1e14, "n": 1.0, "Ea": 15000.0}
             }
 
+        For non-Arrhenius behavior, multiple Arrhenius expressions can be summed:
+
+        .. code-block:: python
+
+            {
+                0.01: [
+                    {"A": 1.44e14, "n": -0.93, "Ea": 1700.0},
+                    {"A": 4.07e15, "n": -6.73, "Ea": -14031.0}
+                ],
+                1.0: [
+                    {"A": 1.38e17, "n": -1.64, "Ea": 4750.0},
+                    {"A": 6.20e13, "n": -0.78, "Ea": 3522.0}
+                ]
+            }
+
     name : str, optional
         Human-readable name for the reaction, by default ""
     k0_parameters : dict[str, float], optional
@@ -59,8 +72,9 @@ class Plog(eqx.Module):
 
     Attributes
     ----------
-    _arrhenius_levels : list[Arrhenius]
-        List of Arrhenius objects at each pressure level
+    _arrhenius_levels : list[list[Arrhenius]]
+        List of Arrhenius object lists at each pressure level. Each pressure level
+        can have multiple Arrhenius terms that are summed together.
     _p_levels : Float64[Array, "np"]
         Array of pressure levels [atm] in ascending order
     _lnp_levels : Float64[Array, "np"]
@@ -79,7 +93,7 @@ class Plog(eqx.Module):
            https://engine.princeton.edu/model-reduction/, 2011.
     """
 
-    _arrhenius_levels: list[Arrhenius]
+    _arrhenius_levels: list[list[Arrhenius]]
     _p_levels: Float64[Array, "np"]
     _lnp_levels: Float64[Array, "np"]
     _num_p_levels: Int64[Array, ""]
@@ -88,7 +102,7 @@ class Plog(eqx.Module):
 
     def __init__(
         self,
-        parameters: dict[float, dict[str, float]],
+        parameters: dict[float, dict[str, float] | list[dict[str, float]]],
         name: str = "",
         k0_parameters: dict[str, float] | None = None,
     ) -> None:
@@ -117,7 +131,8 @@ class Plog(eqx.Module):
         Notes
         -----
         - Pressure levels are automatically sorted in ascending order
-        - Each pressure level creates an internal Arrhenius object
+        - Each pressure level can have one or more Arrhenius terms
+        - Multiple terms at a pressure are summed: k(T,P) = Σᵢ Aᵢ T^nᵢ exp(-Eaᵢ/RT)
         - Minimum 2 pressure levels required for interpolation
         """
         self._name = name
@@ -127,15 +142,26 @@ class Plog(eqx.Module):
 
         # Store pressure levels and their natural logarithms
         # .keys() inherently remove the duplicate because in a dictionary you
-        # cant define multiple elements with the same key
+        # cant define multiple elements with the same key
         self._p_levels = jnp.array(list(parameters.keys()), dtype=jnp.float64)
         self._lnp_levels = jnp.log(self._p_levels)
         self._num_p_levels = jnp.int64(len(self._p_levels))
 
         # Create Arrhenius objects for each pressure level
+        # Each pressure level can have multiple Arrhenius terms (stored as list)
         arrhenius_objects = []
         for p, params in parameters.items():
-            arrhenius_objects.append(Arrhenius(parameters=params, name=f"{name} ({p})"))
+            # Handle both single dict and list of dicts for backward compatibility
+            if isinstance(params, dict):
+                # Single Arrhenius term - wrap in list for consistency
+                arrhenius_list = [Arrhenius(parameters=params, name=f"{name} ({p})")]
+            else:
+                # Multiple Arrhenius terms to be summed
+                arrhenius_list = [
+                    Arrhenius(parameters=param_dict, name=f"{name} ({p}, term {i + 1})")
+                    for i, param_dict in enumerate(params)
+                ]
+            arrhenius_objects.append(arrhenius_list)
 
         self._arrhenius_levels = arrhenius_objects
 
@@ -146,9 +172,9 @@ class Plog(eqx.Module):
             self._k0 = None
 
     @classmethod
-    def from_chemkin(cls, input_string: str) -> Union["Plog", tuple["Plog", "Plog"]]:
+    def from_chemkin(cls, input_string: str) -> "Plog":
         """
-        Create a Plog instance from a CHEMKIN format string.
+        Create Plog instance(s) from a CHEMKIN format string.
 
         This class method provides a convenient way to construct Plog objects
         directly from CHEMKIN-style input strings, which are commonly used in chemical
@@ -165,31 +191,34 @@ class Plog(eqx.Module):
                  PLOG / 1.0   1.0E+13  0.5  12000.0 /
                  PLOG / 100.0 1.0E+14  1.0  15000.0 /
 
+            For non-Arrhenius behavior (multiple PLOG entries at same pressure)::
+
+                O+C10H7CH3=CH3C10H6OH  1.0e+17  -1.64  4750.0
+                 PLOG / 0.01  1.44e+14  -0.93   1700.0 /
+                 PLOG / 0.01  4.07e+15  -6.73  -14031.0 /
+                 PLOG / 1.0   1.38e+17  -1.64   4750.0 /
+                 PLOG / 1.0   6.20e+13  -0.78   3522.0 /
+
         Returns
         -------
-        Plog or tuple[Plog, Plog]
-            Single Plog instance for normal reactions, or tuple of two Plog instances
-            for DUPLICATE reactions.
+        Plog
+            Single Plog instance with summed Arrhenius terms at each pressure level
 
         Raises
         ------
         ValueError
             If the input string cannot be parsed or contains invalid parameters.
-        """
-        parsed_result = parse_plog(input_string)
 
-        if len(parsed_result) == 2:
-            # Standard case: single reaction pathway
-            reaction_name, plog_coefficients = parsed_result
-            return cls(parameters=plog_coefficients, name=reaction_name)
-        elif len(parsed_result) == 3:
-            # DUPLICATE case: two separate reaction pathways
-            reaction_name, plog_coefficients_1, plog_coefficients_2 = parsed_result
-            plog_1 = cls(parameters=plog_coefficients_1, name=reaction_name)
-            plog_2 = cls(parameters=plog_coefficients_2, name=reaction_name)
-            return plog_1, plog_2
-        else:
-            raise ValueError(f"Unexpected number of return values from parse_plog: {len(parsed_result)}")
+        Notes
+        -----
+        Multiple PLOG entries at the same pressure are summed to fit non-Arrhenius
+        temperature dependence: k(T,P) = Σᵢ Aᵢ T^nᵢ exp(-Eaᵢ/RT)
+        """
+        reaction_name, plog_parameters = parse_plog(input_string)
+
+        # Parser returns dict[float, list[dict[str, float]]]
+        # Pass directly to __init__ which handles both single dict and list of dicts
+        return cls(parameters=plog_parameters, name=reaction_name)
 
     @eqx.filter_jit
     def rate_constant(
@@ -299,10 +328,17 @@ class Plog(eqx.Module):
         """
         # ==============================================================================
         # Step 1: Evaluate Arrhenius rate constants at all pressure levels
-        # For each pressure level P_i, compute k_i(T) using the Arrhenius equation
-        # Stack results into a single array for vectorized operations
+        # For each pressure level P_i, compute k_i(T) by summing all Arrhenius terms
+        # k_i(T) = Σⱼ A_j T^n_j exp(-Ea_j/RT)
+        # Then take log for interpolation in log-log space
         # Shape: (num_p_levels,) if T is scalar, (num_p_levels, nt) if T is vector
-        all_lnk = jnp.stack([arrhenius_level.log_rate_constant(T) for arrhenius_level in self._arrhenius_levels])
+        all_k = jnp.array(
+            [
+                jnp.sum(jnp.array([arr.rate_constant(T) for arr in arrhenius_list]), axis=0)
+                for arrhenius_list in self._arrhenius_levels
+            ]
+        )
+        all_lnk = jnp.log(all_k)
 
         # ==============================================================================
         # Step 2: Handle extrapolation using differentiable clamping
@@ -388,8 +424,9 @@ class Plog(eqx.Module):
             str_obj = f"{self.name}\t\t{0.0:.5E} {0.0:.5E} {0.0:.5E}\n"
 
         for i in range(int(self._num_p_levels)):
-            arrhenius = self._arrhenius_levels[i]
-            str_obj += f" PLOG / {float(self._p_levels[i]):.5E}\t{float(arrhenius.A):.5E} {float(arrhenius.n):.5E} {float(arrhenius.Ea):.5E} /\n"
+            arrhenius_list = self._arrhenius_levels[i]
+            for arrhenius in arrhenius_list:
+                str_obj += f" PLOG / {float(self._p_levels[i]):.5E}\t{float(arrhenius.A):.5E} {float(arrhenius.n):.5E} {float(arrhenius.Ea):.5E} /\n"
         return str_obj
 
     def __repr__(self) -> str:
@@ -411,9 +448,14 @@ class Plog(eqx.Module):
         for i in range(int(self._num_p_levels)):
             lines.append(f"  P = {float(self._p_levels[i]):.5e} atm:")
 
-            # Reuse Arrhenius __repr__ and indent it
-            arr_repr = repr(self._arrhenius_levels[i])
-            lines.append("   " + arr_repr.replace("\n", "\n   "))
+            # Show all Arrhenius terms at this pressure level
+            arrhenius_list = self._arrhenius_levels[i]
+            for j, arrhenius in enumerate(arrhenius_list):
+                if len(arrhenius_list) > 1:
+                    lines.append(f"   Term {j + 1}:")
+                # Reuse Arrhenius __repr__ and indent it
+                arr_repr = repr(arrhenius)
+                lines.append("   " + arr_repr.replace("\n", "\n   "))
         lines.append(" ]")
         lines.append(")")
         return "\n".join(lines)
@@ -469,14 +511,15 @@ class Plog(eqx.Module):
         return self._num_p_levels
 
     @property
-    def arrhenius_levels(self) -> list[Arrhenius]:
+    def arrhenius_levels(self) -> list[list[Arrhenius]]:
         """
-        List of Arrhenius objects at each pressure level.
+        List of Arrhenius object lists at each pressure level.
 
         Returns
         -------
-        list[Arrhenius]
-            Ordered list of Arrhenius rate constant calculators, one per pressure level.
+        list[list[Arrhenius]]
+            Ordered list of Arrhenius rate constant calculator lists. Each pressure
+            level can have multiple Arrhenius terms that are summed together.
         """
         return self._arrhenius_levels
 
