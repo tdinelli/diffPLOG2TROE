@@ -88,14 +88,13 @@ def parse_reaction_line(input_string: str, m_is_allowed: bool = False) -> tuple[
 
 def parse_plog(
     input_string: str,
-) -> (
-    tuple[str, dict[float, dict[str, float]]] | tuple[str, dict[float, dict[str, float]], dict[float, dict[str, float]]]
-):
+) -> tuple[str, dict[float, list[dict[str, float]]]]:
     """
     Parse a CHEMKIN-format pressure-dependent logarithmic (PLOG) reaction.
 
     PLOG reactions define Arrhenius parameters that vary with pressure. Each PLOG entry
-    specifies an Arrhenius expression valid at a specific pressure.
+    specifies an Arrhenius expression valid at a specific pressure. Multiple PLOG entries
+    at the same pressure are **summed** to capture non-Arrhenius behavior (curved Arrhenius plots).
 
     Parameters
     ----------
@@ -105,17 +104,18 @@ def parse_plog(
         - Line 1: Reaction equation with placeholder Arrhenius parameters
         - Lines 2+: PLOG entries in format ``PLOG / P A n Ea /``
 
-        May contain duplicate pressure entries (indicated by DUPLICATE/DUP keyword).
+        May contain multiple PLOG entries at the same pressure for non-Arrhenius fitting.
 
     Returns
     -------
     reaction_name : str
         Chemical equation (e.g., "HOCO=OH+CO")
-    plog_coefficients_1 : dict[float, dict[str, float]]
-        Primary PLOG coefficients mapping pressure [atm] -> {"A": ..., "n": ..., "Ea": ...}
-    plog_coefficients_2 : dict[float, dict[str, float]] or None
-        Secondary PLOG coefficients for duplicate reactions (only returned if duplicates
-        exist). Structure matches ``plog_coefficients_1``.
+    plog_coefficients : dict[float, list[dict[str, float]]]
+        Dictionary mapping pressure [atm] to list of Arrhenius parameter sets.
+        Each pressure maps to one or more parameter dictionaries: {"A": ..., "n": ..., "Ea": ...}
+
+        - Single entry per pressure: Standard PLOG interpolation
+        - Multiple entries per pressure: Sum of Arrhenius expressions to fit non-Arrhenius behavior
 
     Raises
     ------
@@ -143,8 +143,28 @@ def parse_plog(
     - n: Temperature exponent [dimensionless]
     - Ea: Activation energy [cal/mol]
 
-    **Duplicate Reactions:**
-    TODO the explanation here
+    **Multiple Arrhenius Expressions (Non-Arrhenius Behavior):**
+
+    When the same pressure appears multiple times, the rate constant is computed as the
+    **sum** of all Arrhenius expressions at that pressure:
+
+    .. math::
+        k(T, P) = \\sum_i A_i T^{n_i} \\exp(-E_{a,i} / RT)
+
+    This is used to fit complex, non-Arrhenius temperature dependencies:
+
+    .. code-block:: text
+
+        O+C10H7CH3=CH3C10H6OH    1.0e+17  -1.64  4750.0
+        PLOG / 0.01  1.44e+14  -0.93   1700.0 /    ! Term 1
+        PLOG / 0.01  4.07e+15  -6.73  -14031.0 /   ! Term 2 (negative Ea)
+        PLOG / 0.01  1.07e+35  -6.92   13025.0 /   ! Term 3
+        PLOG / 1.0   1.38e+17  -1.64   4750.0 /    ! Term 1
+        PLOG / 1.0   6.20e+13  -0.78   3522.0 /    ! Term 2
+        ...
+
+    The sum of terms provides flexibility to capture curved Arrhenius plots that arise
+    from complex reaction mechanisms or transitions between different rate-limiting steps.
     """
     # Split input into lines and validate
     lines = input_string.strip().split("\n")
@@ -167,11 +187,9 @@ def parse_plog(
     # Matches: integers, floats, scientific notation (e.g., 1.5e-3, -2.4E+10)
     number_pattern = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
 
-    # Parse PLOG entries here I am basically allowing only two duplication in
-    # principle there should be more than 2??? Not sure about that :)
-    plog_coefficients_1 = {}  # Primary reaction pathway: {pressure: {"A": ..., "n": ..., "Ea": ...}}
-    plog_coefficients_2 = {}  # Secondary reaction for duplicates: {pressure: {"A": ..., "n": ..., "Ea": ...}}
-    has_duplicates = False
+    # Parse PLOG entries - group by pathway index
+    # Structure: {pressure: [params1, params2, ...]} where each list entry is a pathway
+    plog_by_pressure = {}  # {pressure: [{"A": ..., "n": ..., "Ea": ...}, ...]}
 
     for line in lines[1:]:
         line = line.strip()
@@ -180,8 +198,7 @@ def parse_plog(
         if "!" in line:
             line = line.split("!")[0].strip()
 
-        # Skip empty lines and DUPLICATE markers these may come from the fact that people
-        # actually copy and paste stuff from files
+        # Skip empty lines and DUPLICATE markers
         if not line or "DUP" in line.upper() or "DUPLICATE" in line.upper():
             continue
 
@@ -205,25 +222,15 @@ def parse_plog(
         pressure = plog_coefficients[0]  # Pressure [atm]
         arrhenius_params = {"A": plog_coefficients[1], "n": plog_coefficients[2], "Ea": plog_coefficients[3]}
 
-        # Handle duplicate pressure entries
-        if pressure in plog_coefficients_1:
-            # This pressure already exists, so we have a duplicate reaction
-            has_duplicates = True
+        # Add to the list of pathways for this pressure
+        if pressure not in plog_by_pressure:
+            plog_by_pressure[pressure] = []
+        plog_by_pressure[pressure].append(arrhenius_params)
 
-            if pressure not in plog_coefficients_2:
-                # First duplicate: store in secondary dictionary
-                plog_coefficients_2[pressure] = arrhenius_params
-            else:
-                # Multiple duplicates (>2 pathways): not supported
-                raise ValueError(f"More than 2 duplicate reactions at pressure {pressure} - not supported")
-        else:
-            # New pressure: store in primary dictionary
-            plog_coefficients_1[pressure] = arrhenius_params
-
-    if has_duplicates:
-        return reaction_name, plog_coefficients_1, plog_coefficients_2
-    else:
-        return reaction_name, plog_coefficients_1
+    # Return the structure as-is: {pressure: [params1, params2, ...]}
+    # Each pressure maps to a list of Arrhenius parameter dictionaries
+    # The rate constant at each pressure is the sum of all terms
+    return reaction_name, plog_by_pressure
 
 
 def parse_falloff(
@@ -902,6 +909,21 @@ def parse_species(thermo_string: str) -> tuple[str, dict[str, int], str, float, 
 
         Where each numeric field is 15 characters wide in Fortran format.
 
+        **Extended Composition Format:**
+
+        For species with many elements, the format supports continuation lines
+        using the ``&`` character:
+
+        .. code-block:: text
+
+            Line 1: Species_name  C 0H 0  G  Tmin Tmax Tmid  1&
+            Line 2: C  1250 H  812
+            Line 3: a1_high  a2_high  a3_high  a4_high  a5_high
+            ...
+
+        Continuation lines (after ``&``) contain element-count pairs that are
+        merged with the standard composition from Line 1.
+
     Returns
     -------
     species_name : str
@@ -925,12 +947,80 @@ def parse_species(thermo_string: str) -> tuple[str, dict[str, int], str, float, 
     Raises
     ------
     ValueError
-        If input does not contain exactly 4 lines or parsing fails
+        - If input does not contain exactly 4 lines (after processing continuations)
+        - If intermediate temperature (Tmid) is missing or invalid
+        - If coefficient parsing fails
+
+    Notes
+    -----
+    **Missing Intermediate Temperature:**
+
+    If Tmid is not specified in columns 66-75 of line 1, a descriptive error
+    is raised. In standard CHEMKIN files, Tmid should come from the THERMO
+    section header. The error message includes the temperature range to help
+    diagnose the issue.
+
+    **Extended Composition:**
+
+    The ``&`` continuation character allows specification of arbitrarily many
+    elements, which is useful for large molecules in combustion chemistry
+    (e.g., biodiesel surrogates with C > 20).
+
+    Examples
+    --------
+    Standard format (4 lines):
+
+    >>> thermo = '''
+    ... H2O               H   2O   1     G   200.00   6000.00  1000.00    1
+    ... 2.67703787E+00 2.97318329E-03-7.73769690E-07 9.44336689E-11-4.26900959E-15    2
+    ... -2.98858938E+04 6.88255571E+00 4.19864056E+00-2.03643410E-03 6.52040211E-06    3
+    ... -5.48797062E-09 1.77197817E-12-3.02937267E+04-8.49032208E-01                   4
+    ... '''
+    >>> name, comp, phase, tmin, tmax, tmid, high, low = parse_species(thermo)
+    >>> print(name, comp)
+    H2O {'H': 2, 'O': 1}
+
+    Extended composition with continuation:
+
+    >>> thermo_ext = '''
+    ... BIGMOL            C   0H   0     G   300.00   4000.00  1000.00    1&
+    ... C  100 H  200
+    ... ...coefficients...
+    ... '''
     """
     # Parse thermodynamic data
     # Split by newline and filter out empty lines
     raw_lines = thermo_string.strip().split("\n")
     lines = [line for line in raw_lines if line.strip()]
+
+    # Handle extended elemental composition with & continuation character
+    # If first line ends with &, the following lines contain additional composition data
+    extended_composition = {}
+    if lines[0].rstrip().endswith("&"):
+        # Find all continuation lines
+        comp_lines = []
+        i = 0
+        while i < len(lines) - 1 and lines[i].rstrip().endswith("&"):
+            comp_lines.append(lines[i + 1])
+            i += 1
+
+        # Parse extended composition from continuation lines
+        # Format: element count element count ...
+        comp_str = " ".join(comp_lines)
+        comp_tokens = comp_str.split()
+        for j in range(0, len(comp_tokens), 2):
+            if j + 1 < len(comp_tokens):
+                element = comp_tokens[j].capitalize()
+                try:
+                    count = int(comp_tokens[j + 1])
+                    if count > 0:
+                        extended_composition[element] = count
+                except ValueError:
+                    pass  # Skip invalid entries
+
+        # Remove continuation lines from the main data
+        # lines[0] is the header with &, lines[1:i+1] are composition, lines[i+1:] are coefficients
+        lines = [lines[0]] + lines[i + 1 :]
 
     if len(lines) != 4:
         raise ValueError(f"Expected 4 lines in CHEMKIN thermo format, got {len(lines)}")
@@ -944,8 +1034,11 @@ def parse_species(thermo_string: str) -> tuple[str, dict[str, int], str, float, 
     header = lines[0]
     species_name = header[0:24].split()[0].strip()
 
-    # Parse elemental composition
+    # Parse elemental composition from header (standard format)
     elemental_composition = parse_composition(header[24:44], 4, 5)
+
+    # Merge with extended composition from continuation lines
+    elemental_composition.update(extended_composition)
 
     # Extract phase
     phase = header[44] if len(header) > 44 else "G"
@@ -953,7 +1046,26 @@ def parse_species(thermo_string: str) -> tuple[str, dict[str, int], str, float, 
     # Extract temperature ranges
     Tmin = fort_float(header[45:55])
     Tmax = fort_float(header[55:65])
-    Tmid = fort_float(header[65:75])
+
+    # Extract intermediate temperature (Tmid)
+    try:
+        tmid_str = header[65:75].strip()
+        if not tmid_str:
+            raise ValueError(
+                f"Missing intermediate temperature (Tmid) for species '{species_name}'. "
+                f"The CHEMKIN NASA format requires Tmid to be specified in columns 66-75 of line 1. "
+                f"This value should typically come from the THERMO section header. "
+                f"Temperature range: [{Tmin}, {Tmax}] K"
+            )
+        Tmid = fort_float(tmid_str)
+    except (ValueError, IndexError) as e:
+        if "Missing intermediate temperature" in str(e):
+            raise
+        raise ValueError(
+            f"Invalid intermediate temperature (Tmid) for species '{species_name}': '{header[65:75]}'. "
+            f"Could not parse Tmid from columns 66-75 of line 1. "
+            f"Temperature range: [{Tmin}, {Tmax}] K"
+        ) from e
 
     # Extract NASA polynomial coefficients (high-T first!)
     # CHEMKIN format allows numbers to be written without spaces between them
