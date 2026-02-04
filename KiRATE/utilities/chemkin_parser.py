@@ -668,6 +668,7 @@ def parse_stoichiometry(reaction_name: str) -> dict:
         - "H+O2=>OH+O" (irreversible)
         - "CH2(S)+H2=CH4" (reversible with excited state)
         - "2.5O2+CH4=>2H2O+CO2" (with fractional stoichiometry)
+        - "H+O2(+N2)=HO2(+N2)" (explicit collider)
 
     Returns
     -------
@@ -688,14 +689,30 @@ def parse_stoichiometry(reaction_name: str) -> dict:
     -----
     The function handles several edge cases:
 
-    - Third-body indicators (M, +M, (+M)) are removed before parsing
+    - Generic third-body indicators (M, +M, (+M)) are removed before parsing
+    - Explicit colliders (e.g., (+N2), (+AR)) are extracted and added to both sides
     - Duplicate species on the same side are accumulated (e.g., "O+O" becomes {"O": 2.0})
     - Parentheses in species names are preserved (e.g., "CH2(S)" is kept intact)
     - Stoichiometric coefficients can be integers or decimals
     """
     # Normalize and clean the reaction string
     reaction_name = reaction_name.strip()
-    reaction_name = reaction_name.replace("(+M)", "").replace("+M", "")
+
+    # Extract explicit colliders before removing generic third-body indicators
+    # Pattern: (+COLLIDER) where COLLIDER is not just M
+    # Use set to deduplicate colliders that appear on both sides
+    explicit_colliders = set()
+    collider_pattern = re.compile(r'\(\+([A-Z][A-Za-z0-9]*)\)')
+    for match in collider_pattern.finditer(reaction_name):
+        collider = match.group(1)
+        if collider != "M":  # Only extract if not generic M
+            explicit_colliders.add(collider)
+
+    # Remove explicit collider notation from reaction string
+    reaction_name = collider_pattern.sub('', reaction_name)
+
+    # Remove generic third-body indicators
+    reaction_name = reaction_name.replace("+M", "")
 
     # Split reaction into reactants and products based on arrow type
     reactants_str, products_str, reversible = _split_reaction(reaction_name)
@@ -703,6 +720,11 @@ def parse_stoichiometry(reaction_name: str) -> dict:
     # Parse both sides
     reactants = _parse_species_side(reactants_str)
     products = _parse_species_side(products_str)
+
+    # Add explicit colliders to both reactants and products
+    for collider in explicit_colliders:
+        reactants[collider] = reactants.get(collider, 0.0) + 1.0
+        products[collider] = products.get(collider, 0.0) + 1.0
 
     # Extract the species names that are part of the reaction
     species = list(set(reactants.keys()) | set(products.keys()))
