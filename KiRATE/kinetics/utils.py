@@ -155,20 +155,41 @@ def validate_arrhenius_parameters(parameters: dict[str, float]) -> None:
     Ea = parameters["Ea"]
 
     # Validate Pre-Exponential Factor (A)
+    # Check if A is finite (not NaN or ±infinity)
+    if not jnp.isfinite(A):
+        raise ValueError(f"Pre-exponential factor A must be finite, got {A}")
+
     # Check if A is positive (typical for most reactions)
     # Negative A would result in negative rate constants (unphysical)
+    # This is a warning and not an error because sometimes negative A
+    # is needed to perform accurately a DUPLICATE fitting
     if A <= 0:
         warnings.warn(
-            f"Pre-exponential factor A (={A}) is usually positive. "
-            "Negative or zero A will result in negative or zero rate constants. "
+            f"Pre-exponential factor A = {A:.3e} is non-positive. "
+            "Negative or zero A will result in negative or zero rate constants, "
+            "which is typically unphysical. This may be acceptable for multi-term "
+            "fits (e.g., PLOG with multiple Arrhenius expressions). "
             "Please verify your input.",
             UserWarning,
             stacklevel=2,
         )
 
-    # Check if A is finite (not NaN or ±infinity)
-    if not jnp.isfinite(A):
-        raise ValueError(f"Pre-exponential factor A must be finite, got {A}")
+    # Check if A is in typical range for rate constants
+    # Extremely small or large A may indicate input errors or unit problems
+    if A > 0 and (A < 1.0 or A > 1e50):
+        warnings.warn(
+            f"Pre-exponential factor A = {A:.3e} is outside typical range [1, 10^50]. "
+            "Extremely small A (< 1) or large A (> 10^50) may indicate:\n"
+            "  - Incorrect units (check if A matches reaction order)\n"
+            "  - Input error (typo or wrong exponent)\n"
+            "  - Unusual reaction type (acceptable if intentional)\n"
+            "Typical ranges by reaction order:\n"
+            "  - Unimolecular:   A ~ 10^13 - 10^15 s^-1\n"
+            "  - Bimolecular:    A ~ 10^10 - 10^14 cm³/mol/s\n"
+            "  - Termolecular:   A ~ 10^30 - 10^35 cm⁶/mol²/s",
+            UserWarning,
+            stacklevel=2,
+        )
 
     # Validate Temperature Exponent (n)
     # Check if n is finite
