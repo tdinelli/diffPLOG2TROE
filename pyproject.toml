@@ -35,8 +35,10 @@ test = ["pytest >=6", "pytest-cov >=3"]
 dev = [
     "pytest >=6",
     "pytest-cov >=3",
+    "ruff>=0.8.0",
+    "mypy>=1.0.0",
     "sphinx>=7.0.0",
-    "sphinx-rtd-theme>=2.0.0",
+    "furo>=2024.0.0",
     "myst-parser>=2.0.0",
     "sphinx-autodoc-typehints>=1.25.0",
     "sphinx-copybutton>=0.5.0",
@@ -44,17 +46,18 @@ dev = [
 ]
 docs = [
     "sphinx>=7.0.0",
-    "sphinx-rtd-theme>=2.0.0",
+    "furo>=2024.0.0",
     "myst-parser>=2.0.0",
     "sphinx-autodoc-typehints>=1.25.0",
     "sphinx-copybutton>=0.5.0",
     "nbsphinx>=0.9.0",
+    "sphinx-autobuild>=2024.0.0",
 ]
 all = [
     "pytest >=6",
     "pytest-cov >=3",
     "sphinx>=7.0.0",
-    "sphinx-rtd-theme>=2.0.0",
+    "furo>=2024.0.0",
     "myst-parser>=2.0.0",
     "sphinx-autodoc-typehints>=1.25.0",
     "sphinx-copybutton>=0.5.0",
@@ -111,3 +114,68 @@ exclude_lines = [
     "if 0:",
     "if __name__ == .__main__.:",
 ]
+
+# Ruff configuration (linter + formatter)
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort (import sorting)
+    "UP",     # pyupgrade (modernize code)
+    "B",      # flake8-bugbear (catch common bugs)
+    "SIM",    # flake8-simplify
+    "NPY",    # numpy-specific rules
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "F722",   # syntax error in forward annotation (jaxtyping uses string literals)
+    "F821",   # undefined name in annotation (jaxtyping dimension variables)
+    "B008",   # do not perform function calls in argument defaults (needed for JAX)
+    "B905",   # zip without strict= (not available in Python 3.9)
+    "SIM108", # use ternary operator (too aggressive, if/else is clearer with comments)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "E402"]  # Allow unused imports and late imports (JAX config)
+"KiRATE/utilities/chemkin_parser.py" = ["B904"]  # Allow raise without from in parser
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+# mypy configuration (type checking)
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # Set to true once you add types everywhere
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_optional = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = [
+    "matplotlib.*",
+    "scipy.*",
+    "jax.*",
+    "jaxtyping.*",
+    "equinox.*",
+    "optimistix.*",
+    "optax.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "KiRATE.refitter.*"
+# JAX arrays work as floats at runtime, ignore type mismatches
+disable_error_code = ["dict-item", "arg-type", "operator"]
