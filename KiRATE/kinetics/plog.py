@@ -132,7 +132,7 @@ class Plog(eqx.Module):
         -----
         - Pressure levels are automatically sorted in ascending order
         - Each pressure level can have one or more Arrhenius terms
-        - Multiple terms at a pressure are summed: k(T,P) = Σᵢ Aᵢ T^nᵢ exp(-Eaᵢ/RT)
+        - Multiple terms at a pressure are summed: :math:`k(T,P) = \\sum_i A_i T^{n_i} exp(-Ea_i / RT)`
         - Minimum 2 pressure levels required for interpolation
         """
         self._name = name
@@ -142,7 +142,8 @@ class Plog(eqx.Module):
 
         # Store pressure levels and their natural logarithms
         # .keys() inherently remove the duplicate because in a dictionary you
-        # cant define multiple elements with the same key
+        # cant define multiple elements with the same key this why we switched
+        # to lists
         self._p_levels = jnp.array(list(parameters.keys()), dtype=jnp.float64)
         self._lnp_levels = jnp.log(self._p_levels)
         self._num_p_levels = jnp.int64(len(self._p_levels))
@@ -208,11 +209,6 @@ class Plog(eqx.Module):
         ------
         ValueError
             If the input string cannot be parsed or contains invalid parameters.
-
-        Notes
-        -----
-        Multiple PLOG entries at the same pressure are summed to fit non-Arrhenius
-        temperature dependence: k(T,P) = Σᵢ Aᵢ T^nᵢ exp(-Eaᵢ/RT)
         """
         reaction_name, plog_parameters = parse_plog(input_string)
 
@@ -329,7 +325,6 @@ class Plog(eqx.Module):
         # ==============================================================================
         # Step 1: Evaluate Arrhenius rate constants at all pressure levels
         # For each pressure level P_i, compute k_i(T) by summing all Arrhenius terms
-        # k_i(T) = Σⱼ A_j T^n_j exp(-Ea_j/RT)
         # Then take log for interpolation in log-log space
         # Shape: (num_p_levels,) if T is scalar, (num_p_levels, nt) if T is vector
         all_k = jnp.array(
