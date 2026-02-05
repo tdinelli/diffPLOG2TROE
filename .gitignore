@@ -164,6 +164,8 @@ tests/ciao.py
 _stuff/
 .ideas/
 stuff.py
+experimental/
+_plog_refitter/
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
