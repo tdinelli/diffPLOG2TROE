@@ -509,6 +509,9 @@ class Arrhenius(eqx.Module):
         where A' and Ea' are optimized to minimize squared errors across 300
         evenly-spaced temperature points between 300 K and 3000 K.
         """
+        # Lazy import to avoid circular dependency
+        from KiRATE.refitter.methods import arrhenius_linear_fit
+
         # Check if conversion is needed
         if jnp.isclose(self._n, 0.0):
             raise ValueError(f"Model already in standard Arrhenius form (n = {self._n:.5f}). Conversion is not needed!")
@@ -518,26 +521,22 @@ class Arrhenius(eqx.Module):
 
         # Calculate rate constants using current model
         k_original = self.rate_constant(T)
-        log_k = jnp.log(k_original)
-        inv_T = 1.0 / T
 
-        # Set up design matrix for 2-parameter fit (n=0)
-        X = jnp.vstack([jnp.ones_like(inv_T), -inv_T]).T
-
-        # Perform least squares regression
-        beta, *_ = jnp.linalg.lstsq(X, log_k, rcond=None)
-
-        # Extract fitted parameters: ln(A) and Ea/R
-        refitted_A = jnp.exp(beta[0])
-        refitted_Ea = beta[1] * constants.R_cal_mol
-
-        # Create new Arrhenius instance
-        refitted_arrhenius = Arrhenius(
-            parameters={"A": float(refitted_A), "n": 0.0, "Ea": float(refitted_Ea)},
-            name=self._name,
+        params = arrhenius_linear_fit(
+            temperature=T,
+            rate_constant=k_original,
+            fixed_params={"n": 0.0},
         )
 
-        return refitted_arrhenius
+        # Create new Arrhenius instance
+        return Arrhenius(
+            parameters={
+                "A": float(params[0]),
+                "n": 0.0,
+                "Ea": float(params[1]),
+            },
+            name=self._name,
+        )
 
     # ==================================================================================
     # String representations and debugging
