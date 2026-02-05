@@ -4,14 +4,13 @@ Licensed under the MIT License - see LICENSE file for details
 """
 
 import warnings
-from typing import Optional
 
 import jax.numpy as jnp
 
 
 def validate_broadening_parameters(
     broadening_type: str,
-    parameters: Optional[dict[str, float]] = None,
+    parameters: dict[str, float] | None = None,
 ) -> None:
     """
     Validate broadening factor parameters for fall-off and CABR reactions.
@@ -371,9 +370,7 @@ def validate_chebyshev_parameters(
 
     # Check both limits are finite
     if not jnp.isfinite(T_min) or not jnp.isfinite(T_max):
-        raise ValueError(
-            f"Temperature limits must be finite, got T_min = {T_min} K, T_max = {T_max} K"
-        )
+        raise ValueError(f"Temperature limits must be finite, got T_min = {T_min} K, T_max = {T_max} K")
 
     # Validate Pressure Limits
     P_min, P_max = P_limits

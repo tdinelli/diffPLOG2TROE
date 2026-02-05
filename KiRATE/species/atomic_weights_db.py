@@ -263,7 +263,7 @@ def get_molecular_weight(composition: dict[str, int]) -> Float64[Array, ""]:
         Molecular weight in g/mol
 
     Example:
-        >>> get_molecular_weight({'H': 2, 'O': 1})  # H2O
+        >>> get_molecular_weight({"H": 2, "O": 1})  # H2O
         18.015
     """
     mw = jnp.float64(0.0)

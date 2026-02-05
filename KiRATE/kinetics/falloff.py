@@ -268,9 +268,7 @@ class FallOff(eqx.Module):
 
         # Convert composition to JAX arrays for differentiability
         jax_composition = (
-            {key: jnp.float64(value) for key, value in composition.items()}
-            if composition is not None
-            else None
+            {key: jnp.float64(value) for key, value in composition.items()} if composition is not None else None
         )
 
         # Compute high-pressure and low-pressure limit rate constants
@@ -384,12 +382,10 @@ class FallOff(eqx.Module):
             Multi-line string with reaction name, high-pressure limit, low-pressure
             limit, falloff parameters, and efficiencies in CHEMKIN format.
         """
-        representation = "{}\t\t{:.5E} {:.5E} {:.5E}\n".format(
-            self._name, float(self._hpl.A), float(self._hpl.n), float(self._hpl.Ea)
+        representation = (
+            f"{self._name}\t\t{float(self._hpl.A):.5E} {float(self._hpl.n):.5E} {float(self._hpl.Ea):.5E}\n"
         )
-        representation += "  LOW / {:.5E} {:.5E} {:.5E} /\n".format(
-            float(self._lpl.A), float(self._lpl.n), float(self._lpl.Ea)
-        )
+        representation += f"  LOW / {float(self._lpl.A):.5E} {float(self._lpl.n):.5E} {float(self._lpl.Ea):.5E} /\n"
 
         if self._falloff_type == "troe" and self._falloff_parameters is not None:
             representation += " TROE / {:.5E} {:.5E} {:.5E} {:.5E} /\n".format(
@@ -416,7 +412,7 @@ class FallOff(eqx.Module):
 
         if self._efficiencies is not None:
             for species, efficiency in self._efficiencies.items():
-                representation += " {} / {:.5F} /".format(species, float(efficiency))
+                representation += f" {species} / {float(efficiency):.5F} /"
 
         return representation
 

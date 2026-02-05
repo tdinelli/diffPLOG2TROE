@@ -362,14 +362,12 @@ class CABR(eqx.Module):
         - Species/efficiency pairs: optional third-body efficiencies
         """
         # Main line: reaction name and LOW-pressure limit (which dominates at low P)
-        representation = "{}\t\t{:.5E} {:.5E} {:.5E}\n".format(
-            self._name, float(self._lpl.A), float(self._lpl.n), float(self._lpl.Ea)
+        representation = (
+            f"{self._name}\t\t{float(self._lpl.A):.5E} {float(self._lpl.n):.5E} {float(self._lpl.Ea):.5E}\n"
         )
 
         # HIGH keyword: high-pressure limit parameters
-        representation += " HIGH / {:.5E} {:.5E} {:.5E} /\n".format(
-            float(self._hpl.A), float(self._hpl.n), float(self._hpl.Ea)
-        )
+        representation += f" HIGH / {float(self._hpl.A):.5E} {float(self._hpl.n):.5E} {float(self._hpl.Ea):.5E} /\n"
 
         # Broadening factor parameters
         if self._cabr_type == "troe" and self._cabr_parameters is not None:
@@ -397,7 +395,7 @@ class CABR(eqx.Module):
         if self._efficiencies is not None:
             representation += "\n"
             for species, efficiency in self._efficiencies.items():
-                representation += " {} / {:.5E} /".format(species, float(efficiency))
+                representation += f" {species} / {float(efficiency):.5E} /"
 
         return representation
 

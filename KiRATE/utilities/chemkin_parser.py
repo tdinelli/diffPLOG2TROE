@@ -702,14 +702,14 @@ def parse_stoichiometry(reaction_name: str) -> dict:
     # Pattern: (+COLLIDER) where COLLIDER is not just M
     # Use set to deduplicate colliders that appear on both sides
     explicit_colliders = set()
-    collider_pattern = re.compile(r'\(\+([A-Z][A-Za-z0-9]*)\)')
+    collider_pattern = re.compile(r"\(\+([A-Z][A-Za-z0-9]*)\)")
     for match in collider_pattern.finditer(reaction_name):
         collider = match.group(1)
         if collider != "M":  # Only extract if not generic M
             explicit_colliders.add(collider)
 
     # Remove explicit collider notation from reaction string
-    reaction_name = collider_pattern.sub('', reaction_name)
+    reaction_name = collider_pattern.sub("", reaction_name)
 
     # Remove generic third-body indicators
     reaction_name = reaction_name.replace("+M", "")

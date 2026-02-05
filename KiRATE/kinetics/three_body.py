@@ -3,8 +3,6 @@ Copyright (c) 2024-2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
-from typing import Optional
-
 import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, Float64
@@ -52,13 +50,13 @@ class Threebody(eqx.Module):
     """
 
     _k0: Arrhenius
-    _efficiencies: Optional[dict[str, Float64[Array, ""]]] = None
+    _efficiencies: dict[str, Float64[Array, ""]] | None = None
     _name: str = eqx.field(static=True, default="")
 
     def __init__(
         self,
         parameters: dict[str, float],
-        efficiencies: Optional[dict[str, float]] = None,
+        efficiencies: dict[str, float] | None = None,
         name: str = "",
     ) -> None:
         """
@@ -153,7 +151,7 @@ class Threebody(eqx.Module):
         self,
         T: float | Float64[Array, ""] | Float64[Array, "nt"],
         P: float | Float64[Array, ""] | Float64[Array, "np"],
-        composition: Optional[dict[str, float]] = None,
+        composition: dict[str, float] | None = None,
     ) -> Float64[Array, ""] | Float64[Array, "nt"] | Float64[Array, "np"] | Float64[Array, "nt np"]:
         """
         Calculate the three-body rate constant at given temperature(s) and pressure(s).
@@ -245,9 +243,7 @@ class Threebody(eqx.Module):
 
         # Convert composition to JAX arrays for differentiability
         jax_composition = (
-            {key: jnp.float64(value) for key, value in composition.items()}
-            if composition is not None
-            else None
+            {key: jnp.float64(value) for key, value in composition.items()} if composition is not None else None
         )
 
         k_0 = self._k0.rate_constant(T)  # Third-order rate constant [cm6/mol2/s]
@@ -277,7 +273,7 @@ class Threebody(eqx.Module):
         if self._efficiencies is not None:
             representation += "\n"
             for species, efficiency in self._efficiencies.items():
-                representation += " {} / {:.5E} /".format(species, float(efficiency))
+                representation += f" {species} / {float(efficiency):.5E} /"
 
         return representation
 
@@ -364,7 +360,7 @@ class Threebody(eqx.Module):
         return self._k0
 
     @property
-    def efficiencies(self) -> Optional[dict[str, Float64[Array, ""]]]:
+    def efficiencies(self) -> dict[str, Float64[Array, ""]] | None:
         """
         Third-body collision efficiencies as JAX arrays.
 
