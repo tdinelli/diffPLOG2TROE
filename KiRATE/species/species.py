@@ -362,9 +362,10 @@ class Species(eqx.Module):
         This internal method implements the common pattern used by all dimensionless
         thermodynamic property calculations (Cp/R, H/(RT), S/R). It handles:
         1. Converting input to JAX array
-        2. Selecting appropriate coefficients based on temperature via lax.cond
-        3. Vectorizing computation over temperature array using vmap
-        4. Squeezing result for scalar inputs
+        2. Checking temperature bounds with eqx.error_if
+        3. Selecting appropriate coefficients based on temperature via lax.cond
+        4. Vectorizing computation over temperature array using vmap
+        5. Squeezing result for scalar inputs
 
         Parameters
         ----------
@@ -380,16 +381,36 @@ class Species(eqx.Module):
         Float64[Array, ""] | Float64[Array, "n"]
             Computed property value(s). Shape matches input temperature shape.
 
+        Raises
+        ------
+        RuntimeError
+            If any temperature is outside the valid range [Tmin, Tmax]
+
         Notes
         -----
         This method uses JAX's `lax.cond` for lazy evaluation of the conditional
         branch, which is more efficient for JIT compilation and autodiff than
         using `jnp.where`, which evaluates both branches.
+
+        Temperature bounds are checked using `eqx.error_if` which provides
+        JIT-compatible error handling.
         """
         T_array = jnp.atleast_1d(jnp.asarray(T, dtype=jnp.float64))
 
         def compute_single(t):
             """Compute property for a single temperature using conditional branching."""
+            # Check temperature bounds
+            t = eqx.error_if(
+                t,
+                t < self._Tmin,
+                f"Temperature {t} K is below minimum valid temperature {self._Tmin} K for species {self._name}",
+            )
+            t = eqx.error_if(
+                t,
+                t > self._Tmax,
+                f"Temperature {t} K is above maximum valid temperature {self._Tmax} K for species {self._name}",
+            )
+
             return lax.cond(
                 t < self._Tmid,
                 lambda _: eval_func(self._low_coeffs, t),
@@ -428,7 +449,7 @@ class Species(eqx.Module):
         T: float | Float64[Array, ""] | Float64[Array, "n"],
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
-        Heat capacity at constant pressure [J/(mol·K)].
+        Heat capacity at constant pressure [cal/(mol·K)].
 
         Parameters
         ----------
@@ -438,9 +459,9 @@ class Species(eqx.Module):
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
-            Heat capacity Cp [J/(mol·K)]
+            Heat capacity Cp [cal/(mol·K)]
         """
-        return self.cp_R(T) * constants.R_J_mol_K
+        return self.cp_R(T) * constants.R_cal_mol
 
     @eqx.filter_jit
     def h_RT(
@@ -468,7 +489,7 @@ class Species(eqx.Module):
         T: float | Float64[Array, ""] | Float64[Array, "n"],
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
-        Enthalpy [J/mol].
+        Enthalpy [cal/mol].
 
         Parameters
         ----------
@@ -478,10 +499,10 @@ class Species(eqx.Module):
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
-            Enthalpy H [J/mol]
+            Enthalpy H [cal/mol]
         """
         T_array = jnp.asarray(T, dtype=jnp.float64)
-        return self.h_RT(T) * constants.R_J_mol_K * T_array
+        return self.h_RT(T) * constants.R_cal_mol * T_array
 
     @eqx.filter_jit
     def s_R(
@@ -509,7 +530,7 @@ class Species(eqx.Module):
         T: float | Float64[Array, ""] | Float64[Array, "n"],
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
-        Entropy [J/(mol·K)].
+        Entropy [cal/(mol·K)].
 
         Parameters
         ----------
@@ -519,9 +540,9 @@ class Species(eqx.Module):
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
-            Entropy S [J/(mol·K)]
+            Entropy S [cal/(mol·K)]
         """
-        return self.s_R(T) * constants.R_J_mol_K
+        return self.s_R(T) * constants.R_cal_mol
 
     @eqx.filter_jit
     def g_RT(
@@ -551,7 +572,7 @@ class Species(eqx.Module):
         T: float | Float64[Array, ""] | Float64[Array, "n"],
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
-        Gibbs free energy [J/mol].
+        Gibbs free energy [cal/mol].
 
         Parameters
         ----------
@@ -561,10 +582,10 @@ class Species(eqx.Module):
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
-            Gibbs energy G [J/mol]
+            Gibbs energy G [cal/mol]
         """
         T_array = jnp.asarray(T, dtype=jnp.float64)
-        return self.g_RT(T) * constants.R_J_mol_K * T_array
+        return self.g_RT(T) * constants.R_cal_mol * T_array
 
     @eqx.filter_jit
     def u_RT(
@@ -594,7 +615,7 @@ class Species(eqx.Module):
         T: float | Float64[Array, ""] | Float64[Array, "n"],
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
-        Internal energy [J/mol].
+        Internal energy [cal/mol].
 
         Parameters
         ----------
@@ -604,10 +625,10 @@ class Species(eqx.Module):
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
-            Internal energy U [J/mol]
+            Internal energy U [cal/mol]
         """
         T_array = jnp.asarray(T, dtype=jnp.float64)
-        return self.u_RT(T) * constants.R_J_mol_K * T_array
+        return self.u_RT(T) * constants.R_cal_mol * T_array
 
     @eqx.filter_jit
     def cv_R(
@@ -637,7 +658,7 @@ class Species(eqx.Module):
         T: float | Float64[Array, ""] | Float64[Array, "n"],
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
-        Heat capacity at constant volume [J/(mol·K)].
+        Heat capacity at constant volume [cal/(mol·K)].
 
         Parameters
         ----------
@@ -647,9 +668,9 @@ class Species(eqx.Module):
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
-            Heat capacity Cv [J/(mol·K)]
+            Heat capacity Cv [cal/(mol·K)]
         """
-        return self.cv_R(T) * constants.R_J_mol_K
+        return self.cv_R(T) * constants.R_cal_mol
 
     # =======================================================================
     # String representations for display and debugging

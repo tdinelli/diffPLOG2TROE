@@ -41,12 +41,16 @@ class TestSpecies(unittest.TestCase):
             delimiter=";",
             skiprows=1,
         )
+        # Cantera returns J/kmol, KiRATE returns cal/mol
+        # Convert: J/kmol / 4.184 J/cal / 1000 kmol/mol = cal/mol
+        J_to_cal = 1.0 / 4.184
+        kmol_to_mol = 1.0 / 1000.0
         self.ch4_cantera = {
             "T": jnp.array(ch4_data[:, 0]),
-            "cp": jnp.array(ch4_data[:, 1]),  # J/kmol/K
-            "h": jnp.array(ch4_data[:, 2]),  # J/kmol
-            "s": jnp.array(ch4_data[:, 3]),  # J/kmol/K
-            "g": jnp.array(ch4_data[:, 4]),  # J/kmol
+            "cp": jnp.array(ch4_data[:, 1]) * J_to_cal * kmol_to_mol,  # cal/mol/K
+            "h": jnp.array(ch4_data[:, 2]) * J_to_cal * kmol_to_mol,  # cal/mol
+            "s": jnp.array(ch4_data[:, 3]) * J_to_cal * kmol_to_mol,  # cal/mol/K
+            "g": jnp.array(ch4_data[:, 4]) * J_to_cal * kmol_to_mol,  # cal/mol
             "cp_R": jnp.array(ch4_data[:, 5]),
             "h_RT": jnp.array(ch4_data[:, 6]),
             "s_R": jnp.array(ch4_data[:, 7]),
@@ -61,10 +65,10 @@ class TestSpecies(unittest.TestCase):
         )
         self.ch2o_cantera = {
             "T": jnp.array(ch2o_data[:, 0]),
-            "cp": jnp.array(ch2o_data[:, 1]),  # J/kmol/K
-            "h": jnp.array(ch2o_data[:, 2]),  # J/kmol
-            "s": jnp.array(ch2o_data[:, 3]),  # J/kmol/K
-            "g": jnp.array(ch2o_data[:, 4]),  # J/kmol
+            "cp": jnp.array(ch2o_data[:, 1]) * J_to_cal * kmol_to_mol,  # cal/mol/K
+            "h": jnp.array(ch2o_data[:, 2]) * J_to_cal * kmol_to_mol,  # cal/mol
+            "s": jnp.array(ch2o_data[:, 3]) * J_to_cal * kmol_to_mol,  # cal/mol/K
+            "g": jnp.array(ch2o_data[:, 4]) * J_to_cal * kmol_to_mol,  # cal/mol
             "cp_R": jnp.array(ch2o_data[:, 5]),
             "h_RT": jnp.array(ch2o_data[:, 6]),
             "s_R": jnp.array(ch2o_data[:, 7]),
@@ -83,8 +87,8 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch4_heat_capacity(self):
         """Test CH4 heat capacity Cp against Cantera."""
-        # KiRATE returns J/(mol·K), Cantera returns J/(kmol·K)
-        calculated = self.ch4.cp(self.T_range) * 1000  # Convert to J/(kmol·K)
+        # KiRATE returns cal/(mol·K), Cantera converted to cal/(mol·K)
+        calculated = self.ch4.cp(self.T_range)
         expected = self.ch4_cantera["cp"]
 
         self.assertTrue(
@@ -104,8 +108,8 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch4_enthalpy(self):
         """Test CH4 enthalpy H against Cantera."""
-        # KiRATE returns J/mol, Cantera returns J/kmol
-        calculated = self.ch4.h(self.T_range) * 1000  # Convert to J/kmol
+        # KiRATE returns cal/mol, Cantera converted to cal/mol
+        calculated = self.ch4.h(self.T_range)
         expected = self.ch4_cantera["h"]
 
         self.assertTrue(
@@ -125,8 +129,8 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch4_entropy(self):
         """Test CH4 entropy S against Cantera."""
-        # KiRATE returns J/(mol·K), Cantera returns J/(kmol·K)
-        calculated = self.ch4.s(self.T_range) * 1000  # Convert to J/(kmol·K)
+        # KiRATE returns cal/(mol·K), Cantera converted to cal/(mol·K)
+        calculated = self.ch4.s(self.T_range)
         expected = self.ch4_cantera["s"]
 
         self.assertTrue(
@@ -146,8 +150,8 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch4_gibbs(self):
         """Test CH4 Gibbs energy G against Cantera."""
-        # KiRATE returns J/mol, Cantera returns J/kmol
-        calculated = self.ch4.g(self.T_range) * 1000  # Convert to J/kmol
+        # KiRATE returns cal/mol, Cantera converted to cal/mol
+        calculated = self.ch4.g(self.T_range)
         expected = self.ch4_cantera["g"]
 
         self.assertTrue(
@@ -167,8 +171,8 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch2o_heat_capacity(self):
         """Test CH2O heat capacity Cp against Cantera."""
-        # KiRATE returns J/(mol·K), Cantera returns J/(kmol·K)
-        calculated = self.ch2o.cp(self.T_range) * 1000  # Convert to J/(kmol·K)
+        # KiRATE returns cal/(mol·K), Cantera converted to cal/(mol·K)
+        calculated = self.ch2o.cp(self.T_range)
         expected = self.ch2o_cantera["cp"]
 
         self.assertTrue(
@@ -188,8 +192,8 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch2o_enthalpy(self):
         """Test CH2O enthalpy H against Cantera."""
-        # KiRATE returns J/mol, Cantera returns J/kmol
-        calculated = self.ch2o.h(self.T_range) * 1000  # Convert to J/kmol
+        # KiRATE returns cal/mol, Cantera converted to cal/mol
+        calculated = self.ch2o.h(self.T_range)
         expected = self.ch2o_cantera["h"]
 
         self.assertTrue(
@@ -209,8 +213,8 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch2o_entropy(self):
         """Test CH2O entropy S against Cantera."""
-        # KiRATE returns J/(mol·K), Cantera returns J/(kmol·K)
-        calculated = self.ch2o.s(self.T_range) * 1000  # Convert to J/(kmol·K)
+        # KiRATE returns cal/(mol·K), Cantera converted to cal/(mol·K)
+        calculated = self.ch2o.s(self.T_range)
         expected = self.ch2o_cantera["s"]
 
         self.assertTrue(
@@ -230,8 +234,8 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch2o_gibbs(self):
         """Test CH2O Gibbs energy G against Cantera."""
-        # KiRATE returns J/mol, Cantera returns J/kmol
-        calculated = self.ch2o.g(self.T_range) * 1000  # Convert to J/kmol
+        # KiRATE returns cal/mol, Cantera converted to cal/mol
+        calculated = self.ch2o.g(self.T_range)
         expected = self.ch2o_cantera["g"]
 
         self.assertTrue(

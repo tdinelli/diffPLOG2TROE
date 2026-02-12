@@ -55,5 +55,10 @@ class PhysicalConstants:
         """Ideal gas constant [L atm/K/mol]"""
         return jnp.float64(0.082057366080960)  # CODATA 2018 value
 
+    @property
+    def R_cm3_atm_mol_K(self) -> Float64[Array, ""]:
+        """Ideal gas constant [(cm3*atm)/K/mol]"""
+        return jnp.float64(82.05736153)
+
 
 constants = PhysicalConstants()

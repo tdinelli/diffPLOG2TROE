@@ -728,6 +728,7 @@ def parse_stoichiometry(reaction_name: str) -> dict:
 
     # Extract the species names that are part of the reaction
     species = list(set(reactants.keys()) | set(products.keys()))
+
     return {
         "species": species,
         "reactants": reactants,
