@@ -137,7 +137,6 @@ class TestLMRR(unittest.TestCase):
             },
         )
 
-
         # ==============================================================================
         # Dataloader
         current_file_path = os.path.abspath(__file__)
@@ -211,9 +210,7 @@ class TestLMRR(unittest.TestCase):
 
     def test_kinetic_constant2_n2(self):
         """"""
-        calculated_rates = self.reaction2.rate_constant(
-            T=self.T_range, P=self.P_range, composition={"N2": 1.0}
-        )
+        calculated_rates = self.reaction2.rate_constant(T=self.T_range, P=self.P_range, composition={"N2": 1.0})
 
         assert_rate_constants_close(
             self,

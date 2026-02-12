@@ -38,9 +38,9 @@ for species_name in test_species_names:
         # Get thermodynamic properties at this temperature
         # Units: Cp [J/kmol/K], H [J/kmol], S [J/kmol/K], G [J/kmol]
         cp = species.thermo.cp(t)  # J/kmol/K
-        h = species.thermo.h(t)    # J/kmol
-        s = species.thermo.s(t)    # J/kmol/K
-        g = h - t * s              # G = H - TS [J/kmol]
+        h = species.thermo.h(t)  # J/kmol
+        s = species.thermo.s(t)  # J/kmol/K
+        g = h - t * s  # G = H - TS [J/kmol]
 
         # Dimensionless properties (matching NASA polynomial definitions)
         R = ct.gas_constant  # J/kmol/K

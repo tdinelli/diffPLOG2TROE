@@ -21,7 +21,7 @@ print(f" - Pressure range: {P_range[0]:.3f} - {P_range[-1]:.1f} atm")
 print(" - Mixture 100% N2")
 for t_idx, t in enumerate(T_range):
     for p_idx, p in enumerate(P_range):
-        gas.TPX = t, p*ct.one_atm, "N2:1"
+        gas.TPX = t, p * ct.one_atm, "N2:1"
         k_matrix[p_idx, t_idx] = gas.forward_rate_constants[4]
 
 

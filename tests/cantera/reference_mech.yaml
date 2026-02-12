@@ -164,6 +164,11 @@ reactions:
     - {P: 3.00000000E+02 atm, A: 1.06233E+21, b: -2.66310, Ea: 1.49349E+03}
     efficiency: {A: 0.1706, b: 0.2090, Ea: 191.9}
 
+# -----------------------------------------
+# PLOG (DUPLICATE)
+# -----------------------------------------
+# TODO ADD THIS
+
 # Reaction 5-7: Separate reactions, but calculated on the full mixture concentration.
 # These are the rates needed to compute the Chemkin-style mole-fraction based weighting
 # See: https://github.com/Cantera/enhancements/issues/193

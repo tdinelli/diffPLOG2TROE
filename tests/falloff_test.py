@@ -90,7 +90,7 @@ class TestFallOff(unittest.TestCase):
         )
 
     def test_chemkin_parsing(self):
-        chemkin_string="""
+        chemkin_string = """
             H+O2(+M)=HO2(+M)        4.7e12 0.44 0.0
              LOW / 6.366e20 -1.72 524.8 /
              TROE / 0.5 1.0e-30 1.0e30 0.0 /

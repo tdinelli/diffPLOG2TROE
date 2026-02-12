@@ -131,23 +131,13 @@ class TestReverseArrhenius(unittest.TestCase):
 
         # Compare equilibrium constants
         self.assertTrue(
-            jnp.allclose(
-                K_c_kirate,
-                self.expected_equilibrium_constant,
-                rtol=1e-10,
-                atol=1e-10
-            ),
+            jnp.allclose(K_c_kirate, self.expected_equilibrium_constant, rtol=1e-10, atol=1e-10),
             "Equilibrium constants do not match Cantera",
         )
 
         # Compare reverse rate constants
         self.assertTrue(
-            jnp.allclose(
-                k_r_kirate,
-                self.expected_reverse_rate,
-                rtol=1e-10,
-                atol=1e-10
-            ),
+            jnp.allclose(k_r_kirate, self.expected_reverse_rate, rtol=1e-10, atol=1e-10),
             "Reverse rate constants do not match Cantera",
         )
 

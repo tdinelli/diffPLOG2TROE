@@ -9,7 +9,12 @@ import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, Float64
 
-from KiRATE.kinetics import CABR, Arrhenius, Chebyshev, FallOff, Plog, Threebody
+from KiRATE.kinetics.arrhenius import Arrhenius
+from KiRATE.kinetics.cabr import CABR
+from KiRATE.kinetics.chebyshev import Chebyshev
+from KiRATE.kinetics.falloff import FallOff
+from KiRATE.kinetics.plog import Plog
+from KiRATE.kinetics.three_body import Threebody
 from KiRATE.species import Species
 from KiRATE.utilities import constants, parse_stoichiometry
 
