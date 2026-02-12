@@ -1,5 +1,5 @@
 """
-Copyright (c) 2026 Timoteo Dinelli
+Copyright (c) 2024-2026 Timoteo Dinelli
 Licensed under the MIT License - see LICENSE file for details
 """
 
@@ -22,122 +22,142 @@ PressureDepRate: TypeAlias = Plog | FallOff | CABR | Chebyshev
 
 class MixtureRule(eqx.Module):
     """
-    Mixture rule calculator for gas-phase reactions with multiple colliders.
+        Mixture rule calculator for gas-phase reactions with multiple colliders.
 
-    This class implements linear mixture rules for computing rate constants in gas mixtures
-    where different collision partners (third bodies) have distinct collision efficiencies
-    and potentially different pressure dependencies. Two formulations are supported:
+        This class implements linear mixture rules for computing rate constants in gas mixtures
+        where different collision partners (third bodies) have distinct collision efficiencies
+        and potentially different pressure dependencies. Two formulations are supported:
 
-    - **LMR-P** (Linear Mixture Rule in Pressure space): Direct weighted average
-    - **LMR-R** (Linear Mixture Rule in Reduced pressure space): Theoretically rigorous
+        - **LMR-P** (Linear Mixture Rule in Pressure space): Direct weighted average
+        - **LMR-R** (Linear Mixture Rule in Reduced pressure space): Theoretically rigorous
 
-    **LMR-P Formulation:**
+        **LMR-P Formulation:**
 
-    .. math::
-        k_{\\text{LMR-P}}(T, P, \\mathbf{x}) = \\sum_i k_i(T, P) \\cdot x_i
+        .. math::
+            k_{\\text{LMR-P}}(T, P, \\mathbf{x}) = \\sum_i k_i(T, P) \\cdot x_i
 
-    **LMR-R Formulation:**
+        **LMR-R Formulation:**
 
-    .. math::
-        k_{\\text{LMR-R}}(T, P, \\mathbf{x}) = \\sum_i k_i(T, P_i^{\\text{eff}}) \\cdot \\tilde{X}_i
+        .. math::
+            k_{\\text{LMR-R}}(T, P, \\mathbf{x}) = \\sum_i k_i(T, P_i^{\\text{eff}}) \\cdot \\tilde{X}_i
 
-    where:
-        - :math:`k_i(T, P)` is the rate constant for collider i
-        - :math:`x_i` is the mole fraction of species i
-        - :math:`P_i^{\\text{eff}} = P \\cdot \\varepsilon_{\\text{mix}} / \\varepsilon_i` is the effective pressure
-        - :math:`\\varepsilon_i = k_{0,i}(T) / k_{0,\\text{default}}(T)` is the relative efficiency
-        - :math:`\\tilde{X}_i = (\\varepsilon_i \\cdot x_i) / \\sum_j (\\varepsilon_j \\cdot x_j)` is the fractional contribution
+        where:
+            - :math:`k_i(T, P)` is the rate constant for collider i
+            - :math:`x_i` is the mole fraction of species i
+            - :math:`P_i^{\\text{eff}} = P \\cdot \\varepsilon_{\\text{mix}} / \\varepsilon_i` is the effective pressure
+            - :math:`\\varepsilon_i = k_{0,i}(T) / k_{0,\\text{default}}(T)` is the relative efficiency
+            - :math:`\\tilde{X}_i = (\\varepsilon_i \\cdot x_i) / \\sum_j (\\varepsilon_j \\cdot x_j)` is the fractional contribution
 
-    **Collider Types:**
+        **Collider Types:**
 
-    1. **Explicit colliders**: Species with their own pressure-dependent rate expressions
-       (Plog, FallOff, CABR, or Chebyshev)
-    2. **Efficiency-only colliders**: Species that use the default rate with a collision
-       efficiency correction
+        1. **Explicit colliders**: Species with their own pressure-dependent rate expressions
+           (Plog, FallOff, CABR, or Chebyshev)
+        2. **Efficiency-only colliders**: Species that use the default rate with a collision
+           efficiency correction
 
-    Key Features:
-        - Supports mixtures of PLOG, FallOff, CABR, and Chebyshev rate expressions
-        - Temperature-dependent collision efficiencies via Arrhenius expressions
-        - Automatic efficiency computation from low-pressure limits (k0)
-        - Optional explicit efficiency override for explicit colliders
-        - Fully differentiable for gradient-based optimization
-        - Vectorized evaluation over temperature and pressure arrays
+        Key Features:
+            - Supports mixtures of PLOG, FallOff, CABR, and Chebyshev rate expressions
+            - Temperature-dependent collision efficiencies via Arrhenius expressions
+            - Automatic efficiency computation from low-pressure limits (k0)
+            - Optional explicit efficiency override for explicit colliders
+            - Fully differentiable for gradient-based optimization
+            - Vectorized evaluation over temperature and pressure arrays
 
-    Parameters
-    ----------
-    default_rate_constant : Plog | FallOff | CABR | Chebyshev
-        Rate constant for the default collider (M). This is used for species
-        without explicit rate expressions.
-    explicit_rate_constants : dict[str, PressureDepRate], optional
-        Dictionary mapping species names to their pressure-dependent rate constants.
-        These colliders have distinct pressure dependencies from the default.
-    efficiencies : dict[str, Arrhenius], optional
-        Dictionary mapping species names to their collision efficiency Arrhenius expressions.
+        Parameters
+        ----------
+        default_rate_constant : Plog | FallOff | CABR | Chebyshev
+            Rate constant for the default collider (M). This is used for species
+            without explicit rate expressions.
+        explicit_rate_constants : dict[str, PressureDepRate], optional
+            Dictionary mapping species names to their pressure-dependent rate constants.
+            These colliders have distinct pressure dependencies from the default.
+        efficiencies : dict[str, Arrhenius], optional
+            Dictionary mapping species names to their collision efficiency Arrhenius expressions.
 
-        - For efficiency-only colliders: Required, defines epsilon_i(T)
-        - For explicit colliders: Optional override of auto-computed epsilon from k0
+            - For efficiency-only colliders: Required, defines epsilon_i(T)
+            - For explicit colliders: Optional override of auto-computed epsilon from k0
 
-        Efficiency Arrhenius parameters represent epsilon_i(T) directly (not k0_i).
-    name : str, optional
-        Human-readable name for the reaction, by default ""
-    linear : bool, optional
-        If True, use linear mixture rules (LMR). If False, non-linear rules (not implemented),
-        by default True
-    reduced_pressure : bool, optional
-        If True, use LMR-R (reduced pressure space). If False, use LMR-P (pressure space),
-        by default False
+            Efficiency Arrhenius parameters represent epsilon_i(T) directly (not k0_i).
+        name : str, optional
+            Human-readable name for the reaction, by default ""
+        linear : bool, optional
+            If True, use linear mixture rules (LMR). If False, non-linear rules (not implemented),
+            by default True
+        reduced_pressure : bool, optional
+            If True, use LMR-R (reduced pressure space). If False, use LMR-P (pressure space),
+            by default False
 
-    Attributes
-    ----------
-    _default_rate_constant : PressureDepRate
-        Default collider rate constant
-    _explicit_rate_constants : dict[str, PressureDepRate] | None
-        Explicit collider rate constants
-    _efficiencies : dict[str, Arrhenius]
-        All collision efficiencies (auto-computed and/or explicit)
-    _explicit_species : tuple[str, ...]
-        Sorted tuple of all species with efficiencies (static field)
-    _linear : bool
-        Linear vs non-linear mixture rule flag (static field)
-    _reduced_pressure : bool
-        LMR-P vs LMR-R formulation flag (static field)
-    _name : str
-        Reaction name (static field)
+        Attributes
+        ----------
+        _default_rate_constant : PressureDepRate
+            Default collider rate constant
+        _explicit_rate_constants : dict[str, PressureDepRate] | None
+            Explicit collider rate constants
+        _efficiencies : dict[str, Arrhenius]
+            All collision efficiencies (auto-computed and/or explicit)
+        _explicit_species : tuple[str, ...]
+            Sorted tuple of all species with efficiencies (static field)
+        _linear : bool
+            Linear vs non-linear mixture rule flag (static field)
+        _reduced_pressure : bool
+            LMR-P vs LMR-R formulation flag (static field)
+        _name : str
+            Reaction name (static field)
 
-    Raises
-    ------
-    ValueError
-        - If both explicit_rate_constants and efficiencies are None
-        - If explicit rate constant is not a pressure-dependent type
-        - If FallOff/CABR explicit colliders have internal efficiencies defined
-    NotImplementedError
-        If non-linear mixture rules in reduced pressure space are requested
+        Raises
+        ------
+        ValueError
+            - If both explicit_rate_constants and efficiencies are None
+            - If explicit rate constant is not a pressure-dependent type
+            - If FallOff/CABR explicit colliders have internal efficiencies defined
+        NotImplementedError
+            If non-linear mixture rules in reduced pressure space are requested
 
-    Notes
-    -----
-    **Efficiency Handling:**
+        Notes
+        -----
+        **Efficiency Handling:**
 
-    For LMR-R with explicit colliders, efficiencies can be:
+        For LMR-R with explicit colliders, efficiencies can be:
 
-    1. **Auto-computed from k0** (default): :math:`\\varepsilon_i = k_{0,i} / k_{0,\\text{default}}`
-    2. **Explicitly provided**: Override auto-computation by including species in `efficiencies` dict
+        1. **Auto-computed from k0** (default): :math:`\\varepsilon_i = k_{0,i} / k_{0,\\text{default}}`
+        2. **Explicitly provided**: Override auto-computation by including species in `efficiencies` dict
 
-    This allows matching CHEMKIN/Cantera behavior where efficiency parameters may differ
-    from the k0 ratio.
+        This allows matching CHEMKIN/Cantera behavior where efficiency parameters may differ (slightly)
+        from the k0 ratio.
 
-    **Composition Requirements:**
+        **Composition Requirements:**
 
-    - Mole fractions should sum to 1.0 (not enforced, but expected)
-    - Species not in explicit_rate_constants or efficiencies use default behavior
-    - For LMR-R, remaining species use default rate at default effective pressure
+        - Mole fractions should sum to 1.0 (not enforced, but expected)
+        - Species not in explicit_rate_constants or efficiencies use default behavior
+        - For LMR-R, remaining species use default rate at default effective pressure
 
-    References
-    ----------
-    .. [1] A. Stagni and T. Dinelli, "Reduced-Pressure Linear Mixture Rules for
-           Pressure-Dependent Reaction Kinetics," Chemical Engineering Journal, 2025.
-           DOI: https://doi.org/10.1016/j.cej.2025.170737
-    .. [2] Cantera LinearBurkeRate implementation:
-           https://github.com/Cantera/cantera/blob/main/src/kinetics/LinearBurkeRate.cpp
+        References
+        ----------
+        .. [1] M.P. Burke, R. Song. "Evaluating mixture rules for multi-component pressure
+            dependence: H+O2(+M)=HO2(+M)." Proc. Combust. Inst., vol. 36, no. 1,
+            pp. 245–253, 2017. https://doi.org/10.1016/j.proci.2016.06.022
+        .. [2] L. Lei, M.P. Burke. "Bath gas mixture effects on multichannel reactions:
+            Insights and representations for systems beyond single-channel reactions."
+            J. Phys. Chem. A, vol. 123, no. 3, pp. 631–649, 2018.
+            https://doi.org/10.1021/acs.jpca.8b11272
+        .. [3] L. Lei, M.P. Burke. "Evaluating mixture rules and combustion implications
+            for multi-component pressure dependence of allyl+HO2 reactions."
+            Proc. Combust. Inst., vol. 37, no. 1, pp. 355–362, 2019.
+            https://doi.org/10.1016/j.proci.2018.07.075
+        .. [4] L. Lei, M.P. Burke. "Mixture rules and falloff are now major uncertainties
+            in experimentally derived rate parameters for H+O2(+M)=HO2(+M)."
+            Combust. Flame, vol. 213, pp. 467–474, 2020.
+            https://doi.org/10.1016/j.combustflame.2020.01.002
+        .. [5] P.J. Singal, J. Lee, L. Lei, R.L. Speth, M.P. Burke. "Implementation of new
+            mixture rules has a substantial impact on combustion predictions for H2 and NH3."
+            Proc. Combust. Inst., vol. 40, no. 1-4, p. 105779, 2024.
+            https://doi.org/10.1016/j.proci.2024.105779
+        .. [6] Cantera development team. "LinearBurkeRate implementation." GitHub repository,
+            Cantera/cantera. Accessed 2024.
+            https://github.com/Cantera/cantera/blob/main/src/kinetics/LinearBurkeRate.cpp
+        .. [7] A. Stagni, T. Dinelli. "Reduced-pressure linear mixture rules for
+            pressure-dependent reaction kinetics." Chem. Eng. J., vol. 498, p. 170737, 2025.
+            https://doi.org/10.1016/j.cej.2025.170737
     """
 
     _default_rate_constant: PressureDepRate
@@ -224,7 +244,7 @@ class MixtureRule(eqx.Module):
 
         1. For species with explicit rate constants:
            - If efficiency is explicitly provided → use the explicit value
-           - Otherwise → automatically compute from k0 ratio: epsilon_i = k0_i / k0_default
+           - Otherwise -> automatically compute from k0 ratio: :math:`\\epsilon_i = k0_i / k0_{default}`
 
         2. For species without explicit rate constants:
            - Must have efficiency specified in `efficiencies` dict
@@ -260,75 +280,15 @@ class MixtureRule(eqx.Module):
 
             \\epsilon_i(T) = \\frac{A_i}{A_{\\text{default}}} T^{n_i - n_{\\text{default}}}
             \\exp\\left(-\\frac{Ea_i - Ea_{\\text{default}}}{RT}\\right)
-
-        Examples
-        --------
-        **Example 1: Basic LMR-P with efficiency-only colliders**
-
-        >>> from KiRATE.kinetics import MixtureRule, FallOff, Arrhenius
-        >>> default = FallOff(
-        ...     name="H+O2(+M)=HO2(+M)",
-        ...     hpl_parameters={"A": 4.66e12, "n": 0.44, "Ea": 0.0},
-        ...     lpl_parameters={"A": 4.07e19, "n": -1.4, "Ea": -180.5},
-        ...     falloff_parameters={"A": 0.5, "T3": 1.0, "T1": 1e10, "T2": 1e30},
-        ...     falloff_type="troe"
-        ... )
-        >>> h2_eff = Arrhenius(parameters={"A": 2.0, "n": 0, "Ea": 0})
-        >>> h2o_eff = Arrhenius(parameters={"A": 17.6, "n": 0, "Ea": 0})
-        >>> reaction = MixtureRule(
-        ...     name="H+O2(+M)=HO2(+M)",
-        ...     default_rate_constant=default,
-        ...     efficiencies={"H2": h2_eff, "H2O": h2o_eff},
-        ...     linear=True,
-        ...     reduced_pressure=False  # LMR-P
-        ... )
-
-        **Example 2: LMR-R with explicit rate constants (auto k0 efficiency)**
-
-        >>> from KiRATE.kinetics import Plog
-        >>> ar_plog = Plog(
-        ...     name="H+O2(+Ar)=HO2(+Ar)",
-        ...     parameters={
-        ...         0.01: {"A": 8.45e14, "n": -2.19, "Ea": 11.4},
-        ...         1.00: {"A": 8.39e16, "n": -2.19, "Ea": 61.3},
-        ...         100.: {"A": 1.06e21, "n": -2.82, "Ea": 1192.0}
-        ...     },
-        ...     k0_parameters={"A": 6.95e18, "n": -1.19, "Ea": 191.9}
-        ... )
-        >>> reaction = MixtureRule(
-        ...     name="H+O2(+M)=HO2(+M)",
-        ...     default_rate_constant=default,
-        ...     explicit_rate_constants={"Ar": ar_plog},
-        ...     linear=True,
-        ...     reduced_pressure=True  # LMR-R; Ar efficiency computed from k0
-        ... )
-
-        **Example 3: LMR-R with explicit efficiency override (CHEMKIN YAML style)**
-
-        >>> # YAML specifies BOTH explicit rate AND explicit efficiency
-        >>> ar_eff = Arrhenius(parameters={"A": 0.1706, "n": 0.209, "Ea": 191.9})
-        >>> reaction = MixtureRule(
-        ...     name="H+O2(+M)=HO2(+M)",
-        ...     default_rate_constant=default,
-        ...     explicit_rate_constants={"Ar": ar_plog},
-        ...     efficiencies={"Ar": ar_eff},  # Override k0-based computation
-        ...     linear=True,
-        ...     reduced_pressure=True
-        ... )
-
-        See Also
-        --------
-        Plog : Pressure-logarithmic interpolation
-        FallOff : Falloff formalism (Lindemann, Troe, SRI)
-        CABR : Chemically Activated Bimolecular Reaction
-        Arrhenius : Temperature-dependent rate expression
         """
         self._name = name
 
-        self._linear = True if linear is True else False
-        self._reduced_pressure = True if reduced_pressure is True else False
+        self._linear = bool(linear)
+        self._reduced_pressure = bool(reduced_pressure)
         if self._linear is False and self._reduced_pressure is True:
-            raise NotImplementedError("Non-Linear Mixture Rules in the Reduced Pressure (NLMR-R) space are not implemented!")
+            raise NotImplementedError(
+                "Non-Linear Mixture Rules in the Reduced Pressure (NLMR-R) space are not implemented!"
+            )
 
         # rate constant for the default collider
         self._default_rate_constant = default_rate_constant
@@ -358,13 +318,12 @@ class MixtureRule(eqx.Module):
                         f"rate constant (Plog, FallOff, CABR, or Chebyshev). Got {type(rate_constant).__name__}"
                     )
 
-                if isinstance(rate_constant, FallOff) or isinstance(rate_constant, CABR):
+                if isinstance(rate_constant, (FallOff, CABR)) and rate_constant.efficiencies is not None:
                     # they dont need any efficiency within their actual definition
-                    if rate_constant.efficiencies is not None:
-                        raise ValueError(
-                            "Explicit rate constant in the mixture rules formalism should "
-                            "not have collision efficiencies defined!"
-                        )
+                    raise ValueError(
+                        "Explicit rate constant in the mixture rules formalism should "
+                        "not have collision efficiencies defined!"
+                    )
 
             if self.reduced_pressure is True:
                 # Extract k0 from default rate constant once
@@ -378,7 +337,9 @@ class MixtureRule(eqx.Module):
                         # Skip automatic computation - will use provided efficiency
                         continue
                     k0_species = self._extract_k0_arrhenius(rate_constant, species_name)
-                    efficiency_dict[species_name] = self._compute_efficiency_arrhenius(k0_species, k0_default, species_name)
+                    efficiency_dict[species_name] = self._compute_efficiency_arrhenius(
+                        k0_species, k0_default, species_name
+                    )
 
             # Store the explicit rate constants - needed for LMR-R evaluation
             self._explicit_rate_constants = explicit_rate_constants
@@ -488,49 +449,6 @@ class MixtureRule(eqx.Module):
         - Automatic differentiation compatible (use jax.grad)
         - Vectorization handled internally via vmap
 
-        Examples
-        --------
-        **Single temperature and pressure:**
-
-        >>> import jax.numpy as jnp
-        >>> k = reaction.rate_constant(
-        ...     T=1000.0,  # K
-        ...     P=1.0,     # atm
-        ...     composition={"N2": 0.79, "O2": 0.21}
-        ... )
-        >>> print(f"k = {k:.3e} cm³/mol/s")
-
-        **Temperature array at fixed pressure:**
-
-        >>> T_range = jnp.linspace(500, 2500, 100)
-        >>> k_T = reaction.rate_constant(
-        ...     T=T_range,
-        ...     P=1.0,
-        ...     composition={"Ar": 1.0}
-        ... )
-        >>> print(k_T.shape)  # (100,)
-
-        **T-P grid for surface plot:**
-
-        >>> T_range = jnp.linspace(300, 3000, 50)
-        >>> P_range = jnp.logspace(-2, 2, 40)
-        >>> k_grid = reaction.rate_constant(
-        ...     T=T_range,
-        ...     P=P_range,
-        ...     composition={"N2": 0.3, "He": 0.2, "Ar": 0.5}
-        ... )
-        >>> print(k_grid.shape)  # (50, 40)
-
-        **Complex mixture with multiple colliders:**
-
-        >>> composition = {
-        ...     "N2": 0.70,
-        ...     "Ar": 0.20,
-        ...     "He": 0.05,
-        ...     "H2O": 0.05
-        ... }
-        >>> k = reaction.rate_constant(T=1500.0, P=10.0, composition=composition)
-
         See Also
         --------
         compute_relative_efficiencies : Evaluate collision efficiencies at temperature
@@ -559,7 +477,9 @@ class MixtureRule(eqx.Module):
                 vec_func = vmap(lambda p: self._lmr_r_single_P(T, p, jax_composition))
                 return vec_func(P)
         else:  # Non-linear mixture rules
-            raise NotImplementedError("Non-Linear Mixture Rules in the Reduced Pressure (NLMR-R) space are not implemented!")
+            raise NotImplementedError(
+                "Non-Linear Mixture Rules in the Reduced Pressure (NLMR-R) space are not implemented!"
+            )
 
     @eqx.filter_jit
     def _lmr_r_single_P(
@@ -652,25 +572,6 @@ class MixtureRule(eqx.Module):
         default rate constant weighted by :math:`(1 - \\sum_{i \\in \\text{explicit}} \\tilde{X}_i)`.
         This ensures conservation: the sum of all fractional contributions equals 1.0.
 
-        Examples
-        --------
-        **Pure N2 mixture:**
-
-        >>> T = jnp.array([500.0, 1000.0, 1500.0])
-        >>> P = jnp.float64(1.0)  # 1 atm
-        >>> composition = {"N2": jnp.float64(1.0)}
-        >>> k = self._lmr_r_single_P(T, P, composition)
-        >>> print(k.shape)  # (3,)
-
-        **Complex mixture:**
-
-        >>> composition = {
-        ...     "N2": jnp.float64(0.3),
-        ...     "Ar": jnp.float64(0.5),
-        ...     "He": jnp.float64(0.2)
-        ... }
-        >>> k = self._lmr_r_single_P(jnp.float64(1000.0), jnp.float64(10.0), composition)
-
         See Also
         --------
         _lmr_p_single_P : LMR-P implementation for comparison
@@ -716,7 +617,7 @@ class MixtureRule(eqx.Module):
                 rate_expr = self._explicit_rate_constants[species]
 
                 if is_T_vector:  # Element-wise evaluation using vmap
-                    k_i = vmap(lambda t, p: rate_expr.rate_constant(t, p))(T, P_eff_dict[species])
+                    k_i = vmap(lambda t, p, rate=rate_expr: rate.rate_constant(t, p))(T, P_eff_dict[species])
                 else:
                     k_i = rate_expr.rate_constant(T, P_eff_dict[species])
 
@@ -823,35 +724,6 @@ class MixtureRule(eqx.Module):
         without explicit rate constants. These all use the default rate constant,
         so they can be combined into a single term.
 
-        Examples
-        --------
-        **Pure argon mixture:**
-
-        >>> T = jnp.array([500.0, 1000.0, 1500.0])
-        >>> P = jnp.float64(1.0)  # 1 atm
-        >>> composition = {"Ar": jnp.float64(1.0)}
-        >>> k = self._lmr_p_single_P(T, P, composition)
-        >>> print(k.shape)  # (3,)
-
-        **Binary mixture (50% N2, 50% Ar):**
-
-        >>> composition = {
-        ...     "N2": jnp.float64(0.5),
-        ...     "Ar": jnp.float64(0.5)
-        ... }
-        >>> k = self._lmr_p_single_P(jnp.float64(1000.0), jnp.float64(10.0), composition)
-        >>> # k = 0.5 * k_N2(1000, 10) + 0.5 * k_Ar(1000, 10)
-
-        **Mixture with default collider contribution:**
-
-        >>> composition = {
-        ...     "Ar": jnp.float64(0.3),
-        ...     "He": jnp.float64(0.2),
-        ...     "O2": jnp.float64(0.5)  # O2 not in explicit_rate_constants
-        ... }
-        >>> k = self._lmr_p_single_P(jnp.float64(1000.0), jnp.float64(1.0), composition)
-        >>> # k = 0.3*k_Ar + 0.2*k_He + 0.5*k_default
-
         See Also
         --------
         _lmr_r_single_P : LMR-R implementation with effective pressures
@@ -871,7 +743,7 @@ class MixtureRule(eqx.Module):
 
                     if is_T_vector:
                         # Element-wise evaluation for vector T
-                        k_i = vmap(lambda t: rate_expression.rate_constant(t, P))(T)
+                        k_i = vmap(lambda t, rate=rate_expression: rate.rate_constant(t, P))(T)
                     else:
                         k_i = rate_expression.rate_constant(T, P)
 
@@ -966,31 +838,6 @@ class MixtureRule(eqx.Module):
         Most CHEMKIN mechanisms use constant efficiencies (n=0, Ea=0), but temperature-dependent
         efficiencies are fully supported. This is critical for some systems (e.g., H2O as collider
         in H+O2 reactions).
-
-        Examples
-        --------
-        **Constant efficiencies:**
-
-        >>> import jax.numpy as jnp
-        >>> from KiRATE.kinetics import Arrhenius
-        >>> efficiencies = {
-        ...     "H2": Arrhenius(parameters={"A": 2.0, "n": 0, "Ea": 0}),
-        ...     "H2O": Arrhenius(parameters={"A": 17.6, "n": 0, "Ea": 0})
-        ... }
-        >>> species_list = ["N2", "H2", "H2O"]
-        >>> T = jnp.float64(1000.0)
-        >>> epsilon_dict = MixtureRule.compute_relative_efficiencies(T, species_list, efficiencies)
-        >>> print(epsilon_dict)  # {"H2": 2.0, "H2O": 17.6}
-        >>> # N2 not in output (implicitly epsilon = 1.0)
-
-        **Temperature-dependent efficiencies:**
-
-        >>> efficiencies = {
-        ...     "N2": Arrhenius(parameters={"A": 4.6973, "n": -0.157, "Ea": 434.4})
-        ... }
-        >>> T = jnp.linspace(500, 2500, 100)
-        >>> epsilon_dict = MixtureRule.compute_relative_efficiencies(T, ["N2"], efficiencies)
-        >>> print(epsilon_dict["N2"].shape)  # (100,)
 
         See Also
         --------
@@ -1092,35 +939,6 @@ class MixtureRule(eqx.Module):
 
         This is verified in debugging by checking :math:`1 - \\sum_{i \\in \\text{explicit}} \\tilde{X}_i \\approx 0`
         when all species have explicit efficiencies.
-
-        Examples
-        --------
-        **Pure N2 (epsilon = 0.94):**
-
-        >>> import jax.numpy as jnp
-        >>> composition = {"N2": jnp.float64(1.0)}
-        >>> epsilon_dict = {"N2": jnp.float64(0.94)}
-        >>> X_tilde_dict, eps_mix = MixtureRule.compute_fractional_contributions(composition, epsilon_dict)
-        >>> print(X_tilde_dict["N2"])  # 1.0 (100% contribution)
-        >>> print(eps_mix)  # 0.94 (mixture efficiency)
-
-        **Binary mixture (Ar + N2):**
-
-        >>> composition = {"Ar": jnp.float64(0.5), "N2": jnp.float64(0.5)}
-        >>> epsilon_dict = {"Ar": jnp.float64(0.41), "N2": jnp.float64(0.94)}
-        >>> X_tilde_dict, eps_mix = MixtureRule.compute_fractional_contributions(composition, epsilon_dict)
-        >>> print(X_tilde_dict["Ar"])  # 0.304 (weaker collider, less contribution)
-        >>> print(X_tilde_dict["N2"])  # 0.696 (stronger collider, more contribution)
-        >>> print(eps_mix)  # 0.675 (weighted average)
-
-        **Mixture with default collider:**
-
-        >>> composition = {"Ar": jnp.float64(0.3), "O2": jnp.float64(0.7)}
-        >>> epsilon_dict = {"Ar": jnp.float64(0.41)}  # O2 not in dict
-        >>> X_tilde_dict, eps_mix = MixtureRule.compute_fractional_contributions(composition, epsilon_dict)
-        >>> print(X_tilde_dict["Ar"])  # 0.123 / 0.823 = 0.149
-        >>> print(X_tilde_dict["O2"])  # 0.700 / 0.823 = 0.851 (epsilon=1.0 implicit)
-        >>> print(eps_mix)  # 0.823
         """
         # Compute weighted sum of efficiencies: sum_j epsilon_j(T) * x_j
         # For default collider, epsilon = 1.0 by definition
