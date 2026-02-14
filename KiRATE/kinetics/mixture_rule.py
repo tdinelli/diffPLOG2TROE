@@ -22,142 +22,142 @@ PressureDepRate: TypeAlias = Plog | FallOff | CABR | Chebyshev
 
 class MixtureRule(eqx.Module):
     """
-        Mixture rule calculator for gas-phase reactions with multiple colliders.
+    Mixture rule calculator for gas-phase reactions with multiple colliders.
 
-        This class implements linear mixture rules for computing rate constants in gas mixtures
-        where different collision partners (third bodies) have distinct collision efficiencies
-        and potentially different pressure dependencies. Two formulations are supported:
+    This class implements linear mixture rules for computing rate constants in gas mixtures
+    where different collision partners (third bodies) have distinct collision efficiencies
+    and potentially different pressure dependencies. Two formulations are supported:
 
-        - **LMR-P** (Linear Mixture Rule in Pressure space): Direct weighted average
-        - **LMR-R** (Linear Mixture Rule in Reduced pressure space): Theoretically rigorous
+    - **LMR-P** (Linear Mixture Rule in Pressure space): Direct weighted average
+    - **LMR-R** (Linear Mixture Rule in Reduced pressure space): Theoretically rigorous
 
-        **LMR-P Formulation:**
+    **LMR-P Formulation:**
 
-        .. math::
-            k_{\\text{LMR-P}}(T, P, \\mathbf{x}) = \\sum_i k_i(T, P) \\cdot x_i
+    .. math::
+        k_{\\text{LMR-P}}(T, P, \\mathbf{x}) = \\sum_i k_i(T, P) \\cdot x_i
 
-        **LMR-R Formulation:**
+    **LMR-R Formulation:**
 
-        .. math::
-            k_{\\text{LMR-R}}(T, P, \\mathbf{x}) = \\sum_i k_i(T, P_i^{\\text{eff}}) \\cdot \\tilde{X}_i
+    .. math::
+        k_{\\text{LMR-R}}(T, P, \\mathbf{x}) = \\sum_i k_i(T, P_i^{\\text{eff}}) \\cdot \\tilde{X}_i
 
-        where:
-            - :math:`k_i(T, P)` is the rate constant for collider i
-            - :math:`x_i` is the mole fraction of species i
-            - :math:`P_i^{\\text{eff}} = P \\cdot \\varepsilon_{\\text{mix}} / \\varepsilon_i` is the effective pressure
-            - :math:`\\varepsilon_i = k_{0,i}(T) / k_{0,\\text{default}}(T)` is the relative efficiency
-            - :math:`\\tilde{X}_i = (\\varepsilon_i \\cdot x_i) / \\sum_j (\\varepsilon_j \\cdot x_j)` is the fractional contribution
+    where:
+        - :math:`k_i(T, P)` is the rate constant for collider i
+        - :math:`x_i` is the mole fraction of species i
+        - :math:`P_i^{\\text{eff}} = P \\cdot \\varepsilon_{\\text{mix}} / \\varepsilon_i` is the effective pressure
+        - :math:`\\varepsilon_i = k_{0,i}(T) / k_{0,\\text{default}}(T)` is the relative efficiency
+        - :math:`\\tilde{X}_i = (\\varepsilon_i \\cdot x_i) / \\sum_j (\\varepsilon_j \\cdot x_j)` is the fractional contribution
 
-        **Collider Types:**
+    **Collider Types:**
 
-        1. **Explicit colliders**: Species with their own pressure-dependent rate expressions
-           (Plog, FallOff, CABR, or Chebyshev)
-        2. **Efficiency-only colliders**: Species that use the default rate with a collision
-           efficiency correction
+    1. **Explicit colliders**: Species with their own pressure-dependent rate expressions
+       (Plog, FallOff, CABR, or Chebyshev)
+    2. **Efficiency-only colliders**: Species that use the default rate with a collision
+       efficiency correction
 
-        Key Features:
-            - Supports mixtures of PLOG, FallOff, CABR, and Chebyshev rate expressions
-            - Temperature-dependent collision efficiencies via Arrhenius expressions
-            - Automatic efficiency computation from low-pressure limits (k0)
-            - Optional explicit efficiency override for explicit colliders
-            - Fully differentiable for gradient-based optimization
-            - Vectorized evaluation over temperature and pressure arrays
+    Key Features:
+        - Supports mixtures of PLOG, FallOff, CABR, and Chebyshev rate expressions
+        - Temperature-dependent collision efficiencies via Arrhenius expressions
+        - Automatic efficiency computation from low-pressure limits (k0)
+        - Optional explicit efficiency override for explicit colliders
+        - Fully differentiable for gradient-based optimization
+        - Vectorized evaluation over temperature and pressure arrays
 
-        Parameters
-        ----------
-        default_rate_constant : Plog | FallOff | CABR | Chebyshev
-            Rate constant for the default collider (M). This is used for species
-            without explicit rate expressions.
-        explicit_rate_constants : dict[str, PressureDepRate], optional
-            Dictionary mapping species names to their pressure-dependent rate constants.
-            These colliders have distinct pressure dependencies from the default.
-        efficiencies : dict[str, Arrhenius], optional
-            Dictionary mapping species names to their collision efficiency Arrhenius expressions.
+    Parameters
+    ----------
+    default_rate_constant : Plog | FallOff | CABR | Chebyshev
+        Rate constant for the default collider (M). This is used for species
+        without explicit rate expressions.
+    explicit_rate_constants : dict[str, PressureDepRate], optional
+        Dictionary mapping species names to their pressure-dependent rate constants.
+        These colliders have distinct pressure dependencies from the default.
+    efficiencies : dict[str, Arrhenius], optional
+        Dictionary mapping species names to their collision efficiency Arrhenius expressions.
 
-            - For efficiency-only colliders: Required, defines epsilon_i(T)
-            - For explicit colliders: Optional override of auto-computed epsilon from k0
+        - For efficiency-only colliders: Required, defines epsilon_i(T)
+        - For explicit colliders: Optional override of auto-computed epsilon from k0
 
-            Efficiency Arrhenius parameters represent epsilon_i(T) directly (not k0_i).
-        name : str, optional
-            Human-readable name for the reaction, by default ""
-        linear : bool, optional
-            If True, use linear mixture rules (LMR). If False, non-linear rules (not implemented),
-            by default True
-        reduced_pressure : bool, optional
-            If True, use LMR-R (reduced pressure space). If False, use LMR-P (pressure space),
-            by default False
+        Efficiency Arrhenius parameters represent epsilon_i(T) directly (not k0_i).
+    name : str, optional
+        Human-readable name for the reaction, by default ""
+    linear : bool, optional
+        If True, use linear mixture rules (LMR). If False, non-linear rules (not implemented),
+        by default True
+    reduced_pressure : bool, optional
+        If True, use LMR-R (reduced pressure space). If False, use LMR-P (pressure space),
+        by default False
 
-        Attributes
-        ----------
-        _default_rate_constant : PressureDepRate
-            Default collider rate constant
-        _explicit_rate_constants : dict[str, PressureDepRate] | None
-            Explicit collider rate constants
-        _efficiencies : dict[str, Arrhenius]
-            All collision efficiencies (auto-computed and/or explicit)
-        _explicit_species : tuple[str, ...]
-            Sorted tuple of all species with efficiencies (static field)
-        _linear : bool
-            Linear vs non-linear mixture rule flag (static field)
-        _reduced_pressure : bool
-            LMR-P vs LMR-R formulation flag (static field)
-        _name : str
-            Reaction name (static field)
+    Attributes
+    ----------
+    _default_rate_constant : PressureDepRate
+        Default collider rate constant
+    _explicit_rate_constants : dict[str, PressureDepRate] | None
+        Explicit collider rate constants
+    _efficiencies : dict[str, Arrhenius]
+        All collision efficiencies (auto-computed and/or explicit)
+    _explicit_species : tuple[str, ...]
+        Sorted tuple of all species with efficiencies (static field)
+    _linear : bool
+        Linear vs non-linear mixture rule flag (static field)
+    _reduced_pressure : bool
+        LMR-P vs LMR-R formulation flag (static field)
+    _name : str
+        Reaction name (static field)
 
-        Raises
-        ------
-        ValueError
-            - If both explicit_rate_constants and efficiencies are None
-            - If explicit rate constant is not a pressure-dependent type
-            - If FallOff/CABR explicit colliders have internal efficiencies defined
-        NotImplementedError
-            If non-linear mixture rules in reduced pressure space are requested
+    Raises
+    ------
+    ValueError
+        - If both explicit_rate_constants and efficiencies are None
+        - If explicit rate constant is not a pressure-dependent type
+        - If FallOff/CABR explicit colliders have internal efficiencies defined
+    NotImplementedError
+        If non-linear mixture rules in reduced pressure space are requested
 
-        Notes
-        -----
-        **Efficiency Handling:**
+    Notes
+    -----
+    **Efficiency Handling:**
 
-        For LMR-R with explicit colliders, efficiencies can be:
+    For LMR-R with explicit colliders, efficiencies can be:
 
-        1. **Auto-computed from k0** (default): :math:`\\varepsilon_i = k_{0,i} / k_{0,\\text{default}}`
-        2. **Explicitly provided**: Override auto-computation by including species in `efficiencies` dict
+    1. **Auto-computed from k0** (default): :math:`\\varepsilon_i = k_{0,i} / k_{0,\\text{default}}`
+    2. **Explicitly provided**: Override auto-computation by including species in `efficiencies` dict
 
-        This allows matching CHEMKIN/Cantera behavior where efficiency parameters may differ (slightly)
-        from the k0 ratio.
+    This allows matching CHEMKIN/Cantera behavior where efficiency parameters may differ (slightly)
+    from the k0 ratio.
 
-        **Composition Requirements:**
+    **Composition Requirements:**
 
-        - Mole fractions should sum to 1.0 (not enforced, but expected)
-        - Species not in explicit_rate_constants or efficiencies use default behavior
-        - For LMR-R, remaining species use default rate at default effective pressure
+    - Mole fractions should sum to 1.0 (not enforced, but expected)
+    - Species not in explicit_rate_constants or efficiencies use default behavior
+    - For LMR-R, remaining species use default rate at default effective pressure
 
-        References
-        ----------
-        .. [1] M.P. Burke, R. Song. "Evaluating mixture rules for multi-component pressure
-            dependence: H+O2(+M)=HO2(+M)." Proc. Combust. Inst., vol. 36, no. 1,
-            pp. 245–253, 2017. https://doi.org/10.1016/j.proci.2016.06.022
-        .. [2] L. Lei, M.P. Burke. "Bath gas mixture effects on multichannel reactions:
-            Insights and representations for systems beyond single-channel reactions."
-            J. Phys. Chem. A, vol. 123, no. 3, pp. 631–649, 2018.
-            https://doi.org/10.1021/acs.jpca.8b11272
-        .. [3] L. Lei, M.P. Burke. "Evaluating mixture rules and combustion implications
-            for multi-component pressure dependence of allyl+HO2 reactions."
-            Proc. Combust. Inst., vol. 37, no. 1, pp. 355–362, 2019.
-            https://doi.org/10.1016/j.proci.2018.07.075
-        .. [4] L. Lei, M.P. Burke. "Mixture rules and falloff are now major uncertainties
-            in experimentally derived rate parameters for H+O2(+M)=HO2(+M)."
-            Combust. Flame, vol. 213, pp. 467–474, 2020.
-            https://doi.org/10.1016/j.combustflame.2020.01.002
-        .. [5] P.J. Singal, J. Lee, L. Lei, R.L. Speth, M.P. Burke. "Implementation of new
-            mixture rules has a substantial impact on combustion predictions for H2 and NH3."
-            Proc. Combust. Inst., vol. 40, no. 1-4, p. 105779, 2024.
-            https://doi.org/10.1016/j.proci.2024.105779
-        .. [6] Cantera development team. "LinearBurkeRate implementation." GitHub repository,
-            Cantera/cantera. Accessed 2024.
-            https://github.com/Cantera/cantera/blob/main/src/kinetics/LinearBurkeRate.cpp
-        .. [7] A. Stagni, T. Dinelli. "Reduced-pressure linear mixture rules for
-            pressure-dependent reaction kinetics." Chem. Eng. J., vol. 498, p. 170737, 2025.
-            https://doi.org/10.1016/j.cej.2025.170737
+    References
+    ----------
+    .. [1] M.P. Burke, R. Song. "Evaluating mixture rules for multi-component pressure
+        dependence: H+O2(+M)=HO2(+M)." Proc. Combust. Inst., vol. 36, no. 1,
+        pp. 245–253, 2017. https://doi.org/10.1016/j.proci.2016.06.022
+    .. [2] L. Lei, M.P. Burke. "Bath gas mixture effects on multichannel reactions:
+        Insights and representations for systems beyond single-channel reactions."
+        J. Phys. Chem. A, vol. 123, no. 3, pp. 631–649, 2018.
+        https://doi.org/10.1021/acs.jpca.8b11272
+    .. [3] L. Lei, M.P. Burke. "Evaluating mixture rules and combustion implications
+        for multi-component pressure dependence of allyl+HO2 reactions."
+        Proc. Combust. Inst., vol. 37, no. 1, pp. 355–362, 2019.
+        https://doi.org/10.1016/j.proci.2018.07.075
+    .. [4] L. Lei, M.P. Burke. "Mixture rules and falloff are now major uncertainties
+        in experimentally derived rate parameters for H+O2(+M)=HO2(+M)."
+        Combust. Flame, vol. 213, pp. 467–474, 2020.
+        https://doi.org/10.1016/j.combustflame.2020.01.002
+    .. [5] P.J. Singal, J. Lee, L. Lei, R.L. Speth, M.P. Burke. "Implementation of new
+        mixture rules has a substantial impact on combustion predictions for H2 and NH3."
+        Proc. Combust. Inst., vol. 40, no. 1-4, p. 105779, 2024.
+        https://doi.org/10.1016/j.proci.2024.105779
+    .. [6] Cantera development team. "LinearBurkeRate implementation." GitHub repository,
+        Cantera/cantera. Accessed 2024.
+        https://github.com/Cantera/cantera/blob/main/src/kinetics/LinearBurkeRate.cpp
+    .. [7] A. Stagni, T. Dinelli. "Reduced-pressure linear mixture rules for
+        pressure-dependent reaction kinetics." Chem. Eng. J., vol. 498, p. 170737, 2025.
+        https://doi.org/10.1016/j.cej.2025.170737
     """
 
     _default_rate_constant: PressureDepRate
