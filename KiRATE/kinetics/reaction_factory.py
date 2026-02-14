@@ -130,15 +130,15 @@ class Reaction(eqx.Module):
         Raises
         ------
         ValueError
-            If any _species in reactants or products is not found in the _species database
+            If any species in reactants or products is not found in the species database
 
         Notes
         -----
         The change in moles (delta_nu) is pre-computed and stored as a static field
         for efficiency in equilibrium constant calculations.
 
-        All _species referenced in reactants and products must exist in the
-        _species database. This is validated during initialization.
+        All species referenced in reactants and products must exist in the
+        species database. This is validated during initialization.
         """
         if reactants is None and products is None:
             # Parse stoichiometry from reaction name string
@@ -315,7 +315,7 @@ class Reaction(eqx.Module):
         # This is more efficient as we:
         # 1. Compute each species' g_RT only once (even if in both reactants and products)
         # 2. Use vectorized operations for the sum
-        g_RT_values = jnp.array([species.g_RT(T) for species in self._species_for_equilibrium])
+        g_RT_values = jnp.array([species.g_RT(T_array) for species in self._species_for_equilibrium])
         DG_RT = jnp.dot(self._net_stoich_coeffs, g_RT_values)
 
         # Pressure-based equilibrium constant: K_p = exp(-DG/(RT))

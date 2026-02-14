@@ -257,13 +257,19 @@ class Plog(eqx.Module):
         T = jnp.asarray(T, dtype=jnp.float64)
         P = jnp.asarray(P, dtype=jnp.float64)
 
-        if jnp.isscalar(P) or P.ndim == 0:  # Scalar pressure - evaluate directly
-            return self._single_P_rate_constant(T, P)
-        else:  # Vector pressure - vectorize over pressure dimension
-            vec_func = vmap(lambda p: self._single_P_rate_constant(T, p))
-            return vec_func(P)
+        # Instead of branching on scalar vs vector P (which would cause double JIT compilation),
+        # we normalize P to always be at least 1D and apply vmap uniformly.
+        # This allows JAX to fuse the entire computation into a single optimized kernel.
+        P = jnp.atleast_1d(jnp.asarray(P, dtype=jnp.float64))
 
-    @eqx.filter_jit
+        # Apply vmap over pressure dimension: vmap maps over first axis of P
+        vec_func = vmap(lambda p: self._single_P_rate_constant(T, p))
+        results = vec_func(P)
+
+        # Return scalar if input P was scalar, otherwise return vectorized results
+        # This preserves the expected output shape for user code
+        return results[0] if P.size == 1 else results
+
     def _single_P_rate_constant(
         self,
         T: Float64[Array, ""] | Float64[Array, "nt"],
@@ -276,6 +282,10 @@ class Plog(eqx.Module):
         (continuous) operations to maintain full differentiability for automatic
         differentiation. The key insight is to replace hard index selection with
         weighted interpolation across all pressure intervals.
+
+        This method is always called from within the JIT-compiled rate_constant(),
+        so it will be automatically inlined and compiled together as one kernel.
+        The explicit @eqx.filter_jit is redundant.
 
         Algorithm Overview:
         -------------------

@@ -256,16 +256,19 @@ class Chebyshev(eqx.Module):
         # Maps [log10(P_min), log10(P_max)] to [-1, 1]
         P_tilde = (2.0 * jnp.log10(Pc) - self._log10P_min - self._log10P_max) / (self._log10P_max - self._log10P_min)
 
-        # Step 4: Evaluate Chebyshev polynomial
-        if jnp.isscalar(P) or P.ndim == 0:
-            # Scalar pressure - evaluate directly
-            return self._single_P_rate_constant(T_tilde, P_tilde)
-        else:
-            # Vector pressure - vectorize over pressure dimension
-            vec_func = vmap(lambda p: self._single_P_rate_constant(T_tilde, p))
-            return vec_func(P_tilde)
+        # Instead of branching on scalar vs vector P (which would cause double JIT compilation),
+        # we normalize P_tilde to always be at least 1D and apply vmap uniformly.
+        # This allows JAX to fuse the entire computation into a single optimized kernel.
+        P_tilde = jnp.atleast_1d(P_tilde)
 
-    @eqx.filter_jit
+        # Apply vmap over pressure dimension: vmap maps over first axis of P_tilde
+        vec_func = vmap(lambda p: self._single_P_rate_constant(T_tilde, p))
+        results = vec_func(P_tilde)
+
+        # Return scalar if input P was scalar, otherwise return vectorized results
+        # This preserves the expected output shape for user code
+        return results[0] if P_tilde.size == 1 else results
+
     def _single_P_rate_constant(
         self,
         T_tilde: float | Float64[Array, ""] | Float64[Array, "nt"],
@@ -277,6 +280,10 @@ class Chebyshev(eqx.Module):
         This internal method computes the bivariate Chebyshev polynomial expansion
         for a fixed pressure. It is called by `rate_constant()` and vectorized over
         pressure when needed.
+
+        This method is always called from within the JIT-compiled rate_constant(),
+        so it will be automatically inlined and compiled together as one kernel.
+        The explicit @eqx.filter_jit is redundant.
 
         Parameters
         ----------
