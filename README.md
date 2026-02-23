@@ -1,9 +1,14 @@
-# KiRATE
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://kirate.readthedocs.io/)
+<div align="center">
+  <img src="docs/_static/logo.png" alt="KiRATE Logo" width="200"/>
 
-**KiRATE** (**Ki**netic **R**ate **A**nalysis and **T**uning **E**nvironment) is a gradient processing and kinetic analysis library for JAX, designed to facilitate research in chemical reaction kinetics.
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+  [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://kirate.readthedocs.io/)
+  [![CI](https://github.com/tdinelli/KiRATE/actions/workflows/ci.yml/badge.svg)](https://github.com/tdinelli/KiRATE/actions/workflows/ci.yml)
+  [![codecov](https://codecov.io/gh/tdinelli/KiRATE/graph/badge.svg)](https://codecov.io/gh/tdinelli/KiRATE)
+</div>
+
+**KiRATE** (**Ki**netic **R**ate **A**nalysis and **T**uning **E**nvironment) is a gradient processing and kinetic analysis library for JAX, designed to facilitate research in chemical reaction kinetics, specifically designed for the oxidation and pyrolysis. KiRATE was developed by [Timoteo Dinelli](https://github.com/tdinelli) at the [CRECK Modeling Lab](https://creckmodeling.polimi.it/), Politecnico di Milano.
 
 ---
 
@@ -24,7 +29,9 @@ KiRATE provides a comprehensive suite of composable building blocks for working 
 ## Installation
 
 ### From PyPI
-**TODO**
+```bash
+pip install KiRATE
+```
 
 ### From GitHub (latest development version)
 
@@ -32,32 +39,22 @@ KiRATE provides a comprehensive suite of composable building blocks for working 
 pip install git+https://github.com/tdinelli/KiRATE.git
 ```
 
-### For development
-
-```bash
-git clone https://github.com/tdinelli/KiRATE.git
-cd KiRATE
-pip install -e ".[dev]"
-```
-
 ## Quick Start
 
-### Fall-off Rate Constant with Third-Body Efficiencies
+### TROE FallOff Rate Constant with Third-Body Efficiencies
 
 ```python
 from KiRATE.kinetics import FallOff
 
-# Create a fall-off rate constant
 reaction = FallOff(
-    name="2CH3(+M)=C2H6(+M)",
-    hpl_parameters={"A": 9.030E+16, "n": -1.180, "Ea": 654.00},
-    lpl_parameters={"A": 3.180E+41, "n": -7.030, "Ea": 2762.00},
-    falloff_parameters={"A": 0.6041, "T3": 6927, "T1": 132.00, "T2": 2762.00},
-    falloff_type="troe",
-    efficiencies={"H2": 2, "CO": 2, "CO2": 3, "H2O": 5},
+    name               = "CH3+CH3(+M)=C2H6(+M)",
+    falloff_type       = "troe",
+    hpl_parameters     = {"A": 9.030E+16, "n": -1.180, "Ea": 654.00},
+    lpl_parameters     = {"A": 3.180E+41, "n": -7.030, "Ea": 2762.00},
+    falloff_parameters = {"A": 0.6041, "T3": 6927, "T1": 132.00, "T2": 2762.00},
+    efficiencies       = {"H2": 2, "CO": 2, "CO2": 3, "H2O": 5},
 )
 
-# Evaluate at 1000 K, 1 atm
 k = reaction.rate_constant(T=1000.0, P=1.0)
 print(f"k(1000 K, 1 atm) = {k:.3e} cm³/mol/s")
 ```
@@ -67,17 +64,15 @@ print(f"k(1000 K, 1 atm) = {k:.3e} cm³/mol/s")
 ```python
 from KiRATE.kinetics import Plog
 
-# Pressure-dependent rate constants using PLOG interpolation
 plog = Plog(
-    parameters={
-        0.01: {"A": 5.02e21, "n": -4.24, "Ea": 898.9},
-        1.0:  {"A": 3.09e23, "n": -4.17, "Ea": 1621.0},
-        100.0: {"A": 7.29e22, "n": -3.41, "Ea": 2660.0},
-    },
-    name="OH+NO=HONO"
+  name       = "OH+NO=HONO"
+  parameters = {
+    0.01:  {"A": 5.02e21, "n": -4.24, "Ea": 898.9},
+    1.0:   {"A": 3.09e23, "n": -4.17, "Ea": 1621.0},
+    100.0: {"A": 7.29e22, "n": -3.41, "Ea": 2660.0},
+  }
 )
 
-# Compute rate at specific T and P
 k = plog.rate_constant(T=1500.0, P=10.0)
 print(f"k(1500 K, 10 atm) = {k:.3e}")
 ```
@@ -109,9 +104,7 @@ If you use KiRATE in your research, please cite:
 
 Contributions are welcome! Please see [CONTRIBUTING.md](docs/contributing.md) for guidelines.
 
-## About
-
-KiRATE was developed by [Timoteo Dinelli](https://github.com/tdinelli) at the [CRECK Modeling Lab](https://creckmodeling.polimi.it/), Politecnico di Milano.
+## Bonus
 
 **Want a cool logo like ours?** Contact [Alessia Contessi](https://alessiacontessi.framer.website/) for professional design services.
 
