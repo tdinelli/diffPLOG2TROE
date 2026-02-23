@@ -3,7 +3,6 @@ import os
 import cantera as ct
 import numpy as np
 
-
 ct_version = ct.__version__
 current_file_path = os.path.abspath(__file__)
 current_dir = os.path.dirname(current_file_path)
