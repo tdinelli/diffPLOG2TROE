@@ -11,6 +11,7 @@ from .chemkin_parser import (
     parse_species,
     parse_stoichiometry,
     parse_threebody,
+    parse_transport,
 )
 from .physical_constants import constants
 from .thermodynamic_utilities import calculate_concentration, calculate_effective_concentration
@@ -24,6 +25,7 @@ __all__ = [
     "parse_species",
     "parse_stoichiometry",
     "parse_threebody",
+    "parse_transport",
     # Physical constants
     "constants",
     # Thermodynamic utilities

@@ -24,6 +24,8 @@ class PhysicalConstants:
     _MOL_TO_KMOL: Float64[Array, ""] = jnp.float64(1000.0)  # Conversion from mol to kmol
     R_J_mol_K: Float64[Array, ""] = jnp.float64(8.31446261815324)  # Ideal gas constant [J/mol/K]
     N_A: Float64[Array, ""] = jnp.float64(6.02214076e23)  # Avogadro constant [1/mol]
+    epsilon_0: Float64[Array, ""] = jnp.float64(8.8541878128e-12)  # Vacuum permittivity [F/m]
+    kb: Float64[Array, ""] = jnp.float64(1.380649e-23)  # Boltzmann constant [J/K]
 
     @property
     def R_cal_mol(self) -> Float64[Array, ""]:

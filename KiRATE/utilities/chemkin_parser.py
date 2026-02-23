@@ -1265,6 +1265,158 @@ def check_reaction_name(reaction_name: str, m_is_allowed: bool = False) -> None:
             )
 
 
+def parse_transport(transport_string: str) -> tuple[str, int, float, float, float, float, float]:
+    """
+    Parse CHEMKIN transport data for a species.
+
+    The CHEMKIN transport database format provides Lennard-Jones potential parameters
+    and other properties needed for computing transport properties (viscosity, thermal
+    conductivity, diffusion coefficients) using kinetic theory.
+
+    Parameters
+    ----------
+    transport_string : str
+        Single-line CHEMKIN transport data format with the following structure:
+
+        .. code-block:: text
+
+            SPECIES_NAME  geometry  LJ_depth  LJ_diameter  dipole  polarizability  Z_rot
+
+        Where:
+            - SPECIES_NAME: Species identifier (must match thermodynamic data)
+            - geometry: Molecular geometry index (0=monatomic, 1=linear, 2=nonlinear)
+            - LJ_depth: Lennard-Jones well depth epsilon/k_B [K]
+            - LJ_diameter: Lennard-Jones collision diameter sigma [Angstrom]
+            - dipole: Dipole moment [Debye]
+            - polarizability: Polarizability [Angstrom^3]
+            - Z_rot: Rotational relaxation collision number at 298K [dimensionless]
+
+    Returns
+    -------
+    species_name : str
+        Chemical species identifier (e.g., "H2O", "CH4")
+    geometry : int
+        Molecular geometry index:
+            - 0: Monatomic (e.g., Ar, He, Ne)
+            - 1: Linear (e.g., CO2, N2, acetylene)
+            - 2: Nonlinear (e.g., H2O, CH4, benzene)
+    epsilon_over_k : float
+        Lennard-Jones well depth divided by Boltzmann constant [K]
+    sigma : float
+        Lennard-Jones collision diameter [Angstrom]
+    dipole_moment : float
+        Dipole moment [Debye]
+    polarizability : float
+        Polarizability [Angstrom^3]
+    rotational_relaxation : float
+        Rotational relaxation collision number at 298K [dimensionless]
+
+    Raises
+    ------
+    ValueError
+        If input is empty, malformed, or contains insufficient data
+
+    Notes
+    -----
+    **CHEMKIN Transport Data Format:**
+
+    The transport data is typically stored in a separate file (e.g., ``tran.dat``)
+    with one line per species. The format is space-separated with fixed semantics:
+
+    .. code-block:: text
+
+        H2       1   38.000     2.920     0.000     0.790   280.000
+        O2       1  107.400     3.458     0.000     1.600     3.800
+        H2O      2  572.400     2.605     1.844     0.000     4.000
+        AR       0  136.500     3.330     0.000     0.000     0.000
+
+    **Lennard-Jones Potential Parameters:**
+
+    The Lennard-Jones 12-6 potential is:
+
+    .. math::
+        \\phi(r) = 4\\epsilon \\left[ \\left(\\frac{\\sigma}{r}\\right)^{12} - \\left(\\frac{\\sigma}{r}\\right)^6 \\right]
+
+    Where:
+        - epsilon: Well depth [K * k_B when epsilon/k_B is given]
+        - sigma: Collision diameter [Angstrom]
+        - r: Intermolecular distance
+
+    **Geometry Index Interpretation:**
+
+    - **0 (Monatomic)**: No rotational or vibrational modes (e.g., noble gases, atoms)
+    - **1 (Linear)**: 2 rotational modes, vibrational modes along molecular axis
+    - **2 (Nonlinear)**: 3 rotational modes, complex vibrational modes
+
+    **Rotational Relaxation:**
+
+    Z_rot is the rotational relaxation collision number, representing the number
+    of collisions required for rotational energy equilibration. Default value
+    is often taken as 1.0 when unknown.
+
+    References
+    ----------
+    .. [1] Kee, R. J., Dixon-Lewis, G., Warnatz, J., Coltrin, M. E., and Miller, J. A.
+           "A Fortran Computer Code Package for the Evaluation of Gas-Phase
+           Multicomponent Transport Properties." Sandia Report SAND86-8246 (1986).
+    .. [2] Kee, R. J., Rupley, F. M., and Miller, J. A. "CHEMKIN-II: A Fortran
+           Chemical Kinetics Package for the Analysis of Gas-Phase Chemical
+           Kinetics." Sandia Report SAND89-8009 (1989).
+
+    Examples
+    --------
+    >>> transport_data = "H2O      2  572.400     2.605     1.844     0.000     4.000"
+    >>> name, geom, eps_k, sig, dip, pol, zrot = parse_transport(transport_data)
+    >>> print(f"{name}: geometry={geom}, epsilon/k={eps_k} K, sigma={sig} Å")
+    H2O: geometry=2, epsilon/k=572.4 K, sigma=2.605 Å
+    """
+    # Strip whitespace and validate
+    line = transport_string.strip()
+    if not line:
+        raise ValueError("Empty CHEMKIN transport data")
+
+    # Remove comments (everything after '!')
+    if "!" in line:
+        line = line.split("!")[0].strip()
+
+    # Split by whitespace
+    parts = line.split()
+
+    if len(parts) < 7:
+        raise ValueError(f"Expected 7 fields in transport data, got {len(parts)}: {line}")
+
+    # Parse fields
+    species_name = parts[0].strip()
+
+    try:
+        geometry = int(parts[1])
+        epsilon_over_k = float(parts[2])
+        sigma = float(parts[3])
+        dipole_moment = float(parts[4])
+        polarizability = float(parts[5])
+        rotational_relaxation = float(parts[6])
+    except ValueError as e:
+        raise ValueError(f"Error parsing numeric values in transport data: {line}") from e
+
+    # Validate geometry index
+    if geometry not in [0, 1, 2]:
+        raise ValueError(f"Invalid geometry index {geometry}. Must be 0 (monatomic), 1 (linear), or 2 (nonlinear)")
+
+    # Validate physical parameters
+    if epsilon_over_k <= 0:
+        raise ValueError(f"Lennard-Jones well depth epsilon/k must be positive, got {epsilon_over_k}")
+    if sigma <= 0:
+        raise ValueError(f"Lennard-Jones collision diameter sigma must be positive, got {sigma}")
+    if dipole_moment < 0:
+        raise ValueError(f"Dipole moment must be non-negative, got {dipole_moment}")
+    if polarizability < 0:
+        raise ValueError(f"Polarizability must be non-negative, got {polarizability}")
+    if rotational_relaxation < 0:
+        raise ValueError(f"Rotational relaxation collision number must be non-negative, got {rotational_relaxation}")
+
+    return species_name, geometry, epsilon_over_k, sigma, dipole_moment, polarizability, rotational_relaxation
+
+
 def fort_float(s: str) -> float:
     """
     Convert Fortran-formatted floating-point string to Python float.

@@ -12,19 +12,24 @@ from jaxtyping import Array, Float64
 
 from KiRATE.species.atomic_weights_db import get_molecular_weight
 from KiRATE.species.nasa7_polynomial import build_temperature_powers, eval_cp_over_R, eval_h_over_RT, eval_s_over_R
-from KiRATE.utilities import parse_species
+from KiRATE.species.transport_properties import compute_thermal_conductivity, compute_viscosity
+from KiRATE.utilities import parse_species, parse_transport
 from KiRATE.utilities.physical_constants import constants
 
 
 class Species(eqx.Module):
     """
-    Chemical species with NASA 7-coefficient polynomial thermodynamic properties.
+    Chemical species with NASA 7-coefficient polynomial thermodynamic properties
+    and optional Lennard-Jones transport properties.
 
     This class represents a chemical species and provides methods to calculate
     its thermodynamic properties (heat capacity, enthalpy, entropy, Gibbs energy)
-    using the NASA 7-coefficient polynomial formulation. The NASA polynomials
-    provide temperature-dependent thermodynamic properties using two sets of
-    coefficients covering different temperature ranges:
+    using the NASA 7-coefficient polynomial formulation, and transport properties
+    (viscosity, thermal conductivity) using Chapman-Enskog kinetic theory with
+    Lennard-Jones 12-6 potential parameters.
+
+    The NASA polynomials provide temperature-dependent thermodynamic properties
+    using two sets of coefficients covering different temperature ranges:
 
     - Low temperature range: [Tmin, Tmid]
     - High temperature range: [Tmid, Tmax]
@@ -56,6 +61,19 @@ class Species(eqx.Module):
         7 NASA polynomial coefficients for T < Tmid: [a1, a2, a3, a4, a5, a6, a7]
     high_coeffs : list[float]
         7 NASA polynomial coefficients for T >= Tmid: [a1, a2, a3, a4, a5, a6, a7]
+    geometry : int, optional
+        Molecular geometry index for transport properties:
+        0 = monatomic, 1 = linear, 2 = nonlinear
+    epsilon_over_k : float, optional
+        Lennard-Jones well depth divided by Boltzmann constant [K]
+    sigma : float, optional
+        Lennard-Jones collision diameter [Angstrom]
+    dipole_moment : float, optional
+        Dipole moment [Debye]
+    polarizability : float, optional
+        Polarizability [Angstrom^3]
+    rotational_relaxation : float, optional
+        Rotational relaxation collision number at 298K
 
     Attributes
     ----------
@@ -77,6 +95,18 @@ class Species(eqx.Module):
         NASA polynomial coefficients for T < Tmid
     _high_coeffs : Float64[Array, "7"]
         NASA polynomial coefficients for T >= Tmid
+    _geometry : int
+        Molecular geometry index (static field)
+    _epsilon_over_k : Float64[Array, ""] | None
+        Lennard-Jones well depth / k_B [K]
+    _sigma : Float64[Array, ""] | None
+        Lennard-Jones collision diameter [Angstrom]
+    _dipole_moment : Float64[Array, ""] | None
+        Dipole moment [Debye]
+    _polarizability : Float64[Array, ""] | None
+        Polarizability [Angstrom^3]
+    _rotational_relaxation : Float64[Array, ""] | None
+        Rotational relaxation collision number
 
     Notes
     -----
@@ -89,6 +119,12 @@ class Species(eqx.Module):
     - Coefficient a6: Integration constant for H/(RT)
     - Coefficient a7: Integration constant for S/R
 
+    **Transport Properties:**
+
+    Transport properties (viscosity, thermal conductivity) are computed using
+    Chapman-Enskog kinetic theory with Lennard-Jones 12-6 potential parameters.
+    These are optional and only available if transport data is provided.
+
     References
     ----------
     .. [1] McBride, B. J., Gordon, S., and Reno, M. A. "Coefficients for
@@ -100,6 +136,9 @@ class Species(eqx.Module):
     .. [3] Gordon, S., and McBride, B. J. "Computer Program for Calculation of
            Complex Chemical Equilibrium Compositions and Applications."
            NASA Reference Publication 1311 (1994).
+    .. [4] Kee, R. J., Dixon-Lewis, G., Warnatz, J., Coltrin, M. E., and Miller, J. A.
+           "A Fortran Computer Code Package for the Evaluation of Gas-Phase
+           Multicomponent Transport Properties." Sandia Report SAND86-8246 (1986).
     """
 
     _molecular_weight: Float64[Array, ""]
@@ -112,6 +151,14 @@ class Species(eqx.Module):
     _phase: str = eqx.field(static=True, default="G")
     _name: str = eqx.field(static=True, default="")
 
+    # Transport properties (optional)
+    _geometry: int = eqx.field(static=True, default=-1)  # -1 means no transport data
+    _epsilon_over_k: Float64[Array, ""] | None = None
+    _sigma: Float64[Array, ""] | None = None
+    _dipole_moment: Float64[Array, ""] | None = None
+    _polarizability: Float64[Array, ""] | None = None
+    _rotational_relaxation: Float64[Array, ""] | None = None
+
     def __init__(
         self,
         name: str,
@@ -122,9 +169,15 @@ class Species(eqx.Module):
         Tmid: float,
         low_coeffs: list[float],
         high_coeffs: list[float],
+        geometry: int = -1,
+        epsilon_over_k: float | None = None,
+        sigma: float | None = None,
+        dipole_moment: float | None = None,
+        polarizability: float | None = None,
+        rotational_relaxation: float | None = None,
     ) -> None:
         """
-        Initialize a Species with NASA polynomial coefficients.
+        Initialize a Species with NASA polynomial coefficients and optional transport properties.
 
         Parameters
         ----------
@@ -144,6 +197,19 @@ class Species(eqx.Module):
             7 NASA polynomial coefficients for T < Tmid: [a1, a2, a3, a4, a5, a6, a7]
         high_coeffs : list[float]
             7 NASA polynomial coefficients for T >= Tmid: [a1, a2, a3, a4, a5, a6, a7]
+        geometry : int, optional
+            Molecular geometry index for transport properties:
+            0 = monatomic, 1 = linear, 2 = nonlinear. Default is -1 (no transport data)
+        epsilon_over_k : float, optional
+            Lennard-Jones well depth / Boltzmann constant [K]
+        sigma : float, optional
+            Lennard-Jones collision diameter [Angstrom]
+        dipole_moment : float, optional
+            Dipole moment [Debye]
+        polarizability : float, optional
+            Polarizability [Angstrom^3]
+        rotational_relaxation : float, optional
+            Rotational relaxation collision number at 298K
 
         Raises
         ------
@@ -170,6 +236,11 @@ class Species(eqx.Module):
             - a1-a5: Polynomial coefficients for Cp/R
             - a6: Integration constant for H/(RT)
             - a7: Integration constant for S/R
+
+        **Transport Properties:**
+
+        Transport properties are optional. If provided, they enable calculation of
+        viscosity and thermal conductivity using Chapman-Enskog kinetic theory.
         """
         self._name = name
         self._phase = phase
@@ -182,13 +253,23 @@ class Species(eqx.Module):
 
         self._molecular_weight = get_molecular_weight(elemental_composition)
 
+        # Transport properties (optional)
+        self._geometry = geometry
+        self._epsilon_over_k = jnp.float64(epsilon_over_k) if epsilon_over_k is not None else None
+        self._sigma = jnp.float64(sigma) if sigma is not None else None
+        self._dipole_moment = jnp.float64(dipole_moment) if dipole_moment is not None else None
+        self._polarizability = jnp.float64(polarizability) if polarizability is not None else None
+        self._rotational_relaxation = jnp.float64(rotational_relaxation) if rotational_relaxation is not None else None
+
     @classmethod
     def from_chemkin(
         cls,
         thermo_data: str,
+        transport_data: str | None = None,
     ) -> "Species":
         """
-        Create a Species instance from CHEMKIN NASA polynomial thermodynamic data.
+        Create a Species instance from CHEMKIN NASA polynomial thermodynamic data
+        and optional transport property data.
 
         This class method provides a convenient way to construct Species objects
         directly from CHEMKIN-style thermodynamic data strings, which are the
@@ -210,20 +291,32 @@ class Species(eqx.Module):
             The coefficients define NASA 7-coefficient polynomials for two
             temperature ranges (high-T first, then low-T).
 
+        transport_data : str, optional
+            Single-line CHEMKIN transport data format with 7 fields:
+
+            .. code-block:: text
+
+                SPECIES_NAME  geometry  epsilon/k  sigma  dipole  polarizability  Z_rot
+
+            If provided, enables calculation of transport properties (viscosity,
+            thermal conductivity). If None (default), only thermodynamic properties
+            are available.
+
         Returns
         -------
         Species
             New Species instance with parsed name, composition, phase, temperature
-            ranges, and NASA polynomial coefficients.
+            ranges, NASA polynomial coefficients, and optional transport properties.
 
         Raises
         ------
         ValueError
-            If the input string cannot be parsed or contains invalid data format.
+            If the input string cannot be parsed, contains invalid data format,
+            or if species names in thermo_data and transport_data do not match.
 
         Notes
         -----
-        **CHEMKIN Format Details:**
+        **CHEMKIN Thermodynamic Format Details:**
 
         - Line 1: Species name, date code, elemental composition, phase, Tmin, Tmax, Tmid
         - Line 2: First 5 high-temperature coefficients (a1-a5)
@@ -234,46 +327,165 @@ class Species(eqx.Module):
         - Leading/trailing whitespace
         - Numbers without spaces between them (e.g., "1.23E+02-4.56E-03")
         - Fortran 'D' notation for exponents (e.g., "1.23D+02")
+
+        **CHEMKIN Transport Format Details:**
+
+        Transport data consists of 7 space-separated fields:
+        - Species name (must match thermodynamic data)
+        - Geometry: 0 (monatomic), 1 (linear), 2 (nonlinear)
+        - Lennard-Jones well depth epsilon/k_B [K]
+        - Lennard-Jones collision diameter sigma [Angstrom]
+        - Dipole moment [Debye]
+        - Polarizability [Angstrom^3]
+        - Rotational relaxation collision number at 298K
+
+        Examples
+        --------
+        Thermodynamic data only:
+
+        >>> thermo = '''
+        ... H2O               H   2O   1     G   200.00   6000.00  1000.00    1
+        ... 2.67703787E+00 2.97318329E-03-7.73769690E-07 9.44336689E-11-4.26900959E-15    2
+        ... -2.98858938E+04 6.88255571E+00 4.19864056E+00-2.03643410E-03 6.52040211E-06    3
+        ... -5.48797062E-09 1.77197817E-12-3.02937267E+04-8.49032208E-01                   4
+        ... '''
+        >>> species = Species.from_chemkin(thermo)
+        >>> cp = species.cp(1000.0)  # Can compute thermodynamic properties
+
+        With transport data:
+
+        >>> transport = "H2O      2  572.400     2.605     1.844     0.000     4.000"
+        >>> species = Species.from_chemkin(thermo, transport)
+        >>> mu = species.viscosity(1000.0)  # Can also compute transport properties
         """
         # Parse thermodynamic data
         name, composition, phase, Tmin, Tmax, Tmid, high_coeffs, low_coeffs = parse_species(thermo_data)
 
-        return cls(
-            name=name,
-            elemental_composition=composition,
-            phase=phase,
-            Tmin=Tmin,
-            Tmax=Tmax,
-            Tmid=Tmid,
-            low_coeffs=low_coeffs,
-            high_coeffs=high_coeffs,
+        # Parse transport data if provided
+        if transport_data is not None:
+            trans_name, geometry, epsilon_over_k, sigma, dipole, polarizability, zrot = parse_transport(transport_data)
+
+            # Validate that species names match
+            if name != trans_name:
+                raise ValueError(
+                    f"Species name mismatch: thermodynamic data has '{name}' "
+                    f"but transport data has '{trans_name}'. "
+                    f"Both must refer to the same species."
+                )
+
+            return cls(
+                name=name,
+                elemental_composition=composition,
+                phase=phase,
+                Tmin=Tmin,
+                Tmax=Tmax,
+                Tmid=Tmid,
+                low_coeffs=low_coeffs,
+                high_coeffs=high_coeffs,
+                geometry=geometry,
+                epsilon_over_k=epsilon_over_k,
+                sigma=sigma,
+                dipole_moment=dipole,
+                polarizability=polarizability,
+                rotational_relaxation=zrot,
+            )
+        else:
+            return cls(
+                name=name,
+                elemental_composition=composition,
+                phase=phase,
+                Tmin=Tmin,
+                Tmax=Tmax,
+                Tmid=Tmid,
+                low_coeffs=low_coeffs,
+                high_coeffs=high_coeffs,
+            )
+
+    def _compute_single_property(
+        self,
+        T: Float64[Array, ""] | None,
+        eval_func: Callable,
+        T_powers: Float64[Array, "5"] | None = None,
+    ):
+        """
+        Compute property for a single temperature using conditional branching.
+
+        Parameters
+        ----------
+        T : Float64[Array, ""] | None
+            Temperature [K]. Required if T_powers is None, otherwise optional.
+        eval_func : Callable
+            Property evaluation function (e.g., eval_cp_over_R, eval_h_over_RT, eval_s_over_R)
+        T_powers : Float64[Array, "5"] | None, optional
+            Precomputed temperature powers [1, T, T^2, T^3, T^4].
+            If provided, temperature bounds checking is skipped and these powers are used directly.
+            If None (default), T_powers are computed from T and bounds are checked.
+
+        Returns
+        -------
+        Float64[Array, ""]
+            Computed thermodynamic property value
+
+        Notes
+        -----
+        When evaluating properties for multiple species at the same temperature,
+        precomputing T_powers once and passing it to each species can significantly
+        improve performance by avoiding redundant power calculations.
+        """
+        if T_powers is None:
+            # Check temperature bounds
+            T = eqx.error_if(
+                T,
+                self._Tmin > T,
+                f"Temperature {T} K is below minimum valid temperature {self._Tmin} K for species {self._name}",
+            )
+            T = eqx.error_if(
+                T,
+                self._Tmax < T,
+                f"Temperature {T} K is above maximum valid temperature {self._Tmax} K for species {self._name}",
+            )
+
+            # Assemble T_powers once per temperature
+            T_powers = build_temperature_powers(T)
+
+        return lax.cond(
+            T_powers[1] < self._Tmid,  # T_powers[1] is T
+            lambda _: eval_func(self._low_coeffs, T_powers),
+            lambda _: eval_func(self._high_coeffs, T_powers),
+            None,
         )
 
     def _compute_thermo_property(
         self,
-        T: float | Float64[Array, ""] | Float64[Array, "n"],
+        T: float | Float64[Array, ""] | Float64[Array, "n"] | None,
         eval_func: Callable,
+        T_powers: Float64[Array, "5"] | Float64[Array, "n 5"] | None = None,
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
         Generic method to compute thermodynamic properties with temperature-dependent coefficients.
 
         This internal method implements the common pattern used by all dimensionless
         thermodynamic property calculations (Cp/R, H/(RT), S/R). It handles:
-        1. Converting input to JAX array
-        2. Checking temperature bounds with eqx.error_if
-        3. Assembling temperature powers [1, T, T^2, T^3, T^4] once per temperature
+        1. Converting input to JAX array (if T_powers not provided)
+        2. Checking temperature bounds with eqx.error_if (if T_powers not provided)
+        3. Assembling temperature powers [1, T, T^2, T^3, T^4] once per temperature (if T_powers not provided)
         4. Selecting appropriate coefficients based on temperature via lax.cond
         5. Vectorizing computation over temperature array using vmap
         6. Squeezing result for scalar inputs
 
         Parameters
         ----------
-        T : float | Float64[Array, ""] | Float64[Array, "n"]
+        T : float | Float64[Array, ""] | Float64[Array, "n"] | None
             Temperature(s) [K]. Can be scalar, 0-D array, or 1-D array.
+            Required if T_powers is None, otherwise optional (can be None).
         eval_func : callable
             Polynomial evaluation function with signature: eval_func(coeffs, T_powers) -> result
             Should accept NASA coefficient array and precomputed temperature powers.
             Examples: eval_cp_over_R, eval_h_over_RT, eval_s_over_R from nasa7_polynomial module
+        T_powers : Float64[Array, "5"] | Float64[Array, "n 5"] | None, optional
+            Precomputed temperature powers [1, T, T^2, T^3, T^4].
+            If provided, T can be None and temperature bounds checking is skipped.
+            If None (default), T is required and T_powers are computed with bounds checking.
 
         Returns
         -------
@@ -283,7 +495,7 @@ class Species(eqx.Module):
         Raises
         ------
         RuntimeError
-            If any temperature is outside the valid range [Tmin, Tmax]
+            If any temperature is outside the valid range [Tmin, Tmax] (when T_powers is None)
 
         Notes
         -----
@@ -297,34 +509,25 @@ class Species(eqx.Module):
         Temperature powers are precomputed once per temperature and reused in the
         polynomial evaluation, improving efficiency by avoiding redundant power
         computations.
+
+        **Performance optimization:**
+        When evaluating properties for multiple species at the same temperature(s),
+        precompute T_powers once using `build_temperature_powers(T)` and pass it to
+        all species to avoid redundant power calculations.
         """
-        T_array = jnp.atleast_1d(jnp.asarray(T, dtype=jnp.float64))
-
-        def compute_single(t):
-            """Compute property for a single temperature using conditional branching."""
-            # Check temperature bounds
-            t = eqx.error_if(
-                t,
-                t < self._Tmin,
-                f"Temperature {t} K is below minimum valid temperature {self._Tmin} K for species {self._name}",
-            )
-            t = eqx.error_if(
-                t,
-                t > self._Tmax,
-                f"Temperature {t} K is above maximum valid temperature {self._Tmax} K for species {self._name}",
-            )
-
-            # Assemble T_powers once per temperature
-            T_powers = build_temperature_powers(t)
-
-            return lax.cond(
-                t < self._Tmid,
-                lambda _: eval_func(self._low_coeffs, T_powers),
-                lambda _: eval_func(self._high_coeffs, T_powers),
+        if T_powers is None:  # Standard path: compute T_powers for each temperature
+            T_array = jnp.atleast_1d(jnp.asarray(T, dtype=jnp.float64))
+            result = vmap(self._compute_single_property, in_axes=(0, None, None))(T_array, eval_func, None)
+        else:  # Optimized path: use precomputed T_powers
+            T_powers_array = jnp.atleast_2d(T_powers)  # Ensure shape is (n, 5) or (1, 5)
+            # Create dummy T_array with correct shape (values don't matter, T_powers will be used)
+            T_array = jnp.zeros(T_powers_array.shape[0], dtype=jnp.float64)
+            result = vmap(self._compute_single_property, in_axes=(0, None, 0))(
                 None,
+                eval_func,
+                T_powers_array,
             )
 
-        result = vmap(compute_single)(T_array)
         return result.squeeze() if T_array.shape == (1,) else result
 
     # =======================================================================
@@ -332,125 +535,162 @@ class Species(eqx.Module):
     @eqx.filter_jit
     def cp_R(
         self,
-        T: float | Float64[Array, ""] | Float64[Array, "n"],
+        T: float | Float64[Array, ""] | Float64[Array, "n"] | None = None,
+        T_powers: Float64[Array, "5"] | Float64[Array, "n 5"] | None = None,
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
         Dimensionless heat capacity at constant pressure: Cp/R.
 
         Parameters
         ----------
-        T : float | Float64[Array, ""] | Float64[Array, "n"]
-            Temperature(s) [K]
+        T : float | Float64[Array, ""] | Float64[Array, "n"] | None, optional
+            Temperature(s) [K]. Required if T_powers is None, otherwise optional.
+        T_powers : Float64[Array, "5"] | Float64[Array, "n 5"] | None, optional
+            Precomputed temperature powers [1, T, T^2, T^3, T^4].
+            If provided, T can be None and temperature bounds checking is skipped.
+            When evaluating multiple species at the same temperature, precompute T_powers once
+            using `build_temperature_powers(T)` to improve performance.
 
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
             Dimensionless heat capacity Cp/R
         """
-        return self._compute_thermo_property(T, eval_cp_over_R)
+        return self._compute_thermo_property(T, eval_cp_over_R, T_powers)
 
     def cp(
         self,
-        T: float | Float64[Array, ""] | Float64[Array, "n"],
+        T: float | Float64[Array, ""] | Float64[Array, "n"] | None = None,
+        T_powers: Float64[Array, "5"] | Float64[Array, "n 5"] | None = None,
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
         Heat capacity at constant pressure [cal/(mol·K)].
 
         Parameters
         ----------
-        T : float | Float64[Array, ""] | Float64[Array, "n"]
-            Temperature(s) [K]
+        T : float | Float64[Array, ""] | Float64[Array, "n"] | None, optional
+            Temperature(s) [K]. Required if T_powers is None, otherwise optional.
+        T_powers : Float64[Array, "5"] | Float64[Array, "n 5"] | None, optional
+            Precomputed temperature powers [1, T, T^2, T^3, T^4].
+            If provided, T can be None and temperature bounds checking is skipped.
+            When evaluating multiple species at the same temperature, precompute T_powers once
+            using `build_temperature_powers(T)` to improve performance.
 
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
             Heat capacity Cp [cal/(mol·K)]
         """
-        return self.cp_R(T) * constants.R_cal_mol
+        return self.cp_R(T, T_powers) * constants.R_cal_mol
 
     @eqx.filter_jit
     def h_RT(
         self,
-        T: float | Float64[Array, ""] | Float64[Array, "n"],
+        T: float | Float64[Array, ""] | Float64[Array, "n"] | None = None,
+        T_powers: Float64[Array, "5"] | Float64[Array, "n 5"] | None = None,
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
         Dimensionless enthalpy: H/(RT).
 
         Parameters
         ----------
-        T : float | Float64[Array, ""] | Float64[Array, "n"]
-            Temperature(s) [K]
+        T : float | Float64[Array, ""] | Float64[Array, "n"] | None, optional
+            Temperature(s) [K]. Required if T_powers is None, otherwise optional.
+        T_powers : Float64[Array, "5"] | Float64[Array, "n 5"] | None, optional
+            Precomputed temperature powers [1, T, T^2, T^3, T^4].
+            If provided, T can be None and temperature bounds checking is skipped.
+            When evaluating multiple species at the same temperature, precompute T_powers once
+            using `build_temperature_powers(T)` to improve performance.
 
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
             Dimensionless enthalpy H/(RT)
         """
-        return self._compute_thermo_property(T, eval_h_over_RT)
+        return self._compute_thermo_property(T, eval_h_over_RT, T_powers)
 
+    @eqx.filter_jit
     def h(
         self,
-        T: float | Float64[Array, ""] | Float64[Array, "n"],
+        T: float | Float64[Array, ""] | Float64[Array, "n"] | None = None,
+        T_powers: Float64[Array, "5"] | Float64[Array, "n 5"] | None = None,
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
         Enthalpy [cal/mol].
 
         Parameters
         ----------
-        T : float | Float64[Array, ""] | Float64[Array, "n"]
-            Temperature(s) [K]
+        T : float | Float64[Array, ""] | Float64[Array, "n"] | None, optional
+            Temperature(s) [K]. Required if T_powers is None, otherwise optional.
+        T_powers : Float64[Array, "5"] | Float64[Array, "n 5"] | None, optional
+            Precomputed temperature powers [1, T, T^2, T^3, T^4].
+            If provided, T can be None and temperature bounds checking is skipped.
+            When evaluating multiple species at the same temperature, precompute T_powers once
+            using `build_temperature_powers(T)` to improve performance.
 
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
             Enthalpy H [cal/mol]
         """
-        T_array = jnp.asarray(T, dtype=jnp.float64)
-        return self.h_RT(T) * constants.R_cal_mol * T_array
+        T_array = jnp.asarray(T if T is not None else T_powers[..., 1], dtype=jnp.float64)
+        return self.h_RT(T, T_powers) * constants.R_cal_mol * T_array
 
     @eqx.filter_jit
     def s_R(
         self,
-        T: float | Float64[Array, ""] | Float64[Array, "n"],
+        T: float | Float64[Array, ""] | Float64[Array, "n"] | None = None,
+        T_powers: Float64[Array, "5"] | Float64[Array, "n 5"] | None = None,
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
         Dimensionless entropy: S/R.
 
         Parameters
         ----------
-        T : float | Float64[Array, ""] | Float64[Array, "n"]
-            Temperature(s) [K]
+        T : float | Float64[Array, ""] | Float64[Array, "n"] | None, optional
+            Temperature(s) [K]. Required if T_powers is None, otherwise optional.
+        T_powers : Float64[Array, "5"] | Float64[Array, "n 5"] | None, optional
+            Precomputed temperature powers [1, T, T^2, T^3, T^4].
+            If provided, T can be None and temperature bounds checking is skipped.
+            When evaluating multiple species at the same temperature, precompute T_powers once
+            using `build_temperature_powers(T)` to improve performance.
 
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
             Dimensionless entropy S/R
         """
-        return self._compute_thermo_property(T, eval_s_over_R)
+        return self._compute_thermo_property(T, eval_s_over_R, T_powers)
 
     def s(
         self,
-        T: float | Float64[Array, ""] | Float64[Array, "n"],
+        T: float | Float64[Array, ""] | Float64[Array, "n"] | None = None,
+        T_powers: Float64[Array, "5"] | Float64[Array, "n 5"] | None = None,
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
         Entropy [cal/(mol·K)].
 
         Parameters
         ----------
-        T : float | Float64[Array, ""] | Float64[Array, "n"]
-            Temperature(s) [K]
+        T : float | Float64[Array, ""] | Float64[Array, "n"] | None, optional
+            Temperature(s) [K]. Required if T_powers is None, otherwise optional.
+        T_powers : Float64[Array, "5"] | Float64[Array, "n 5"] | None, optional
+            Precomputed temperature powers [1, T, T^2, T^3, T^4].
+            If provided, T can be None and temperature bounds checking is skipped.
+            When evaluating multiple species at the same temperature, precompute T_powers once
+            using `build_temperature_powers(T)` to improve performance.
 
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
             Entropy S [cal/(mol·K)]
         """
-        return self.s_R(T) * constants.R_cal_mol
+        return self.s_R(T, T_powers) * constants.R_cal_mol
 
-    @eqx.filter_jit
     def g_RT(
         self,
-        T: float | Float64[Array, ""] | Float64[Array, "n"],
+        T: float | Float64[Array, ""] | Float64[Array, "n"] | None = None,
+        T_powers: Float64[Array, "5"] | Float64[Array, "n 5"] | None = None,
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
         Dimensionless Gibbs free energy: G/(RT).
@@ -459,8 +699,13 @@ class Species(eqx.Module):
 
         Parameters
         ----------
-        T : float | Float64[Array, ""] | Float64[Array, "n"]
-            Temperature(s) [K]
+        T : float | Float64[Array, ""] | Float64[Array, "n"] | None, optional
+            Temperature(s) [K]. Required if T_powers is None, otherwise optional.
+        T_powers : Float64[Array, "5"] | Float64[Array, "n 5"] | None, optional
+            Precomputed temperature powers [1, T, T^2, T^3, T^4].
+            If provided, T can be None and temperature bounds checking is skipped.
+            When evaluating multiple species at the same temperature, precompute T_powers once
+            using `build_temperature_powers(T)` to improve performance.
 
         Returns
         -------
@@ -470,69 +715,55 @@ class Species(eqx.Module):
         Raises
         ------
         RuntimeError
-            If any temperature is outside the valid range [Tmin, Tmax]
+            If any temperature is outside the valid range [Tmin, Tmax] (when T_powers is None)
 
         Notes
         -----
-        This method differs from other thermodynamic property methods by computing
-        both H/(RT) and S/R simultaneously with shared temperature powers [1, T, T^2, T^3, T^4].
+        This method computes both H/(RT) and S/R with shared temperature powers [1, T, T^2, T^3, T^4].
         This optimization avoids redundant power computations since both properties
         require the same temperature powers.
 
-        The implementation follows the same pattern as _compute_thermo_property but
-        evaluates two polynomials (enthalpy and entropy) with a single set of
-        precomputed temperature powers.
+        Note: This method is not JIT-decorated to allow Python control flow for T_powers handling.
+        The underlying h_RT and s_R methods are JIT-compiled, so most computation is still optimized.
         """
-        T_array = jnp.atleast_1d(jnp.asarray(T, dtype=jnp.float64))
+        # Python control flow (handled at Python level, not traced by JIT)
+        if T_powers is None:
+            T_powers = build_temperature_powers(T)
+            T = None
+        # Calls to JIT'd methods h_RT and s_R
+        return self.h_RT(T, T_powers) - self.s_R(T, T_powers)
 
-        def compute_single(t):
-            t = eqx.error_if(
-                t,
-                t < self._Tmin,
-                f"Temperature {t} K is below minimum valid temperature {self._Tmin} K for species {self._name}",
-            )
-            t = eqx.error_if(
-                t,
-                t > self._Tmax,
-                f"Temperature {t} K is above maximum valid temperature {self._Tmax} K for species {self._name}",
-            )
-
-            # Assemble T_powers ONCE, use for both H and S
-            T_powers = build_temperature_powers(t)
-
-            return lax.cond(
-                t < self._Tmid,
-                lambda _: eval_h_over_RT(self._low_coeffs, T_powers) - eval_s_over_R(self._low_coeffs, T_powers),
-                lambda _: eval_h_over_RT(self._high_coeffs, T_powers) - eval_s_over_R(self._high_coeffs, T_powers),
-                None,
-            )
-
-        result = vmap(compute_single)(T_array)
-        return result.squeeze() if T_array.shape == (1,) else result
-
+    @eqx.filter_jit
     def g(
         self,
-        T: float | Float64[Array, ""] | Float64[Array, "n"],
+        T: float | Float64[Array, ""] | Float64[Array, "n"] | None = None,
+        T_powers: Float64[Array, "5"] | Float64[Array, "n 5"] | None = None,
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
         Gibbs free energy [cal/mol].
 
         Parameters
         ----------
-        T : float | Float64[Array, ""] | Float64[Array, "n"]
-            Temperature(s) [K]
+        T : float | Float64[Array, ""] | Float64[Array, "n"] | None, optional
+            Temperature(s) [K]. Required if T_powers is None, otherwise optional.
+        T_powers : Float64[Array, "5"] | Float64[Array, "n 5"] | None, optional
+            Precomputed temperature powers [1, T, T^2, T^3, T^4].
+            If provided, T can be None and temperature bounds checking is skipped.
+            When evaluating multiple species at the same temperature, precompute T_powers once
+            using `build_temperature_powers(T)` to improve performance.
 
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
             Gibbs energy G [cal/mol]
         """
-        T_array = jnp.asarray(T, dtype=jnp.float64)
-        return self.g_RT(T) * constants.R_cal_mol * T_array
+        T_array = jnp.asarray(T if T is not None else T_powers[..., 1], dtype=jnp.float64)
+        return self.g_RT(T, T_powers) * constants.R_cal_mol * T_array
 
     def u_RT(
         self,
-        T: float | Float64[Array, ""] | Float64[Array, "n"],
+        T: float | Float64[Array, ""] | Float64[Array, "n"] | None = None,
+        T_powers: Float64[Array, "5"] | Float64[Array, "n 5"] | None = None,
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
         Dimensionless internal energy: U/(RT).
@@ -541,39 +772,52 @@ class Species(eqx.Module):
 
         Parameters
         ----------
-        T : float | Float64[Array, ""] | Float64[Array, "n"]
-            Temperature(s) [K]
+        T : float | Float64[Array, ""] | Float64[Array, "n"] | None, optional
+            Temperature(s) [K]. Required if T_powers is None, otherwise optional.
+        T_powers : Float64[Array, "5"] | Float64[Array, "n 5"] | None, optional
+            Precomputed temperature powers [1, T, T^2, T^3, T^4].
+            If provided, T can be None and temperature bounds checking is skipped.
+            When evaluating multiple species at the same temperature, precompute T_powers once
+            using `build_temperature_powers(T)` to improve performance.
 
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
             Dimensionless internal energy U/(RT)
         """
-        return self.h_RT(T) - 1.0
+        return self.h_RT(T, T_powers) - 1.0
 
+    @eqx.filter_jit
     def u(
         self,
-        T: float | Float64[Array, ""] | Float64[Array, "n"],
+        T: float | Float64[Array, ""] | Float64[Array, "n"] | None = None,
+        T_powers: Float64[Array, "5"] | Float64[Array, "n 5"] | None = None,
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
         Internal energy [cal/mol].
 
         Parameters
         ----------
-        T : float | Float64[Array, ""] | Float64[Array, "n"]
-            Temperature(s) [K]
+        T : float | Float64[Array, ""] | Float64[Array, "n"] | None, optional
+            Temperature(s) [K]. Required if T_powers is None, otherwise optional.
+        T_powers : Float64[Array, "5"] | Float64[Array, "n 5"] | None, optional
+            Precomputed temperature powers [1, T, T^2, T^3, T^4].
+            If provided, T can be None and temperature bounds checking is skipped.
+            When evaluating multiple species at the same temperature, precompute T_powers once
+            using `build_temperature_powers(T)` to improve performance.
 
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
             Internal energy U [cal/mol]
         """
-        T_array = jnp.asarray(T, dtype=jnp.float64)
-        return self.u_RT(T) * constants.R_cal_mol * T_array
+        T_array = jnp.asarray(T if T is not None else T_powers[..., 1], dtype=jnp.float64)
+        return self.u_RT(T, T_powers) * constants.R_cal_mol * T_array
 
     def cv_R(
         self,
-        T: float | Float64[Array, ""] | Float64[Array, "n"],
+        T: float | Float64[Array, ""] | Float64[Array, "n"] | None = None,
+        T_powers: Float64[Array, "5"] | Float64[Array, "n 5"] | None = None,
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
         Dimensionless heat capacity at constant volume: Cv/R.
@@ -582,22 +826,54 @@ class Species(eqx.Module):
 
         Parameters
         ----------
-        T : float | Float64[Array, ""] | Float64[Array, "n"]
-            Temperature(s) [K]
+        T : float | Float64[Array, ""] | Float64[Array, "n"] | None, optional
+            Temperature(s) [K]. Required if T_powers is None, otherwise optional.
+        T_powers : Float64[Array, "5"] | Float64[Array, "n 5"] | None, optional
+            Precomputed temperature powers [1, T, T^2, T^3, T^4].
+            If provided, T can be None and temperature bounds checking is skipped.
+            When evaluating multiple species at the same temperature, precompute T_powers once
+            using `build_temperature_powers(T)` to improve performance.
 
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
             Dimensionless heat capacity Cv/R
         """
-        return self.cp_R(T) - 1.0
+        return self.cp_R(T, T_powers) - 1.0
 
     def cv(
+        self,
+        T: float | Float64[Array, ""] | Float64[Array, "n"] | None = None,
+        T_powers: Float64[Array, "5"] | Float64[Array, "n 5"] | None = None,
+    ) -> Float64[Array, ""] | Float64[Array, "n"]:
+        """
+        Heat capacity at constant volume [cal/(mol·K)].
+
+        Parameters
+        ----------
+        T : float | Float64[Array, ""] | Float64[Array, "n"] | None, optional
+            Temperature(s) [K]. Required if T_powers is None, otherwise optional.
+        T_powers : Float64[Array, "5"] | Float64[Array, "n 5"] | None, optional
+            Precomputed temperature powers [1, T, T^2, T^3, T^4].
+            If provided, T can be None and temperature bounds checking is skipped.
+            When evaluating multiple species at the same temperature, precompute T_powers once
+            using `build_temperature_powers(T)` to improve performance.
+
+        Returns
+        -------
+        Float64[Array, ""] | Float64[Array, "n"]
+            Heat capacity Cv [cal/(mol·K)]
+        """
+        return self.cv_R(T, T_powers) * constants.R_cal_mol
+
+    # =======================================================================
+    # Transport property methods
+    def viscosity(
         self,
         T: float | Float64[Array, ""] | Float64[Array, "n"],
     ) -> Float64[Array, ""] | Float64[Array, "n"]:
         """
-        Heat capacity at constant volume [cal/(mol·K)].
+        Compute dynamic viscosity using Chapman-Enskog kinetic theory.
 
         Parameters
         ----------
@@ -607,9 +883,82 @@ class Species(eqx.Module):
         Returns
         -------
         Float64[Array, ""] | Float64[Array, "n"]
-            Heat capacity Cv [cal/(mol·K)]
+            Dynamic viscosity [Pa·s]
+
+        Raises
+        ------
+        RuntimeError
+            If species does not have transport property data
         """
-        return self.cv_R(T) * constants.R_cal_mol
+        if not self.has_transport_data:
+            raise RuntimeError(
+                f"Species '{self._name}' does not have transport property data. "
+                "Transport data (geometry, epsilon_over_k, sigma) must be provided to compute viscosity."
+            )
+        else:
+            return compute_viscosity(T, self._molecular_weight, self._sigma, self._epsilon_over_k, self._dipole_moment)
+
+    def thermal_conductivity(
+        self,
+        T: float | Float64[Array, ""] | Float64[Array, "n"],
+    ) -> Float64[Array, ""] | Float64[Array, "n"]:
+        """
+        Compute thermal conductivity using modified Eucken correlation.
+
+        Parameters
+        ----------
+        T : float | Float64[Array, ""] | Float64[Array, "n"]
+            Temperature(s) [K]
+
+        Returns
+        -------
+        Float64[Array, ""] | Float64[Array, "n"]
+            Thermal conductivity [W/(m·K)]
+
+        Raises
+        ------
+        RuntimeError
+            If species does not have transport property data
+
+        Notes
+        -----
+        This method uses the modified Eucken correlation which relates
+        thermal conductivity to viscosity and heat capacity:
+
+        .. math::
+            \\lambda = \\mu \\frac{R}{M} \\left( \\frac{C_p}{R} + f_{int} \\right)
+
+        where f_int is a correction factor that depends on molecular geometry
+        and rotational relaxation.
+
+        Examples
+        --------
+        >>> transport = "H2O      2  572.400     2.605     1.844     0.000     4.000"
+        >>> species = Species.from_chemkin(thermo_data, transport)
+        >>> lambda_cond = species.thermal_conductivity(1000.0)  # Thermal conductivity at 1000 K
+        """
+        if not self.has_transport_data:
+            raise RuntimeError(
+                f"Species '{self._name}' does not have transport property data. "
+                "Transport data (geometry, epsilon_over_k, sigma) must be provided to compute thermal conductivity."
+            )
+
+        # Compute Cp/R at the given temperature
+        cp_R = self.cp_R(T)
+
+        # Use rotational relaxation if available, otherwise default to 1.0
+        rot_relax = self._rotational_relaxation if self._rotational_relaxation is not None else jnp.float64(1.0)
+
+        return compute_thermal_conductivity(
+            T,
+            self._molecular_weight,
+            self._sigma,
+            self._epsilon_over_k,
+            cp_R,
+            self._geometry,
+            self._dipole_moment,
+            rot_relax,
+        )
 
     # =======================================================================
     # String representations for display and debugging
@@ -712,7 +1061,7 @@ class Species(eqx.Module):
         return f"{line1}\n{line2}\n{line3}\n{line4}"
 
     # =======================================================================
-    # Properties for species information access
+    # Species property accessors
     @property
     def name(self) -> str:
         """
@@ -824,3 +1173,63 @@ class Species(eqx.Module):
             Coefficients [a1, a2, a3, a4, a5, a6, a7] for T >= Tmid
         """
         return self._high_coeffs
+
+    @property
+    def has_transport_data(self) -> bool:
+        """
+        Check if species has transport property data.
+
+        Returns
+        -------
+        bool
+            True if transport data is available, False otherwise
+        """
+        return self._geometry >= 0 and self._epsilon_over_k is not None and self._sigma is not None
+
+    @property
+    def geometry(self) -> int:
+        """
+        Molecular geometry index for transport calculations.
+
+        Returns
+        -------
+        int
+            Geometry index: 0 (monatomic), 1 (linear), 2 (nonlinear), or -1 (no data)
+        """
+        return self._geometry
+
+    @property
+    def epsilon_over_k(self) -> Float64[Array, ""] | None:
+        """
+        Lennard-Jones well depth divided by Boltzmann constant.
+
+        Returns
+        -------
+        Float64[Array, ""] | None
+            Well depth epsilon/k_B [K], or None if no transport data
+        """
+        return self._epsilon_over_k
+
+    @property
+    def sigma(self) -> Float64[Array, ""] | None:
+        """
+        Lennard-Jones collision diameter.
+
+        Returns
+        -------
+        Float64[Array, ""] | None
+            Collision diameter [Angstrom], or None if no transport data
+        """
+        return self._sigma
+
+    @property
+    def dipole_moment(self) -> Float64[Array, ""] | None:
+        return self._dipole_moment
+
+    @property
+    def polarizability(self) -> Float64[Array, ""] | None:
+        return self._polarizability
+
+    @property
+    def rotational_relaxation(self) -> Float64[Array, ""] | None:
+        return self._rotational_relaxation
