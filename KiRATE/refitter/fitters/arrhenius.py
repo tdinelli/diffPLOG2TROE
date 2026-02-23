@@ -11,9 +11,10 @@ from KiRATE.kinetics.arrhenius import Arrhenius
 from KiRATE.refitter.core.base import FittingResult
 from KiRATE.refitter.core.residuals import estimate_missing_uncertainties
 from KiRATE.refitter.core.statistics import compute_statistics
-from KiRATE.refitter.core.uncertainty import compute_parameter_uncertainties
 from KiRATE.refitter.methods.linear import arrhenius_linear_fit
 from KiRATE.refitter.methods.nonlinear import check_convergence, least_squares_fit
+
+# from KiRATE.refitter.core.uncertainty import compute_parameter_uncertainties
 
 
 class ArrheniusFitter(eqx.Module):
@@ -98,10 +99,7 @@ class ArrheniusFitter(eqx.Module):
         rate_constant: Float64[Array, "n"],
         uncertainties: Float64[Array, "n"] | None = None,
         fixed_params: dict[str, float] | None = None,
-        max_steps: int = 1000,
-        atol: float = 1e-8,
-        rtol: float = 1e-8,
-        solver: str = "lm",
+        max_steps: int = 200,
         verbose: bool = False,
     ) -> FittingResult[Arrhenius]:
         """
@@ -213,33 +211,21 @@ class ArrheniusFitter(eqx.Module):
                 full_params = self._reconstruct_params(params_init, fixed_params)
                 arrhenius_base = Arrhenius(parameters={"A": full_params[0], "n": full_params[1], "Ea": full_params[2]})
 
-        # Build residual function using eqx.tree_at to avoid validation during tracing
+        # Build loss function in log-space (MSE of log(k))
         if fixed_params is None:
             # All three parameters free
-            def residual_fn(params, args):
+            def loss_fn(params):
                 arrh_updated = eqx.tree_at(
                     lambda arr: (arr._A, arr._n, arr._Ea),
                     arrhenius_base,
                     (params[0], params[1], params[2]),
                 )
                 predictions = arrh_updated.rate_constant(temperature)
-                residuals = rate_constant - predictions
-                if weights is not None:
-                    residuals = residuals * weights
-                return residuals
+                return jnp.mean((jnp.log(rate_constant) - jnp.log(predictions)) ** 2)
 
         else:
             # Some parameters fixed
-            free_param_names = []
-            if "A" not in fixed_params:
-                free_param_names.append("A")
-            if "n" not in fixed_params:
-                free_param_names.append("n")
-            if "Ea" not in fixed_params:
-                free_param_names.append("Ea")
-
-            def residual_fn(params, args):
-                # Reconstruct full parameter vector
+            def loss_fn(params):
                 full_params_arr = self._reconstruct_params(params, fixed_params)
                 arrh_updated = eqx.tree_at(
                     lambda arr: (arr._A, arr._n, arr._Ea),
@@ -247,19 +233,13 @@ class ArrheniusFitter(eqx.Module):
                     (full_params_arr[0], full_params_arr[1], full_params_arr[2]),
                 )
                 predictions = arrh_updated.rate_constant(temperature)
-                residuals = rate_constant - predictions
-                if weights is not None:
-                    residuals = residuals * weights
-                return residuals
+                return jnp.mean((jnp.log(rate_constant) - jnp.log(predictions)) ** 2)
 
         # Optimize
         solution = least_squares_fit(
-            residual_fn=residual_fn,
+            loss_fn=loss_fn,
             initial_params=params_init,
             max_steps=max_steps,
-            atol=atol,
-            rtol=rtol,
-            solver=solver,
         )
 
         # Check convergence
@@ -275,18 +255,7 @@ class ArrheniusFitter(eqx.Module):
         predictions = arrhenius_opt.rate_constant(temperature)
         stats = compute_statistics(predictions=predictions, observations=rate_constant)
 
-        # Compute parameter uncertainties
-        std_errors, cov_matrix, corr_matrix = compute_parameter_uncertainties(
-            residual_fn=residual_fn,
-            params_opt=params_opt,
-            weights=weights,
-        )
-
-        # Extract optimization metadata
-        n_steps = solution.stats.get("num_steps", 0) if hasattr(solution.stats, "get") else 0
-        fun = float(jnp.sum(residual_fn(params_opt, None) ** 2))
-
-        # Create result object
+        # Create result object (skip uncertainty quantification for now)
         result = FittingResult(
             rate_constant=arrhenius_opt,
             R2=stats["R2"],
@@ -295,11 +264,11 @@ class ArrheniusFitter(eqx.Module):
             MAE=stats["MAE"],
             optimality=optimality,
             converged=converged,
-            n_steps=n_steps,
-            fun=fun,
-            std_errors=std_errors,
-            cov_matrix=cov_matrix,
-            corr_matrix=corr_matrix,
+            n_steps=solution.n_steps,
+            fun=solution.final_loss,
+            std_errors=None,
+            cov_matrix=None,
+            corr_matrix=None,
         )
 
         return result

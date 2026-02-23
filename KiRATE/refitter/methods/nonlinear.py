@@ -4,158 +4,85 @@ Licensed under the MIT License - see LICENSE file for details
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import jax.numpy as jnp
+import optax
 from jaxtyping import Array, Float64
-from optimistix import (
-    RESULTS,
-    Dogleg,
-    IndirectLevenbergMarquardt,
-    LevenbergMarquardt,
-    Solution,
-    least_squares,
-)
+
+
+@dataclass
+class Solution:
+    """Solution from Optax L-BFGS optimization."""
+
+    value: Float64[Array, "n_params"]
+    converged: bool
+    n_steps: int
+    final_loss: float
+    grad_norm: float
 
 
 def least_squares_fit(
-    residual_fn: Callable[[Float64[Array, "n_params"], None], Float64[Array, "n"]],
+    loss_fn: Callable[[Float64[Array, "n_params"]], float],
     initial_params: Float64[Array, "n_params"],
-    max_steps: int = 1000,
-    atol: float = 1e-8,
-    rtol: float = 1e-8,
-    solver: str = "lm",
+    max_steps: int = 200,
+    grad_tol: float = 1e-10,
 ) -> Solution:
     """
-    Solve nonlinear least squares problem using optimistix.
+    Solve optimization problem using Optax L-BFGS.
 
     Parameters
     ----------
-    residual_fn : Callable
-        Residual function with signature:
-            fn(params, args) -> residuals
-        where params is the parameter vector to optimize and args is unused
-        (for compatibility with optimistix interface).
+    loss_fn : Callable
+        Loss function to minimize: fn(params) -> scalar
     initial_params : Float64[Array, "n_params"]
         Initial parameter guess
     max_steps : int, optional
-        Maximum number of optimization steps, by default 1000
-    atol : float, optional
-        Absolute convergence tolerance, by default 1e-8
-    rtol : float, optional
-        Relative convergence tolerance, by default 1e-8
-    solver : str, optional
-        Solver algorithm to use. Options:
-        - "lm": Levenberg-Marquardt (default, robust)
-        - "ilm": Indirect Levenberg-Marquardt (memory efficient)
-        - "dogleg": Dogleg trust region (alternative)
-        By default "lm"
+        Maximum optimization iterations, by default 200
+    grad_tol : float, optional
+        Gradient norm tolerance for convergence, by default 1e-10
 
     Returns
     -------
     Solution
-        Optimistix Solution object containing:
-        - value: Optimal parameter values
-        - result: Convergence status code
-        - stats: Optimization statistics
-
-    Notes
-    -----
-    **Levenberg-Marquardt Algorithm:**
-
-    The LM algorithm interpolates between Gauss-Newton and gradient descent:
-
-    .. math::
-        (J^T J + \\lambda I) \\Delta \\theta = -J^T r
-
-    where:
-        - J is the Jacobian of residuals
-        - r is the residual vector
-        - λ is the damping parameter (adjusted adaptively)
-
-    **Convergence Criteria:**
-
-    The solver stops when:
-        - ||gradient|| < atol (first-order optimality)
-        - ||step|| / ||params|| < rtol (relative change small)
-        - max_steps reached
-
-    **Solver Selection:**
-
-    - **LM**: Best for small-medium problems (< 100 parameters)
-    - **ILM**: Better for large problems (memory efficient)
-    - **Dogleg**: Alternative trust-region method, good for ill-conditioned problems
+        Solution object with optimized parameters and convergence info
     """
-    # Select solver algorithm
-    solver_obj: LevenbergMarquardt | IndirectLevenbergMarquardt | Dogleg
-    if solver == "lm":
-        solver_obj = LevenbergMarquardt(rtol=rtol, atol=atol)
-    elif solver == "ilm":
-        solver_obj = IndirectLevenbergMarquardt(rtol=rtol, atol=atol)
-    elif solver == "dogleg":
-        solver_obj = Dogleg(rtol=rtol, atol=atol)
+    optimizer = optax.lbfgs()
+    opt_state = optimizer.init(initial_params)
+    value_and_grad_fn = optax.value_and_grad_from_state(loss_fn)
+
+    params = initial_params
+    converged = False
+
+    for step in range(max_steps):
+        value, grad = value_and_grad_fn(params, state=opt_state)
+        updates, opt_state = optimizer.update(grad, opt_state, params, value=value, grad=grad, value_fn=loss_fn)
+        params = optax.apply_updates(params, updates)
+
+        grad_norm = float(jnp.linalg.norm(grad))
+        if grad_norm < grad_tol:
+            converged = True
+            n_steps = step + 1
+            break
     else:
-        raise ValueError(f"Unknown solver '{solver}'. Choose from: 'lm', 'ilm', 'dogleg'")
+        n_steps = max_steps
+        grad_norm = float(jnp.linalg.norm(grad))
 
-    # Solve least squares problem
-    solution: Solution = least_squares(
-        fn=residual_fn,
-        solver=solver_obj,
-        y0=initial_params,
-        args=None,
-        max_steps=max_steps,
-        throw=False,  # Don't raise on non-convergence, return Solution with status
+    return Solution(
+        value=params,
+        converged=converged,
+        n_steps=n_steps,
+        final_loss=float(loss_fn(params)),
+        grad_norm=grad_norm,
     )
-
-    return solution
 
 
 def check_convergence(solution: Solution, verbose: bool = False) -> tuple[bool, float]:
-    """
-    Check convergence status of optimization solution.
-
-    Parameters
-    ----------
-    solution : Solution
-        Optimistix Solution object from least_squares
-    verbose : bool, optional
-        If True, print convergence diagnostics, by default False
-
-    Returns
-    -------
-    converged : bool
-        True if optimization converged successfully
-    optimality : float
-        First-order optimality measure (gradient norm at solution)
-
-    Notes
-    -----
-    Checks the RESULTS enum from optimistix to determine convergence:
-        - successful: Converged within tolerances
-        - max_steps_reached: Hit max iterations (may still be good)
-        - other: Solver failed (singular matrix, NaN, etc.)
-    """
-
-    # Check result code
-    if solution.result == RESULTS.successful:
-        converged = True
-        if verbose:
-            print("Optimization converged successfully")
-    elif solution.result == RESULTS.max_steps_reached:
-        # May have converged "close enough"
-        converged = False
-        if verbose:
-            print(f"Max steps reached ({solution.stats['num_steps']} steps)")
-    else:
-        converged = False
-        if verbose:
-            print(f"Optimization failed: {solution.result}")
-
-    # Extract optimality measure
-    # Note: optimistix doesn't always populate stats, so we need to be careful
-    optimality = float(solution.stats.get("grad_norm", jnp.nan)) if hasattr(solution.stats, "get") else jnp.nan
-
+    """Check convergence status."""
     if verbose:
-        print(f"  Gradient norm: {optimality:.3e}")
-        print(f"  Steps taken: {solution.stats.get('num_steps', 'unknown')}")
+        status = "converged" if solution.converged else "max steps reached"
+        print(f"Optimization {status}")
+        print(f"  Gradient norm: {solution.grad_norm:.3e}")
+        print(f"  Steps taken: {solution.n_steps}")
 
-    return converged, optimality
+    return solution.converged, solution.grad_norm
