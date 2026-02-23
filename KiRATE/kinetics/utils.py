@@ -57,7 +57,7 @@ def validate_broadening_parameters(
 
         # Validate alpha parameter: must be in range (0, 1]
         if A <= 0 or A > 1:
-            raise ValueError(f"Troe parameter A (α={A}) is out of valid range: must satisfy 0 < A ≤ 1.")
+            raise ValueError(f"Troe parameter A (={A}) is out of valid range: must satisfy 0 < A <= 1.")
 
         # Validate T3: must be positive (temperature scale for first exponential)
         if T3 <= 0:
@@ -164,9 +164,9 @@ def validate_arrhenius_parameters(parameters: dict[str, float]) -> None:
     # is needed to perform accurately a DUPLICATE fitting
     if A <= 0:
         warnings.warn(
-            f"Pre-exponential factor A = {A:.3e} is non-positive. "
+            f"Pre-exponential factor A = {A:.3e} is negative. "
             "Negative or zero A will result in negative or zero rate constants, "
-            "which is typically unphysical. This may be acceptable for multi-term "
+            "which is typically unphysical. This may be acceptable for DUPLICATE "
             "fits (e.g., PLOG with multiple Arrhenius expressions). "
             "Please verify your input.",
             UserWarning,
