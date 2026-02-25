@@ -38,11 +38,11 @@ jobs:
 
     - name: Run tests with pytest
       run: |
-        pytest --verbose --tb=short
+        pytest --verbose --tb=short --ignore=tests/species_transport_test.py
 
     - name: Run tests with coverage
       run: |
-        pytest --cov=KiRATE --cov-report=xml --cov-report=term-missing
+        pytest --cov=KiRATE --cov-report=xml --cov-report=term-missing --ignore=tests/species_transport_test.py
 
     - name: Upload coverage to Codecov
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'

@@ -156,16 +156,11 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-tests/jax_try/
-PLOG_replaced.CKI
-_old_example/
 .DS_Store
-tests/ciao.py
-_stuff/
+experiments
 .ideas/
-stuff.py
-experimental/
-_plog_refitter/
+examples/_stuff/
+
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
