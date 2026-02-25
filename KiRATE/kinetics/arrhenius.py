@@ -101,7 +101,7 @@ class Arrhenius(eqx.Module):
 
         # Additional parameters (cached transformed values)
         self._lnA = jnp.log(self._A)
-        self._EaR = self._Ea / constants.R_cal_mol
+        self._EaR = self._Ea / constants.R_cal_mol_K
 
     @classmethod
     def from_chemkin(cls, input_string: str) -> "Arrhenius":
@@ -167,7 +167,7 @@ class Arrhenius(eqx.Module):
         """
         T = jnp.asarray(T, dtype=jnp.float64)
 
-        return self._A * jnp.power(T, self._n) * jnp.exp(-self._Ea / constants.R_cal_mol / T)
+        return self._A * jnp.power(T, self._n) * jnp.exp(-self._Ea / constants.R_cal_mol_K / T)
 
     @eqx.filter_jit
     def log_rate_constant(
@@ -402,7 +402,7 @@ class Arrhenius(eqx.Module):
             "A": (jnp.exp(lnA_min), jnp.exp(lnA_max)),
             "lnA": (lnA_min, lnA_max),
             "n": (n_min, n_max),
-            "Ea": (EaR_min * constants.R_cal_mol, EaR_max * constants.R_cal_mol),
+            "Ea": (EaR_min * constants.R_cal_mol_K, EaR_max * constants.R_cal_mol_K),
             "EaR": (EaR_min, EaR_max),
         }
 
@@ -470,7 +470,7 @@ class Arrhenius(eqx.Module):
             "A": (jnp.exp(self._lnA - delta_lnA), jnp.exp(self._lnA + delta_lnA)),
             "lnA": (self._lnA - delta_lnA, self._lnA + delta_lnA),
             "n": (self._n - delta_n, self._n + delta_n),
-            "Ea": ((self._EaR - delta_EaR) * constants.R_cal_mol, (self._EaR + delta_EaR) * constants.R_cal_mol),
+            "Ea": ((self._EaR - delta_EaR) * constants.R_cal_mol_K, (self._EaR + delta_EaR) * constants.R_cal_mol_K),
             "EaR": (self._EaR - delta_EaR, self._EaR + delta_EaR),
         }
 

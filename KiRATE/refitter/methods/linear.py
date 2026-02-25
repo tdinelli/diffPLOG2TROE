@@ -146,7 +146,7 @@ def arrhenius_linear_fit(
             [
                 jnp.exp(coeffs[0]),  # A
                 coeffs[1],  # n
-                coeffs[2] * constants.R_cal_mol,  # Ea
+                coeffs[2] * constants.R_cal_mol_K,  # Ea
             ]
         )
 
@@ -161,7 +161,7 @@ def arrhenius_linear_fit(
         if "n" in fixed_params:
             y = y - fixed_params["n"] * jnp.log(temperature)
         if "Ea" in fixed_params:
-            y = y + fixed_params["Ea"] / (constants.R_cal_mol * temperature)
+            y = y + fixed_params["Ea"] / (constants.R_cal_mol_K * temperature)
 
         # Build design matrix for unknown parameters
         X_cols = []
@@ -189,7 +189,7 @@ def arrhenius_linear_fit(
             if param_name == "A":
                 result.append(jnp.exp(coeffs[i]))
             elif param_name == "Ea":
-                result.append(coeffs[i] * constants.R_cal_mol)
+                result.append(coeffs[i] * constants.R_cal_mol_K)
             else:  # n
                 result.append(coeffs[i])
 

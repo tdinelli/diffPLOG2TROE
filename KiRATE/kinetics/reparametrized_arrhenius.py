@@ -164,7 +164,7 @@ class ReparametrizedArrhenius(eqx.Module):
         return (
             self._k_ref
             * jnp.pow(T / self._T_ref, self._n)
-            * jnp.exp(-(self._Ea / constants.R_cal_mol) * (1.0 / T - 1.0 / self._T_ref))
+            * jnp.exp(-(self._Ea / constants.R_cal_mol_K) * (1.0 / T - 1.0 / self._T_ref))
         )
 
     def to_standard_form(self) -> dict[str, float]:
@@ -193,7 +193,7 @@ class ReparametrizedArrhenius(eqx.Module):
 
         The parameters n and Ea remain unchanged between forms.
         """
-        A_standard = self._k_ref * (self._T_ref ** (-self._n)) * jnp.exp(self._Ea / constants.R_cal_mol / self._T_ref)
+        A_standard = self._k_ref * (self._T_ref ** (-self._n)) * jnp.exp(self._Ea / constants.R_cal_mol_K / self._T_ref)
         return {"A": float(A_standard), "n": float(self._n), "Ea": float(self._Ea)}
 
     @classmethod
@@ -230,7 +230,9 @@ class ReparametrizedArrhenius(eqx.Module):
             New ReparametrizedArrhenius instance centered at T_ref
         """
         T_ref = jnp.float64(T_ref)
-        k_ref = parameters["A"] * (T_ref ** parameters["n"]) * jnp.exp(-parameters["Ea"] / constants.R_cal_mol / T_ref)
+        k_ref = (
+            parameters["A"] * (T_ref ** parameters["n"]) * jnp.exp(-parameters["Ea"] / constants.R_cal_mol_K / T_ref)
+        )
         centered_params = {"k_ref": float(k_ref), "n": parameters["n"], "Ea": parameters["Ea"], "T_ref": T_ref}
 
         return cls(parameters=centered_params, name=name)
@@ -324,7 +326,7 @@ class ReparametrizedArrhenius(eqx.Module):
         This property is useful for compatibility with code expecting standard
         Arrhenius parameters without explicit conversion.
         """
-        return self._k_ref * (self._T_ref ** (-self._n)) * jnp.exp(self._Ea / constants.R_cal_mol / self._T_ref)
+        return self._k_ref * (self._T_ref ** (-self._n)) * jnp.exp(self._Ea / constants.R_cal_mol_K / self._T_ref)
 
     @property
     def n(self) -> Float64[Array, ""]:
