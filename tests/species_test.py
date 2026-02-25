@@ -51,7 +51,7 @@ class TestSpecies(unittest.TestCase):
             "h": jnp.array(ch4_data[:, 2]) * J_to_cal * kmol_to_mol,  # cal/mol
             "s": jnp.array(ch4_data[:, 3]) * J_to_cal * kmol_to_mol,  # cal/mol/K
             "g": jnp.array(ch4_data[:, 4]) * J_to_cal * kmol_to_mol,  # cal/mol
-            "cp_R": jnp.array(ch4_data[:, 5]),
+            "cp_over_r": jnp.array(ch4_data[:, 5]),
             "h_RT": jnp.array(ch4_data[:, 6]),
             "s_R": jnp.array(ch4_data[:, 7]),
             "g_RT": jnp.array(ch4_data[:, 8]),
@@ -69,7 +69,7 @@ class TestSpecies(unittest.TestCase):
             "h": jnp.array(ch2o_data[:, 2]) * J_to_cal * kmol_to_mol,  # cal/mol
             "s": jnp.array(ch2o_data[:, 3]) * J_to_cal * kmol_to_mol,  # cal/mol/K
             "g": jnp.array(ch2o_data[:, 4]) * J_to_cal * kmol_to_mol,  # cal/mol
-            "cp_R": jnp.array(ch2o_data[:, 5]),
+            "cp_over_r": jnp.array(ch2o_data[:, 5]),
             "h_RT": jnp.array(ch2o_data[:, 6]),
             "s_R": jnp.array(ch2o_data[:, 7]),
             "g_RT": jnp.array(ch2o_data[:, 8]),
@@ -77,8 +77,8 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch4_dimensionless_cp(self):
         """Test CH4 dimensionless heat capacity Cp/R against Cantera."""
-        calculated = self.ch4.cp_R(self.T_range)
-        expected = self.ch4_cantera["cp_R"]
+        calculated = self.ch4.cp_over_r(self.T_range)
+        expected = self.ch4_cantera["cp_over_r"]
 
         self.assertTrue(
             jnp.allclose(calculated, expected, rtol=1e-10, atol=1e-10),
@@ -98,7 +98,7 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch4_dimensionless_enthalpy(self):
         """Test CH4 dimensionless enthalpy H/(RT) against Cantera."""
-        calculated = self.ch4.h_RT(self.T_range)
+        calculated = self.ch4.h_over_rt(self.T_range)
         expected = self.ch4_cantera["h_RT"]
 
         self.assertTrue(
@@ -119,7 +119,7 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch4_dimensionless_entropy(self):
         """Test CH4 dimensionless entropy S/R against Cantera."""
-        calculated = self.ch4.s_R(self.T_range)
+        calculated = self.ch4.s_over_r(self.T_range)
         expected = self.ch4_cantera["s_R"]
 
         self.assertTrue(
@@ -140,7 +140,7 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch4_dimensionless_gibbs(self):
         """Test CH4 dimensionless Gibbs energy G/(RT) against Cantera."""
-        calculated = self.ch4.g_RT(self.T_range)
+        calculated = self.ch4.g_over_rt(self.T_range)
         expected = self.ch4_cantera["g_RT"]
 
         self.assertTrue(
@@ -161,8 +161,8 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch2o_dimensionless_cp(self):
         """Test CH2O dimensionless heat capacity Cp/R against Cantera."""
-        calculated = self.ch2o.cp_R(self.T_range)
-        expected = self.ch2o_cantera["cp_R"]
+        calculated = self.ch2o.cp_over_r(self.T_range)
+        expected = self.ch2o_cantera["cp_over_r"]
 
         self.assertTrue(
             jnp.allclose(calculated, expected, rtol=1e-10, atol=1e-10),
@@ -182,7 +182,7 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch2o_dimensionless_enthalpy(self):
         """Test CH2O dimensionless enthalpy H/(RT) against Cantera."""
-        calculated = self.ch2o.h_RT(self.T_range)
+        calculated = self.ch2o.h_over_rt(self.T_range)
         expected = self.ch2o_cantera["h_RT"]
 
         self.assertTrue(
@@ -203,7 +203,7 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch2o_dimensionless_entropy(self):
         """Test CH2O dimensionless entropy S/R against Cantera."""
-        calculated = self.ch2o.s_R(self.T_range)
+        calculated = self.ch2o.s_over_r(self.T_range)
         expected = self.ch2o_cantera["s_R"]
 
         self.assertTrue(
@@ -224,7 +224,7 @@ class TestSpecies(unittest.TestCase):
 
     def test_ch2o_dimensionless_gibbs(self):
         """Test CH2O dimensionless Gibbs energy G/(RT) against Cantera."""
-        calculated = self.ch2o.g_RT(self.T_range)
+        calculated = self.ch2o.g_over_rt(self.T_range)
         expected = self.ch2o_cantera["g_RT"]
 
         self.assertTrue(
@@ -261,9 +261,9 @@ class TestSpecies(unittest.TestCase):
                 )
 
                 # Test Cv = Cp - R
-                cp_R = species.cp_R(test_temps)
-                cv_R = species.cv_R(test_temps)
-                diff = cp_R - cv_R
+                cp_over_r = species.cp_over_r(test_temps)
+                cv_R = species.cv_over_r(test_temps)
+                diff = cp_over_r - cv_R
 
                 self.assertTrue(
                     jnp.allclose(diff, 1.0, rtol=1e-10, atol=1e-10),
@@ -274,16 +274,16 @@ class TestSpecies(unittest.TestCase):
         """Test that vectorized evaluation works correctly."""
         # Single temperature
         single_T = 1000.0
-        cp_single = self.ch4.cp_R(single_T)
+        cp_single = self.ch4.cp_over_r(single_T)
         self.assertEqual(cp_single.shape, ())  # Scalar output
 
         # Array of temperatures
         array_T = jnp.array([300.0, 1000.0, 2000.0])
-        cp_array = self.ch4.cp_R(array_T)
+        cp_array = self.ch4.cp_over_r(array_T)
         self.assertEqual(cp_array.shape, (3,))  # Vector output
 
         # Check that single value matches first element of array evaluation
-        cp_array_full = self.ch4.cp_R(jnp.array([single_T]))
+        cp_array_full = self.ch4.cp_over_r(jnp.array([single_T]))
         self.assertTrue(
             jnp.allclose(cp_single, cp_array_full.squeeze(), rtol=1e-10, atol=1e-10),
         )
@@ -295,14 +295,14 @@ class TestSpecies(unittest.TestCase):
 
         # Temperature just below Tmid (should use low coeffs)
         T_low = tmid - 1.0
-        cp_low = self.ch4.cp_R(T_low)
+        cp_low = self.ch4.cp_over_r(T_low)
 
         # Temperature at Tmid (should use high coeffs due to >= condition)
-        cp_mid = self.ch4.cp_R(tmid)
+        cp_mid = self.ch4.cp_over_r(tmid)
 
         # Temperature just above Tmid (should use high coeffs)
         T_high = tmid + 1.0
-        cp_high = self.ch4.cp_R(T_high)
+        cp_high = self.ch4.cp_over_r(T_high)
 
         # Values should be continuous but derivatives may not be
         self.assertTrue(jnp.isfinite(cp_low))

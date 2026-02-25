@@ -1,8 +1,8 @@
 import jax.numpy as jnp
 from jaxtyping import Array, Float64
 
-from KiRATE.species.nasa7_polynomial import build_temperature_powers, eval_h_over_RT, eval_s_over_R
 from KiRATE.species.species import Species
+from KiRATE.species.thermo.nasa7_polynomial import h_rt, s_r, temperature_powers
 
 
 def fit_smooth_nasa7_coefficients(species: Species, T_mid: float | None = None) -> Species:
@@ -17,8 +17,8 @@ def fit_smooth_nasa7_coefficients(species: Species, T_mid: float | None = None) 
 
     Algorithm Overview
     -------------------
-    1. **Fit smooth polynomial**: Fit Cp/R data using spline basis [1, T, T², T³, T⁴, (T-Tknot)⁴]
-       - The (T-Tknot)⁴ spline ensures all derivatives (up to 3rd) are continuous at Tknot
+    1. **Fit smooth polynomial**: Fit Cp/R data using spline basis [1, T, T^2, T^3, T^4, (T-Tknot)^4]
+       - The (T-Tknot)^4 spline ensures all derivatives (up to 3rd) are continuous at Tknot
        - Least-squares fitting solves: (X^T X) coeffs = X^T y (normal equations, not QR-based)
 
     2. **Extract NASA7 coefficients**:
@@ -104,6 +104,7 @@ def fit_smooth_nasa7_coefficients(species: Species, T_mid: float | None = None) 
     """
 
     if T_mid is not None:
+        T_mid = jnp.float64(T_mid)
         temperatures = _build_temperature_grid(species.Tmin, species.Tmax, T_mid, 30)
 
         # Fixed intermediate temperature case
@@ -227,7 +228,7 @@ def _fit_spline_to_heat_capacity(
     Float64[Array, "6"]
         Fitted coefficients [a0, a1, a2, a3, a4, alpha]
     """
-    y = species.cp_R(temperatures)
+    y = species.cp_over_r(temperatures)
     X = _build_spline_basis_matrix(temperatures, knot_temperature)
 
     # Assemble and solve the normal equations like OpenSMOKE: solve (X^T X) * params = X^T * y
@@ -264,7 +265,7 @@ def _compute_relative_fit_error(
         Cumulative relative error
     """
     X = _build_spline_basis_matrix(temperatures, knot_temperature)
-    y = species.cp_R(temperatures)
+    y = species.cp_over_r(temperatures)
     cp_fitted = X @ fitted_coeffs
 
     return float(jnp.sum(jnp.abs(cp_fitted - y) / jnp.abs(y)))
@@ -362,7 +363,7 @@ def _extract_nasa7_coefficients(
         Each list contains [a1, a2, a3, a4, a5, a6, a7]
     """
     a0, a1, a2, a3, a4, alpha = fitted_coeffs
-    T_powers = build_temperature_powers(knot_temperature)
+    T_powers = temperature_powers(knot_temperature)
 
     # For T <= Tknot: use base polynomial coefficients (no spline correction)
     a1_low = a0
@@ -384,24 +385,24 @@ def _extract_nasa7_coefficients(
     a5_high = a4 + alpha
 
     # Get original species' H/(RT) and S/R at knot_temperature
-    h_RT_original = species.h_RT(knot_temperature)
-    s_R_original = species.s_R(knot_temperature)
+    h_RT_original = species.h_over_rt(knot_temperature)
+    s_R_original = species.s_over_r(knot_temperature)
 
     # Build coefficient arrays for evaluation using class methods
     coeffs_low = jnp.array([a1_low, a2_low, a3_low, a4_low, a5_low, 0.0, 0.0])
     coeffs_high = jnp.array([a1_high, a2_high, a3_high, a4_high, a5_high, 0.0, 0.0])
 
     # Compute H/(RT) at Tknot from low-T and high-T coefficients using class method
-    h_RT_low = eval_h_over_RT(coeffs_low, T_powers)
-    h_RT_high = eval_h_over_RT(coeffs_high, T_powers)
+    h_RT_low = h_rt(coeffs_low, T_powers)
+    h_RT_high = h_rt(coeffs_high, T_powers)
 
     # Compute a6 to ensure H/(RT) continuity with original species
     a6_low = (h_RT_original - h_RT_low) * knot_temperature
     a6_high = (h_RT_original - h_RT_high) * knot_temperature
 
     # Compute S/R at Tknot from low-T and high-T coefficients using class method
-    s_R_low = eval_s_over_R(coeffs_low, T_powers)
-    s_R_high = eval_s_over_R(coeffs_high, T_powers)
+    s_R_low = s_r(coeffs_low, T_powers)
+    s_R_high = s_r(coeffs_high, T_powers)
 
     # Compute a7 to ensure S/R continuity with original species
     a7_low = s_R_original - s_R_low
@@ -488,7 +489,7 @@ def _build_spline_basis_matrix(
     n_points = len(temperatures)
     X = jnp.zeros((n_points, 6))
 
-    T_powers = build_temperature_powers(temperatures)
+    T_powers = temperature_powers(temperatures)
 
     # Spline correction: zero for T < knot_temperature, (T-knot_temperature)^4 for T >= knot_temperature
     spline_correction = jnp.where(temperatures >= knot_temperature, (temperatures - knot_temperature) ** 4, 0.0)
