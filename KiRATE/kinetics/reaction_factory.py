@@ -16,7 +16,6 @@ from KiRATE.kinetics.falloff import FallOff
 from KiRATE.kinetics.plog import Plog
 from KiRATE.kinetics.three_body import Threebody
 from KiRATE.species import Species
-from KiRATE.species.thermo import temperature_powers
 from KiRATE.utilities import constants, parse_stoichiometry
 
 AnyRate: TypeAlias = Arrhenius | CABR | Chebyshev | FallOff | Plog | Threebody
@@ -316,8 +315,9 @@ class Reaction(eqx.Module):
         # This is more efficient as we:
         # 1. Compute each species' g_RT only once (even if in both reactants and products)
         # 2. Use vectorized operations for the sum
-        T_powers = temperature_powers(T_array)
-        g_RT_values = jnp.array([species.g_over_rt(T_powers=T_powers) for species in self._species_for_equilibrium])
+        # Note: Each species computes T_powers internally, but g_over_rt optimizes by
+        # computing h_rt and s_r with shared T_powers
+        g_RT_values = jnp.array([species.g_over_rt(T=T_array) for species in self._species_for_equilibrium])
         DG_RT = jnp.dot(self._net_stoich_coeffs, g_RT_values)
 
         # Pressure-based equilibrium constant: K_p = exp(-DG/(RT))

@@ -5,11 +5,18 @@ Licensed under the MIT License - see LICENSE file for details
 Collision integral evaluation for gas-phase transport properties.
 
 Implements Omega^(1,1) and Omega^(2,2) collision integrals using 2D quadratic
-(Newton forward) interpolation on tabulated data from:
+(Newton forward) interpolation on tabulated data. The tables are the same as
+those used in CHEMKIN and OpenSMOKE++.
 
-    TODO: Add references
+References
+----------
+.. [1] Kee, R. J., Dixon-Lewis, G., Warnatz, J., Coltrin, M. E., and Miller, J. A.
+       "A Fortran Computer Code Package for the Evaluation of Gas-Phase
+       Multicomponent Transport Properties." Sandia Report SAND86-8246 (1986).
 
-The tables are the same as those used in CHEMKIN and OpenSMOKE++.
+.. [2] Monchick, L., and Mason, E. A.
+       "Transport Properties of Polar Gases."
+       Journal of Chemical Physics 35, 1676-1697 (1961).
 """
 
 import jax.numpy as jnp
@@ -167,46 +174,61 @@ def _quadratic_interp(
     y3: Float64[Array, ""],
 ) -> Float64[Array, ""]:
     """
-    3-point Newton forward quadratic interpolation.
+    Newton forward quadratic interpolation.
 
-    Given three nodes (x1,y1), (x2,y2), (x3,y3) and a query point x,
-    returns the value of the interpolating polynomial at x.
-
-    This is the same formula used in OpenSMOKE++ CollisionIntegral11/22.
+    Evaluates a quadratic interpolating polynomial through three nodes
+    :math:`(x_1, y_1)`, :math:`(x_2, y_2)`, :math:`(x_3, y_3)` at query point
+    :math:`x`. Uses divided differences formulation equivalent to OpenSMOKE++
+    CollisionIntegral11/22 implementation.
 
     Parameters
     ----------
-    x           : query point
-    x1, x2, x3 : node abscissae (must satisfy x1 < x2 < x3)
-    y1, y2, y3 : node ordinates
+    x : Float64[Array, ""]
+        Query point at which to evaluate the polynomial
+    x1 : Float64[Array, ""]
+        First node abscissa (must satisfy :math:`x_1 < x_2 < x_3`)
+    x2 : Float64[Array, ""]
+        Second node abscissa
+    x3 : Float64[Array, ""]
+        Third node abscissa
+    y1 : Float64[Array, ""]
+        First node ordinate
+    y2 : Float64[Array, ""]
+        Second node ordinate
+    y3 : Float64[Array, ""]
+        Third node ordinate
 
     Returns
     -------
     Float64[Array, ""]
         Interpolated value at x
     """
-    a2 = (y2 - y1) * (1 / (x2 - x1))
-    a3 = (y3 - y1 - a2 * (x3 - x1)) * (1.0 / ((x3 - x1) * (x3 - x2)))
 
-    return y1 + (x - x1) * (a2 + a3 * (x - x2))
+    return y1 + (x - x1) * (
+        ((y2 - y1) * (1 / (x2 - x1)))
+        + ((y3 - y1 - ((y2 - y1) * (1 / (x2 - x1))) * (x3 - x1)) * (1.0 / ((x3 - x1) * (x3 - x2)))) * (x - x2)
+    )
 
 
 def _locate(sorted_vector: Float64[Array, "n"], value: Float64[Array, ""]) -> Float64[Array, ""]:
     """
-    Returns index i such that sorted_vec[i] <= val < sorted_vec[i+1].
+    Locate value in sorted array for interpolation.
 
-    Equivalent to OpenSMOKE's LocateInSortedVector.
-    Result is clamped to [0, len-3] so that i, i+1, i+2 are always valid.
+    Returns index i such that sorted_vector[i] <= value < sorted_vector[i+1].
+    Equivalent to OpenSMOKE's LocateInSortedVector. Result is clamped to
+    [0, len-3] so that i, i+1, i+2 are always valid for quadratic interpolation.
 
     Parameters
     ----------
-    sorted_vec : 1-D sorted array
-    val        : query value
+    sorted_vector : Float64[Array, "n"]
+        Sorted 1-D array
+    value : Float64[Array, ""]
+        Query value to locate
 
     Returns
     -------
-    int
-        Index into sorted_vec
+    Float64[Array, ""]
+        Index into sorted_vector, clamped to [0, n-3]
     """
     idx = jnp.searchsorted(sorted_vector, value, side="right") - 1
 
@@ -223,32 +245,47 @@ def _collision_integral(
     fallback_c3: Float64[Array, ""],
 ) -> Float64[Array, ""]:
     """
-    2D quadratic interpolation on a 37×8 collision integral table.
+    2D quadratic interpolation on collision integral table.
 
-    Three cases (mirroring the OpenSMOKE logic) are all evaluated and selected
-    via jnp.where — required for JAX JIT compatibility.
+    Implements Newton forward interpolation on a 37×8 collision integral table
+    with three evaluation paths (all computed and selected via jnp.where for
+    JAX JIT compatibility):
 
-    Case 1: T* > _T_STAR[-1]
-        Polynomial fallback: c0 + c1*T* + c2*T*^2 + c3*T*^3
+    1. **High temperature (T* > 100)**: Polynomial fallback
+       :math:`c_0 + c_1 T^* + c_2 (T^*)^2 + c_3 (T^*)^3`
 
-    Case 2: |δ*| <= 1e-5  (nonpolar species)
-        1-D quadratic interpolation on the first table column only.
+    2. **Nonpolar species** (:math:`|\\delta^*| \\leq 10^{-5}`): 1-D quadratic interpolation on
+       first table column only
 
-    Case 3: General (polar or intermediate)
-        Interpolate in T* for three consecutive δ* columns,
-        then interpolate in δ* across those three values.
+    3. **General case (polar or intermediate)**: 2-D quadratic interpolation
+       in both T* and :math:`\\delta^*`
 
     Parameters
     ----------
-    t_star                    : reduced temperature T* = T / (ε/k_B)
-    d_star                    : reduced dipole moment δ*
-    table                     : 37×8 collision integral table
-    fallback_c0..fallback_c3  : polynomial coefficients for T* > _T_STAR[-1]
+    t_star : Float64[Array, ""]
+        Reduced temperature :math:`T^* = T / (\\epsilon/k_B)` [-]
+    d_star : Float64[Array, ""]
+        Reduced dipole moment :math:`\\delta^* = 0.5 (\\mu^*)^2` [-]
+    table : Float64[Array, "37 8"]
+        Collision integral table (37 :math:`T^*` points × 8 :math:`\\delta^*` points)
+    fallback_c0 : Float64[Array, ""]
+        Polynomial coefficient :math:`c_0` for T* > 100
+    fallback_c1 : Float64[Array, ""]
+        Polynomial coefficient :math:`c_1` for T* > 100
+    fallback_c2 : Float64[Array, ""]
+        Polynomial coefficient :math:`c_2` for T* > 100
+    fallback_c3 : Float64[Array, ""]
+        Polynomial coefficient :math:`c_3` for T* > 100
 
     Returns
     -------
-    float
-        Collision integral value Ω
+    Float64[Array, ""]
+        Collision integral value :math:`\\Omega` [-]
+
+    Notes
+    -----
+    T* values below 0.09 are clamped to 0.09, mirroring OpenSMOKE++
+    behavior to avoid extrapolation below the table range.
     """
     # Clamp T* to minimum (mirrors the OpenSMOKEpp warning + reassignment at tjk=0.09)
     t_star = jnp.clip(t_star, 0.09, None)
@@ -285,26 +322,31 @@ def _collision_integral(
 
 def omega11(t_star: Float64[Array, ""], d_star: Float64[Array, ""]) -> Float64[Array, ""]:
     """
-    Collision integral Omega^(1,1)(T*, delta*).
+    Collision integral Omega^(1,1) for binary diffusivity.
 
-    Used in the computation of binary mass diffusivities Djk.
+    Evaluates the :math:`\\Omega^{(1,1)}(T^*, \\delta^*)` collision integral used
+    in Chapman-Enskog theory for computing binary mass diffusivities :math:`D_{jk}`.
 
     Parameters
     ----------
     t_star : Float64[Array, ""]
-        Reduced temperature T* = T / (epsilon_jk / k_B)  [-]
+        Reduced temperature :math:`T^* = T / (\\epsilon_{jk}/k_B)` [-]
     d_star : Float64[Array, ""]
-        Reduced dipole moment delta* = 0.5 * mu*^2        [-]
+        Reduced dipole moment :math:`\\delta^* = 0.5 (\\mu^*)^2` [-]
 
     Returns
     -------
     Float64[Array, ""]
-        Omega^(1,1) collision integral  [-]
+        Collision integral :math:`\\Omega^{(1,1)}` [-]
 
     Notes
     -----
-    For T* > 100 (last tabulated point), falls back to:
-        Omega^(1,1) = 0.623 - 0.00136*T* + 3.46e-6*T*^2 - 3.43e-9*T*^3
+    For :math:`T^* > 100` (beyond the last tabulated point), uses polynomial
+    extrapolation:
+
+    .. math::
+        \\Omega^{(1,1)} = 0.623 - 0.00136 T^* + 3.46 \\times 10^{-6} (T^*)^2
+                        - 3.43 \\times 10^{-9} (T^*)^3
     """
     return _collision_integral(
         t_star,
@@ -319,26 +361,32 @@ def omega11(t_star: Float64[Array, ""], d_star: Float64[Array, ""]) -> Float64[A
 
 def omega22(t_star: Float64[Array, ""], d_star: Float64[Array, ""]) -> Float64[Array, ""]:
     """
-    Collision integral Omega^(2,2)(T*, delta*).
+    Collision integral Omega^(2,2) for viscosity and thermal conductivity.
 
-    Used in the computation of viscosity eta and thermal conductivity lambda.
+    Evaluates the :math:`\\Omega^{(2,2)}(T^*, \\delta^*)` collision integral used
+    in Chapman-Enskog theory for computing viscosity :math:`\\eta` and thermal
+    conductivity :math:`\\lambda`.
 
     Parameters
     ----------
-    t_star : float
-        Reduced temperature T* = T / (epsilon / k_B)   [-]
-    d_star : float
-        Reduced dipole moment delta* = 0.5 * mu*^2     [-]
+    t_star : Float64[Array, ""]
+        Reduced temperature :math:`T^* = T / (\\epsilon/k_B)` [-]
+    d_star : Float64[Array, ""]
+        Reduced dipole moment :math:`\\delta^* = 0.5 (\\mu^*)^2` [-]
 
     Returns
     -------
-    float
-        Omega^(2,2) collision integral  [-]
+    Float64[Array, ""]
+        Collision integral :math:`\\Omega^{(2,2)}` [-]
 
     Notes
     -----
-    For T* > 100 (last tabulated point), falls back to:
-        Omega^(2,2) = 0.703 - 0.00146*T* + 3.57e-6*T*^2 - 3.43e-9*T*^3
+    For :math:`T^* > 100` (beyond the last tabulated point), uses polynomial
+    extrapolation:
+
+    .. math::
+        \\Omega^{(2,2)} = 0.703 - 0.00146 T^* + 3.57 \\times 10^{-6} (T^*)^2
+                        - 3.43 \\times 10^{-9} (T^*)^3
     """
     return _collision_integral(
         t_star,

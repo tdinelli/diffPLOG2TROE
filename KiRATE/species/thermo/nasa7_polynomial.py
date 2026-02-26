@@ -11,9 +11,7 @@ _H_MULTIPLIERS: Float64[Array, "5"] = jnp.array([1.0, 0.5, 1 / 3, 0.25, 0.2], dt
 _S_MULTIPLIERS: Float64[Array, "5"] = jnp.array([0.0, 1.0, 0.5, 1 / 3, 0.25], dtype=jnp.float64)
 
 
-def temperature_powers(
-    T: Float64[Array, ""] | Float64[Array, "n"],
-) -> Float64[Array, "6"] | Float64[Array, "n 6"]:
+def temperature_powers(T: Float64[Array, ""] | Float64[Array, "n"]) -> Float64[Array, "6"] | Float64[Array, "n 6"]:
     """
     Assemble precomputed temperature powers for NASA polynomial evaluation.
 
@@ -24,13 +22,11 @@ def temperature_powers(
 
     Returns
     -------
-    Float64[Array, "5"] | Float64[Array, "n 5"]
-        Array containing [1, T, T^2, T^3, T^4]
+    Float64[Array, "6"] | Float64[Array, "n 6"]
+        Array containing [1, T, T^2, T^3, T^4, LOG(T)]
 
     Notes
     -----
-    This method efficiently computes temperature powers by reusing intermediate
-    results (T^2, T^3, T^4) rather than computing each power independently.
     Powers are stacked along the last axis to support both scalar and array inputs.
     """
     T2 = T * T

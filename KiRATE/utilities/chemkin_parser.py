@@ -1090,13 +1090,17 @@ def parse_species(thermo_string: str) -> tuple[str, dict[str, int], str, float, 
             f"Temperature range: [{Tmin}, {Tmax}] K"
         ) from e
 
+    if Tmin == Tmax:
+        raise ValueError(f"Tmin and Tmax must be different (both are {Tmin})")
+    if Tmin == Tmid:
+        raise ValueError(f"Tmin and Tmid must be different (both are {Tmin})")
+    if Tmax == Tmid:
+        raise ValueError(f"Tmax and Tmid must be different (both are {Tmax})")
+
     # Extract NASA polynomial coefficients (high-T first!)
     # CHEMKIN format allows numbers to be written without spaces between them
     # (e.g., "1.23E+02-4.56E-03" is valid). Therefore, we use regex to extract
     # all numbers from each line.
-
-    import re
-
     # Pattern matches: optional sign, digits with optional decimal, optional exponent
     number_pattern = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eEdD][-+]?\d+)?")
 

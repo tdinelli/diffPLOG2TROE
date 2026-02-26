@@ -17,7 +17,6 @@ References
 from collections.abc import Callable
 
 import jax.numpy as jnp
-import numpy as np
 from jaxtyping import Array, Float64
 
 
@@ -74,7 +73,7 @@ def fit_log_property(
     X = jnp.column_stack([jnp.ones_like(log_T), log_T, jnp.pow(log_T, 2), jnp.pow(log_T, 3)])
 
     # Sample the property and take log
-    y = np.array([np.log(float(eval_func(T))) for T in T_points])
+    y = eval_func(T_points)
 
     # Solve least squares: (X^T X) coeffs = X^T y
     coeffs, *_ = jnp.linalg.lstsq(X, y)
@@ -84,8 +83,8 @@ def fit_log_property(
 
 def eval_log_poly(
     coeffs: Float64[Array, "4"],
-    T: Float64[Array, ""],
-) -> Float64[Array, ""]:
+    T: Float64[Array, ""] | Float64[Array, "n"],
+) -> Float64[Array, ""] | Float64[Array, "n"]:
     """
     Evaluate a log-cubic polynomial fit at temperature T.
 

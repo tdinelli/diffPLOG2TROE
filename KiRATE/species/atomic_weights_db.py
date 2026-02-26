@@ -254,6 +254,7 @@ def get_atomic_weight(element: str) -> Float64[Array, ""]:
 
 def get_molecular_weight(composition: dict[str, int]) -> Float64[Array, ""]:
     """
+    TODO: Update the doc here
     Calculate molecular weight from elemental composition.
 
     Args:
@@ -261,10 +262,6 @@ def get_molecular_weight(composition: dict[str, int]) -> Float64[Array, ""]:
 
     Returns:
         Molecular weight in g/mol
-
-    Example:
-        >>> get_molecular_weight({"H": 2, "O": 1})  # H2O
-        18.015
     """
     mw = jnp.float64(0.0)
     for element, count in composition.items():

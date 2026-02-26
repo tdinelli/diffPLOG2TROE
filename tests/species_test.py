@@ -309,6 +309,104 @@ class TestSpecies(unittest.TestCase):
         self.assertTrue(jnp.isfinite(cp_mid))
         self.assertTrue(jnp.isfinite(cp_high))
 
+    def test_evaluate_multiple_properties(self):
+        """Test evaluate() method for batch property evaluation."""
+        T = 1000.0
+
+        # Evaluate multiple properties at once
+        props = self.ch4.evaluate(T=T, properties=["cp", "h", "s", "g"])
+
+        # Compare with individual method calls
+        cp_individual = self.ch4.cp(T)
+        h_individual = self.ch4.h(T)
+        s_individual = self.ch4.s(T)
+        g_individual = self.ch4.g(T)
+
+        # Should match individual calls exactly
+        self.assertTrue(jnp.allclose(props["cp"], cp_individual, rtol=1e-15, atol=1e-15))
+        self.assertTrue(jnp.allclose(props["h"], h_individual, rtol=1e-15, atol=1e-15))
+        self.assertTrue(jnp.allclose(props["s"], s_individual, rtol=1e-15, atol=1e-15))
+        self.assertTrue(jnp.allclose(props["g"], g_individual, rtol=1e-15, atol=1e-15))
+
+    def test_evaluate_dimensionless_properties(self):
+        """Test evaluate() with dimensionless properties."""
+        T = jnp.array([300.0, 1000.0, 2000.0])
+
+        # Evaluate dimensionless properties
+        props = self.ch4.evaluate(T=T, properties=["cp_r", "h_rt", "s_r", "g_rt"])
+
+        # Compare with individual calls
+        self.assertTrue(jnp.allclose(props["cp_r"], self.ch4.cp_over_r(T), rtol=1e-15))
+        self.assertTrue(jnp.allclose(props["h_rt"], self.ch4.h_over_rt(T), rtol=1e-15))
+        self.assertTrue(jnp.allclose(props["s_r"], self.ch4.s_over_r(T), rtol=1e-15))
+        self.assertTrue(jnp.allclose(props["g_rt"], self.ch4.g_over_rt(T), rtol=1e-15))
+
+    def test_evaluate_all_dimensional(self):
+        """Test evaluate_all() with dimensional properties."""
+        T = 1500.0
+
+        # Get all dimensional properties
+        props = self.ch4.evaluate_all(T=T, dimensionless=False)
+
+        # Should contain all dimensional properties
+        expected_keys = {"cp", "h", "s", "g", "u", "cv"}
+        self.assertEqual(set(props.keys()), expected_keys)
+
+        # Verify values match individual calls
+        self.assertTrue(jnp.allclose(props["cp"], self.ch4.cp(T), rtol=1e-15))
+        self.assertTrue(jnp.allclose(props["h"], self.ch4.h(T), rtol=1e-15))
+        self.assertTrue(jnp.allclose(props["s"], self.ch4.s(T), rtol=1e-15))
+        self.assertTrue(jnp.allclose(props["g"], self.ch4.g(T), rtol=1e-15))
+        self.assertTrue(jnp.allclose(props["u"], self.ch4.u(T), rtol=1e-15))
+        self.assertTrue(jnp.allclose(props["cv"], self.ch4.cv(T), rtol=1e-15))
+
+    def test_evaluate_all_dimensionless(self):
+        """Test evaluate_all() with dimensionless properties."""
+        T = jnp.array([500.0, 1000.0, 1500.0])
+
+        # Get all dimensionless properties
+        props = self.ch4.evaluate_all(T=T, dimensionless=True)
+
+        # Should contain all dimensionless properties
+        expected_keys = {"cp_r", "h_rt", "s_r", "g_rt", "u_rt", "cv_r"}
+        self.assertEqual(set(props.keys()), expected_keys)
+
+        # Verify values match individual calls
+        self.assertTrue(jnp.allclose(props["cp_r"], self.ch4.cp_over_r(T), rtol=1e-15))
+        self.assertTrue(jnp.allclose(props["h_rt"], self.ch4.h_over_rt(T), rtol=1e-15))
+        self.assertTrue(jnp.allclose(props["s_r"], self.ch4.s_over_r(T), rtol=1e-15))
+        self.assertTrue(jnp.allclose(props["g_rt"], self.ch4.g_over_rt(T), rtol=1e-15))
+        self.assertTrue(jnp.allclose(props["u_rt"], self.ch4.u_over_rt(T), rtol=1e-15))
+        self.assertTrue(jnp.allclose(props["cv_r"], self.ch4.cv_over_r(T), rtol=1e-15))
+
+    def test_evaluate_invalid_property(self):
+        """Test that evaluate() raises ValueError for unknown property."""
+        T = 1000.0
+
+        with self.assertRaises(ValueError) as context:
+            self.ch4.evaluate(T=T, properties=["invalid_property"])
+
+        self.assertIn("Unknown property", str(context.exception))
+        self.assertIn("invalid_property", str(context.exception))
+
+    def test_evaluate_vectorized(self):
+        """Test evaluate() works with vectorized temperatures."""
+        T_array = jnp.array([300.0, 500.0, 1000.0, 2000.0, 3000.0])
+
+        # Evaluate multiple properties with array input
+        props = self.ch4.evaluate(T=T_array, properties=["cp", "h", "s"])
+
+        # All properties should have same shape as input
+        self.assertEqual(props["cp"].shape, (5,))
+        self.assertEqual(props["h"].shape, (5,))
+        self.assertEqual(props["s"].shape, (5,))
+
+        # Verify correctness at each temperature
+        for i, T_single in enumerate([300.0, 500.0, 1000.0, 2000.0, 3000.0]):
+            self.assertTrue(jnp.allclose(props["cp"][i], self.ch4.cp(T_single), rtol=1e-15))
+            self.assertTrue(jnp.allclose(props["h"][i], self.ch4.h(T_single), rtol=1e-15))
+            self.assertTrue(jnp.allclose(props["s"][i], self.ch4.s(T_single), rtol=1e-15))
+
 
 if __name__ == "__main__":
     unittest.main()
