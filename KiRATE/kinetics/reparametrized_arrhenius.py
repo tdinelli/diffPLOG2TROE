@@ -80,8 +80,9 @@ class ReparametrizedArrhenius(eqx.Module):
 
     The CHEMKIN format does not natively support reparametrized Arrhenius equations,
     so this class does not provide a ``from_chemkin()`` method. To use CHEMKIN data:
-        1. Parse with ``Arrhenius.from_chemkin()``
-        2. Convert to reparametrized form using ``ReparametrizedArrhenius.from_standard_form()``
+
+    1. Parse with ``Arrhenius.from_chemkin()``
+    2. Convert to reparametrized form using ``ReparametrizedArrhenius.from_standard_form()``
 
     **When to Use:**
 

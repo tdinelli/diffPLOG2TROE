@@ -22,6 +22,7 @@ extensions = [
     "sphinx_copybutton",
     "myst_parser",  # Markdown support
     "nbsphinx",  # Jupyter notebook support
+    "nbsphinx_link",  # Link to notebooks outside docs directory
 ]
 
 # MyST parser configuration (Markdown support)
@@ -36,11 +37,18 @@ myst_enable_extensions = [
 source_suffix = {
     ".rst": "restructuredtext",
     ".md": "markdown",
+    ".ipynb": "nbsphinx",
 }
 
 # Templates
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+
+# Suppress specific warnings
+suppress_warnings = [
+    "ref.citation",  # Suppress duplicate citation reference warnings
+    "toc.no_title",  # Suppress missing notebook title warnings (handled by content)
+]
 
 # Sidebar settings - collapsible navigation
 html_sidebars = {
@@ -149,3 +157,34 @@ copybutton_prompt_is_regexp = True
 # nbsphinx
 nbsphinx_execute = "never"  # Don't execute notebooks during build
 nbsphinx_allow_errors = True
+
+# Allow nbsphinx to find notebooks outside the docs directory
+exclude_patterns.extend([
+    os.path.join('..', 'examples', '_stuff'),  # Exclude work-in-progress notebooks
+    os.path.join('..', 'examples', '.ipynb_checkpoints'),
+    os.path.join('..', 'examples', 'rate_constant', '.ipynb_checkpoints'),
+])
+
+# Add link to notebooks using nbsphinx-link
+import glob
+import json
+
+# Create .nblink files for each notebook we want to include
+# Paths are relative to the .nblink file location
+nblink_notebooks = [
+    ('examples/rate_constant/Arrhenius.nblink', '../../../examples/rate_constant/Arrhenius.ipynb'),
+    ('examples/rate_constant/reparameter.nblink', '../../../examples/rate_constant/reparameter.ipynb'),
+    ('examples/species_thermodynamics.nblink', '../../examples/species_thermodynamics.ipynb'),
+    ('examples/rate_constant/PLOG.nblink', '../../../examples/rate_constant/PLOG.ipynb'),
+    ('examples/rate_constant/FallOff.nblink', '../../../examples/rate_constant/FallOff.ipynb'),
+    ('examples/rate_constant/CABR.nblink', '../../../examples/rate_constant/CABR.ipynb'),
+    ('examples/rate_constant/Threebody.nblink', '../../../examples/rate_constant/Threebody.ipynb'),
+    ('examples/rate_constant/MixtureRule.nblink', '../../../examples/rate_constant/MixtureRule.ipynb'),
+]
+
+# Create nblink files during configuration
+for nblink_path, notebook_path in nblink_notebooks:
+    full_nblink_path = os.path.join(os.path.dirname(__file__), nblink_path)
+    os.makedirs(os.path.dirname(full_nblink_path), exist_ok=True)
+    with open(full_nblink_path, 'w') as f:
+        json.dump({"path": notebook_path}, f)

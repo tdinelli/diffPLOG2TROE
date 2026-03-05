@@ -24,4 +24,5 @@ This page contains the complete API reference for KiRATE's Utilities module.
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 ```

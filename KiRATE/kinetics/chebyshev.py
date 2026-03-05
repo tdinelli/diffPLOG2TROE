@@ -386,9 +386,12 @@ class Chebyshev(eqx.Module):
         **Numerical Stability:**
 
         Input clipping to [-1, 1] prevents numerical issues with arccos:
-        - arccos(x) is undefined for |x| > 1 (NaN result)
+
+        - arccos(x) is undefined for abs(x) > 1 (NaN result)
         - Small floating-point errors can push x slightly outside [-1, 1]
         - Clipping ensures robust evaluation without changing valid inputs
+
+        **Derivative:**
 
         .. math::
             \\frac{dT_n(x)}{dx} = \\frac{n \\sin(n \\arccos(x))}{\\sqrt{1-x^2}}

@@ -141,7 +141,7 @@ class Species(eqx.Module):
     """
 
     _molecular_weight: Float64[Array, ""]
-    _molecular_weight_gmol: Float64[Array, ""]
+    # _molecular_weight_gmol: Float64[Array, ""]
     _Tmin: Float64[Array, ""]
     _Tmax: Float64[Array, ""]
     _Tmid: Float64[Array, ""]
@@ -254,7 +254,7 @@ class Species(eqx.Module):
         self._molecular_weight = get_molecular_weight(elemental_composition)
         # Converting the molecular weight from [kg/mol] to [g/mol]
         # this is to avoid repetition in the transport properties calculation
-        self._molecular_weight_gmol = self._molecular_weight * 1000
+        # self._molecular_weight_gmol = self._molecular_weight * 1000
 
         # Transport properties (optional)
         self._geometry = geometry
