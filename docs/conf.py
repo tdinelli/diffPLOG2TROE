@@ -67,7 +67,8 @@ html_theme = "furo"
 html_static_path = ["_static"]
 
 # Logo and favicon
-html_logo = "_static/logo.png"
+# html_logo = "_static/logo.png"
+html_logo = "_static/logokirate_white.png"
 html_favicon = "_static/favicon.png"
 
 # Custom CSS
